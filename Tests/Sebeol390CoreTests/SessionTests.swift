@@ -58,6 +58,21 @@ private let lexicon: Lexicon = {
     #expect(session.document == "agents.md 입력", "\(session.debugLine)")
 }
 
+@Test func koreanParticlesAfterFileNames() throws {
+    for filename in ["a.md", "agents.md", "README.md", "src/main.swift"] {
+        for particle in ["를", "는", "에서"] {
+            let tail = try #require(SebeolKeys.keys(for: particle))
+            for boundary in ["", " ", ".", "\n"] {
+                let keys = filename + tail + boundary
+                let expected = filename + particle + boundary
+                let session = Session(lexicon: lexicon, mode: .korean)
+                #expect(session.type(keys) == expected)
+                #expect(clientFailures(keys, expected, mode: .korean).isEmpty)
+            }
+        }
+    }
+}
+
 @Test func englishSentenceThenKorean() {
     let session = Session(lexicon: lexicon, mode: .korean)
     _ = session.type("hello.jfsheamfncj4")
@@ -1642,6 +1657,76 @@ private extension Session {
 
 @Test func yeoreoseoStaysUncorrectedAtWordBoundaries() throws {
     for word in ["열어서", "열어서는", "열어서도", "열에서"] {
+        let keys = try #require(SebeolKeys.keys(for: word))
+        for boundary in [" ", ".", ",", "\n"] {
+            let session = Session(lexicon: lexicon, mode: .korean)
+            #expect(session.type(keys + boundary) == word + boundary)
+        }
+    }
+}
+
+@Test func dugaeStaysUncorrectedAtWordBoundaries() throws {
+    for word in ["두개", "두개는", "두개를", "두개만", "대개"] {
+        let keys = try #require(SebeolKeys.keys(for: word))
+        for boundary in [" ", ".", ",", "\n"] {
+            let session = Session(lexicon: lexicon, mode: .korean)
+            #expect(session.type(keys + boundary) == word + boundary)
+        }
+    }
+}
+
+@Test func malhanStaysUncorrectedAtWordBoundaries() throws {
+    for word in ["말한", "말만"] {
+        let keys = try #require(SebeolKeys.keys(for: word))
+        for boundary in [" ", ".", ",", "\n"] {
+            let session = Session(lexicon: lexicon, mode: .korean)
+            #expect(session.type(keys + boundary) == word + boundary)
+        }
+    }
+}
+
+@Test func bogeStaysUncorrectedAtWordBoundaries() throws {
+    for word in ["보게", "보게는", "보게도", "보고"] {
+        let keys = try #require(SebeolKeys.keys(for: word))
+        for boundary in [" ", ".", ",", "\n"] {
+            let session = Session(lexicon: lexicon, mode: .korean)
+            #expect(session.type(keys + boundary) == word + boundary)
+        }
+    }
+}
+
+@Test func geureoneunStaysUncorrectedAtWordBoundaries() throws {
+    for word in ["그러는", "그러는데", "그래"] {
+        let keys = try #require(SebeolKeys.keys(for: word))
+        for boundary in [" ", ".", ",", "\n"] {
+            let session = Session(lexicon: lexicon, mode: .korean)
+            #expect(session.type(keys + boundary) == word + boundary)
+        }
+    }
+}
+
+@Test func geoyaStaysUncorrectedAtWordBoundaries() throws {
+    for word in ["거야", "거의"] {
+        let keys = try #require(SebeolKeys.keys(for: word))
+        for boundary in [" ", ".", ",", "\n"] {
+            let session = Session(lexicon: lexicon, mode: .korean)
+            #expect(session.type(keys + boundary) == word + boundary)
+        }
+    }
+}
+
+@Test func haetjimanStaysUncorrectedAtWordBoundaries() throws {
+    for word in ["했지만", "했죠"] {
+        let keys = try #require(SebeolKeys.keys(for: word))
+        for boundary in [" ", ".", ",", "\n"] {
+            let session = Session(lexicon: lexicon, mode: .korean)
+            #expect(session.type(keys + boundary) == word + boundary)
+        }
+    }
+}
+
+@Test func haenneStaysUncorrectedAtWordBoundaries() throws {
+    for word in ["했네", "했네요"] {
         let keys = try #require(SebeolKeys.keys(for: word))
         for boundary in [" ", ".", ",", "\n"] {
             let session = Session(lexicon: lexicon, mode: .korean)

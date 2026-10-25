@@ -33,6 +33,12 @@ final class SebeolInputController: IMKInputController {
 
         let secure = IsSecureEventInputEnabled()
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        SharedTypingStatistics.store.record(
+            keyCode: event.keyCode,
+            shift: flags.contains(.shift),
+            shortcut: !flags.intersection([.command, .control, .option]).isEmpty,
+            secure: secure
+        )
         if secure {
             apply(session.discard(), client: client)
             return false
@@ -108,6 +114,18 @@ final class SebeolInputController: IMKInputController {
         let english = menu.addItem(withTitle: "영문 (QWERTY)", action: #selector(selectEnglish(_:)), keyEquivalent: "")
         english.state = session.mode == .english ? .on : .off
         english.target = self
+        menu.addItem(.separator())
+        let statistics = menu.addItem(withTitle: "타자 통계", action: nil, keyEquivalent: "")
+        let detail = NSMenu(title: "타자 통계")
+        let snapshot = SharedTypingStatistics.store.snapshot()
+        for (label, counts) in [("오늘", snapshot.today), ("누적", snapshot.total)] {
+            let ratio = counts.typed == 0 ? "—" : String(format: "%.2f%%", counts.backspaceRatio * 100)
+            detail.addItem(withTitle: "\(label): \(ratio) (백스페이스 \(counts.backspaces)회 / 입력 \(counts.typed)타)", action: nil, keyEquivalent: "")
+        }
+        detail.addItem(.separator())
+        detail.addItem(withTitle: "비율 = 백스페이스 횟수 ÷ 입력 타수", action: nil, keyEquivalent: "")
+        detail.addItem(withTitle: "입력 타수: 자모·문자·공백·Enter·Tab", action: nil, keyEquivalent: "")
+        statistics.submenu = detail
         return menu
     }
 
@@ -287,6 +305,10 @@ final class SebeolInputController: IMKInputController {
 
 enum SharedTypoLog {
     static let store = TypoLog()
+}
+
+enum SharedTypingStatistics {
+    static let store = TypingStatistics()
 }
 
 /// Menu toggles. Missing keys stay on, which is the default.

@@ -414,6 +414,20 @@ public final class Session {
             return false
         }
 
+        // Keep the filename intact when a Korean particle follows its
+        // extension: a.md + 를 must not reinterpret md as 히.
+        if let headEnd = codeParticleSplit() {
+            let parts = [
+                Segment(start: 0, end: headEnd, lang: .english),
+                Segment(start: headEnd, end: keys.count, lang: .korean),
+            ]
+            let changed = previous.flatMap { extend($0, to: keys.count) }
+                .map { render(parts) != render($0) } ?? false
+            segments = parts
+            mode = .korean
+            return changed
+        }
+
         // "Open" is 9펴 and "Int" is 8서: a shifted digit plus a syllable.
         // That shape must not outrank a capitalized English word. A pure
         // digit run (OK → 95) is excluded and stays a number.
@@ -803,7 +817,22 @@ public final class Session {
     /// Interior punctuation does not open a new language decision, so "md"
     /// after a dot is not free to become the syllable 히.
     private func prefersWholeEnglishCode() -> Bool {
-        let text = englishText(0..<keys.count)
+        isEnglishCode(englishText(0..<keys.count))
+    }
+
+    private func codeParticleSplit() -> Int? {
+        guard keys.count >= 4 else { return nil }
+        for end in (2..<keys.count).reversed() {
+            let tail = Composer.compose(keys[end..<keys.count]).text
+            guard Self.particles.contains(tail) else { continue }
+            let head = englishText(0..<end)
+            guard let last = head.last, last.isLetter || last.isNumber else { continue }
+            if isEnglishCode(head) { return end }
+        }
+        return nil
+    }
+
+    private func isEnglishCode(_ text: String) -> Bool {
         guard text.contains(where: { CodeToken.interior.contains($0) }) else { return false }
         guard text.allSatisfy({ $0.isLetter || $0.isNumber || CodeToken.interior.contains($0) }) else { return false }
         let labels = text.split { CodeToken.interior.contains($0) }
