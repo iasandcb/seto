@@ -324,6 +324,177 @@ private let lexicon: Lexicon = {
     #expect(paper.marked.isEmpty)
 }
 
+/// What TextEdit actually kept on screen. `insertText` counted from
+/// `selectedRange` does not cover syllables already committed before the
+/// live mark, so the whole word is appended again. A Backspace the session
+/// does not consume deletes one unit and commits whatever mark remains.
+private struct FieldClient {
+    var committed = ""
+    var marked = ""
+    var text: String { committed + marked }
+
+    mutating func apply(_ field: FieldEdit) {
+        switch field {
+        case .none:
+            break
+        case .unmark(let string):
+            committed += string
+            marked = ""
+        case .insert(let string):
+            committed += string
+            marked = ""
+        case .mark(let string):
+            marked = string
+        case .replaceBeforeCaret(let utf16, let string):
+            if marked.isEmpty {
+                committed = dropEnd(committed, utf16)
+            }
+            marked = string
+        case .insertThenMark(let insert, let mark):
+            committed += marked + insert
+            marked = mark
+        case .insertReplacing(let utf16, let string):
+            if marked.isEmpty {
+                committed = dropEnd(committed, utf16) + string
+            } else {
+                marked = ""
+                committed += string
+            }
+        case .insertReplacingThenMark(let utf16, let insert, let mark):
+            if marked.isEmpty {
+                committed = dropEnd(committed, utf16) + insert
+            } else {
+                committed += insert
+            }
+            marked = mark
+        case .clearMarkThenInsert(let utf16, let string):
+            if marked.isEmpty {
+                committed = dropEnd(committed, utf16) + string
+            } else {
+                committed += string
+            }
+            marked = ""
+        case .clearMarkThenMark(let utf16, let string):
+            if marked.isEmpty {
+                committed = dropEnd(committed, utf16)
+            }
+            marked = string
+        case .rewrite(let utf16, let string, let thenMark):
+            if marked.isEmpty {
+                committed = dropEnd(committed, utf16) + string
+            } else {
+                committed += string
+            }
+            marked = thenMark
+        }
+    }
+
+    /// The app handled Backspace. A leftover mark is committed, which is how
+    /// the next composition is inserted beside 비 and produces 비비교.
+    mutating func deleteOne() {
+        if !marked.isEmpty {
+            marked = dropEnd(marked, 1)
+            committed += marked
+            marked = ""
+        } else {
+            committed = dropEnd(committed, 1)
+        }
+    }
+}
+
+@Test func typingDoesNotReinsertCommittedSyllables() {
+    let sentence = "지금 프로에서 테스트하는데 상태가 더 안좋은데?"
+    let words = ["지금", "프로에서", "테스트하는데", "상태가", "더", "안좋은데"]
+    let keys = words.map { SebeolKeys.keys(for: $0)! }.joined(separator: " ") + "?"
+    let session = Session(lexicon: lexicon, mode: .korean)
+    var client = FieldClient()
+    var trace: [String] = []
+    for character in keys {
+        let update = session.input(character)
+        client.apply(update.field)
+        trace.append("\(character) \(update.field) screen=\(client.text) doc=\(session.document) mark=\(client.marked)")
+        #expect(client.text == session.document, "\(trace.suffix(4).joined(separator: "\n"))")
+        #expect(client.marked == session.preedit)
+    }
+    let duplicated = "지금 프프로프로에서 테테스테스트테스트하테스트하는데 상상태가 더 안안좋안좋은데?"
+    #expect(client.text == sentence, "\(trace.suffix(6).joined(separator: "\n"))")
+    #expect(client.text != duplicated)
+    #expect(client.marked.isEmpty)
+}
+
+@Test func backspaceRetypeMatchesCommittedAndMarkedText() {
+    let bigyo = SebeolKeys.keys(for: "비교")!
+    let spaceWord = SebeolKeys.keys(for: "백스페이스")!
+    fieldClientEquals(bigyo, backspaces: 1, retype: String(bigyo.suffix(1)), expect: "비교")
+    fieldClientEquals(bigyo, backspaces: 2, retype: String(bigyo.suffix(2)), expect: "비교")
+    fieldClientEquals(bigyo + " ", backspaces: 1, retype: " ", expect: "비교 ")
+    fieldClientEquals(bigyo + " ", backspaces: 2, retype: String(bigyo.suffix(2)) + " ", expect: "비교 ")
+    fieldClientEquals(spaceWord, backspaces: 2, retype: String(spaceWord.suffix(2)), expect: "백스페이스")
+    fieldClientEquals(spaceWord + " ", backspaces: 2, retype: String(spaceWord.suffix(2)) + " ", expect: "백스페이스 ")
+    fieldClientEquals("hello", backspaces: 3, retype: "llo", expect: "hello")
+    fieldClientEquals(bigyo, backspaces: bigyo.count, retype: "hello", expect: "hello")
+
+    let of = Session(lexicon: lexicon, mode: .korean)
+    var client = FieldClient()
+    for character in "one of " {
+        client.apply(of.input(character).field)
+    }
+    #expect(client.text == "one of ")
+    client.apply(of.toggle().field)
+    #expect(client.text == "one 차", "Shift+Space \(client.text) doc=\(of.document)")
+    #expect(client.text == of.document)
+    client.apply(of.input(" ").field)
+    #expect(client.text == "one 차 ")
+
+    let typo = (SebeolKeys.keys(for: "한글") ?? "").replacing("g", with: "b")
+    let undone = Session(lexicon: lexicon, mode: .korean)
+    client = FieldClient()
+    for character in typo + " " {
+        client.apply(undone.input(character).field)
+    }
+    #expect(client.text == "한글 ")
+    client.apply(undone.toggle().field)
+    #expect(client.text == "한굴")
+    #expect(client.text == undone.document)
+    client.apply(undone.input(" ").field)
+    #expect(client.text == "한굴 ")
+}
+
+private func fieldClientEquals(_ keys: String, backspaces: Int, retype: String, expect: String) {
+    let session = Session(lexicon: lexicon, mode: .korean)
+    var client = FieldClient()
+    var trace: [String] = []
+    func note(_ step: String) {
+        trace.append("\(step) screen=\(client.text) doc=\(session.document) mark=\(client.marked) pre=\(session.preedit)")
+    }
+    for character in keys {
+        client.apply(session.input(character).field)
+        note(String(character))
+        #expect(client.text == session.document, "\(trace.suffix(6).joined(separator: "\n"))")
+        #expect(client.marked == session.preedit)
+    }
+    for _ in 0..<backspaces {
+        let update = session.backspace()
+        if update.field == .none {
+            client.deleteOne()
+        } else {
+            client.apply(update.field)
+        }
+        note("bs \(update.field)")
+        #expect(client.text == session.document, "\(trace.suffix(6).joined(separator: "\n"))")
+        #expect(client.marked == session.preedit)
+    }
+    for character in retype {
+        client.apply(session.input(character).field)
+        note(String(character))
+        #expect(client.text == session.document, "\(trace.suffix(6).joined(separator: "\n"))")
+        #expect(client.marked == session.preedit)
+    }
+    let report = trace.suffix(8).joined(separator: "\n")
+    #expect(client.text == expect, "\(report)")
+    #expect(!client.text.contains("비비교") && !client.text.contains("백스페이백스페이스"), "\(report)")
+}
+
 @Test func backspaceRetypeDoesNotDuplicate() {
     let bigyo = SebeolKeys.keys(for: "비교")!
     let spaceWord = SebeolKeys.keys(for: "백스페이스")!
@@ -1456,5 +1627,15 @@ private extension Session {
             _ = input(character)
         }
         return document
+    }
+}
+
+@Test func deundaStaysUncorrectedAtWordBoundaries() throws {
+    for word in ["든다", "든다는", "든다만", "듣다"] {
+        let keys = try #require(SebeolKeys.keys(for: word))
+        for boundary in [" ", ".", ",", "\n"] {
+            let session = Session(lexicon: lexicon, mode: .korean)
+            #expect(session.type(keys + boundary) == word + boundary)
+        }
     }
 }

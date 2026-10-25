@@ -175,7 +175,7 @@ final class SebeolInputController: IMKInputController {
             guard !text.isEmpty else { return }
             insertCommitting(text, client: client)
         case .mark(let text):
-            setMarked(text, replacement: notFound, client: client)
+            setMarked(text, replacement: markReplacement(text, client: client), client: client)
         case .replaceBeforeCaret(let utf16, let text):
             setMarked(text, replacement: rangeBeforeCaret(utf16, client: client), client: client)
         case .insertThenMark(let insert, let mark):
@@ -220,6 +220,19 @@ final class SebeolInputController: IMKInputController {
         }
     }
 
+    /// Growing a composition replaces the mark when the range is left unset.
+    /// Shrinking it that way can commit the tail instead of deleting it, so
+    /// Backspace passes the marked range and the shorter reading replaces it.
+    private func markReplacement(_ text: String, client: IMKTextInput) -> NSRange {
+        let notFound = NSRange(location: NSNotFound, length: NSNotFound)
+        let existing = client.markedRange()
+        guard existing.location != NSNotFound, existing.length > 0 else { return notFound }
+        if (text as NSString).length < existing.length {
+            return existing
+        }
+        return notFound
+    }
+
     private func setMarked(_ text: String, replacement: NSRange, client: IMKTextInput) {
         let end = (text as NSString).length
         client.setMarkedText(
@@ -235,10 +248,20 @@ final class SebeolInputController: IMKInputController {
         return range.length
     }
 
+    /// During composition `selectedRange` is not a reliable document caret, so
+    /// a replacement counted from it misses the marked syllables and inserts
+    /// the word again. The caret is the end of the marked range.
     private func rangeBeforeCaret(_ utf16: Int, client: IMKTextInput) -> NSRange {
-        let selection = client.selectedRange()
-        let location = max(0, selection.location - utf16)
-        let length = min(utf16, selection.location)
+        let marked = client.markedRange()
+        let caret: Int
+        if marked.location != NSNotFound, marked.length > 0 {
+            caret = marked.location + marked.length
+        } else {
+            let selection = client.selectedRange()
+            caret = selection.location == NSNotFound ? 0 : selection.location
+        }
+        let location = max(0, caret - utf16)
+        let length = caret - location
         return NSRange(location: location, length: length)
     }
 

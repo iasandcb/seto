@@ -1065,10 +1065,12 @@ public final class Session {
         return emit(toPlain: nextPlain, toMarked: nextMarked, didAutoConvert: didAutoConvert)
     }
 
-    /// English, digits, and symbols are inserted once. Completed Hangul
-    /// syllables are inserted too. Only the syllable still being composed is
-    /// marked, so a later edit replaces that syllable and does not append the
-    /// whole word after the syllables the field already kept.
+    /// English, digits, and symbols are inserted once. The trailing Hangul,
+    /// including every syllable of the open word, stays one marked range.
+    /// Committing a finished syllable and then inserting the whole word again
+    /// types that syllable twice (`프로에서` → `프프로프로에서`). Digits that
+    /// share a segment with a syllable ("1개") stay inserted; only the
+    /// syllable is marked.
     private func clientSplit() -> (plain: String, marked: String) {
         guard !segments.isEmpty else { return ("", "") }
         var splitAt = segments.count
@@ -1083,8 +1085,7 @@ public final class Session {
         let head = render(Array(segments[..<splitAt]))
         let tail = Array(segments[splitAt...])
         guard let first = tail.first else { return (head, "") }
-        let composition = Composer.compose(keys[first.start..<first.end])
-        let peeled = splitCommittedSyllables(composition)
+        let peeled = peelDigitsAndSymbols(first)
         var marked = peeled.open
         if tail.count > 1 {
             marked += render(Array(tail.dropFirst()))
@@ -1101,29 +1102,24 @@ public final class Session {
         return (stable, marked)
     }
 
-    /// Digits and symbols, and every syllable before the one still open, are
-    /// already in the field. The mark is that last syllable, or the bare jamo
-    /// that starts the next one. A run of only bare jamo stays marked together.
-    private func splitCommittedSyllables(_ composition: Composition) -> (stable: String, open: String) {
+    /// A 390 digit or symbol at the front of a Hangul segment was already
+    /// inserted. Putting it inside the new marked text types it a second time.
+    private func peelDigitsAndSymbols(_ segment: Segment) -> (stable: String, open: String) {
+        let composition = Composer.compose(keys[segment.start..<segment.end])
         let chars = Array(composition.text)
-        guard chars.count == composition.pieces.count, !chars.isEmpty else {
+        guard chars.count == composition.pieces.count else {
             return ("", composition.text)
         }
-        let syllables = composition.pieces.indices.filter { composition.pieces[$0] == .syllable }
-        guard let lastSyllable = syllables.last else {
-            var index = 0
-            while index < composition.pieces.count {
-                switch composition.pieces[index] {
-                case .digit, .symbol:
-                    index += 1
-                default:
-                    return (String(chars[..<index]), String(chars[index...]))
-                }
+        var index = 0
+        for piece in composition.pieces {
+            switch piece {
+            case .digit, .symbol:
+                index += 1
+            case .syllable, .bareChoseong, .bareJungseong, .bareJongseong:
+                return (String(chars[..<index]), String(chars[index...]))
             }
-            return (composition.text, "")
         }
-        let openAt = composition.pieces.last == .syllable ? lastSyllable : lastSyllable + 1
-        return (String(chars[..<openAt]), String(chars[openAt...]))
+        return (composition.text, "")
     }
 
     private func segmentComposes(_ segment: Segment) -> Bool {
@@ -1145,11 +1141,20 @@ public final class Session {
         // insertThenMark and a rewrite that also marks are two client calls.
         // The second call still sees the old caret and inserts the text again.
         if field.sendsMoreThanOneEdit, marksAfterInsert(field) {
-            let span = utf16Length(plain) + utf16Length(preedit)
             let text = toPlain + toMarked
-            field = .insertReplacing(utf16: span, text: text)
-            nextPlain = text
-            nextMarked = ""
+            if plain.isEmpty {
+                // The syllables already on screen are still inside the mark.
+                // insertText of the whole word lands beside that mark, which is
+                // how 프로에서 became 프프로프로에서. One setMarkedText replaces it.
+                field = .mark(text)
+                nextPlain = ""
+                nextMarked = text
+            } else {
+                let span = utf16Length(plain) + utf16Length(preedit)
+                field = .insertReplacing(utf16: span, text: text)
+                nextPlain = text
+                nextMarked = ""
+            }
         }
         plain = nextPlain
         preedit = nextMarked
