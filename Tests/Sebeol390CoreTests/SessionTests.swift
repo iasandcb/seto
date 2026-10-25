@@ -1639,3 +1639,13 @@ private extension Session {
         }
     }
 }
+
+@Test func yeoreoseoStaysUncorrectedAtWordBoundaries() throws {
+    for word in ["열어서", "열어서는", "열어서도", "열에서"] {
+        let keys = try #require(SebeolKeys.keys(for: word))
+        for boundary in [" ", ".", ",", "\n"] {
+            let session = Session(lexicon: lexicon, mode: .korean)
+            #expect(session.type(keys + boundary) == word + boundary)
+        }
+    }
+}
