@@ -66,14 +66,20 @@ private func press(_ raw: Character, modifiers: NSEvent.ModifierFlags = [], cont
             else { UserDefaults.standard.removeObject(forKey: "autoSwitch") }
         }
         for callbacks in ["none", "insert", "mark", "both"] {
-            for (keys, expected) in [
-                ("gitjgs lfw uvdhc", "git은 잘 되네"),
-                ("mgz", "흠"),
-                ("lfw", "잘"),
-                ("apihgs", "api는"),
-                ("hello", "hello"),
-                ("of", "of"),
-                ("md", "md"),
+            for (keys, expected, startsInEnglish) in [
+                ("gitjgs lfw uvdhc", "git은 잘 되네", true),
+                ("0ts'gyvw", "컨트롤", true),
+                ("'cng'g", "테스트", true),
+                (";t'gs", "버튼", true),
+                (";f;v", "바보", true),
+                ("mgz", "흠", true),
+                ("lfw", "잘", true),
+                ("apihgs", "api는", true),
+                ("hello", "hello", true),
+                ("of", "of", true),
+                ("md", "md", true),
+                ("cd", "cd", false),
+                ("cd ../src", "cd ../src", false),
             ] {
                 cases += 1
                 let client = SmokeClient()
@@ -83,7 +89,7 @@ private func press(_ raw: Character, modifiers: NSEvent.ModifierFlags = [], cont
                 func key(_ raw: Character, shift: Bool = false) {
                     precondition(press(raw, modifiers: shift ? [.shift] : [], controller: controller, client: client))
                 }
-                key(" ", shift: true)
+                if startsInEnglish { key(" ", shift: true) }
                 let commit = { [weak controller, weak client] in
                     guard let client else { return }
                     controller?.commitComposition(client)

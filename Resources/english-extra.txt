@@ -1,4 +1,8 @@
 # Modern words missing from Webster's Second. One word per line.
+cd
+ls
+cp
+rm
 html
 css
 json

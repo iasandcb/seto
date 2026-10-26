@@ -149,6 +149,35 @@ private let lexicon: Lexicon = {
     #expect(clientFailures(keys, "git은 잘 되네", mode: .english).isEmpty)
 }
 
+@Test func controlWordFromEnglishMode() {
+    for word in ["컨트롤", "테스트", "버튼", "바보"] {
+        let keys = SebeolKeys.keys(for: word)!
+        assertTypes(keys, word, mode: .english)
+        #expect(clientFailures(keys, word, mode: .english).isEmpty)
+    }
+}
+
+@Test func englishPunctuationStillBelongsToEnglishWords() {
+    for text in ["of;", "it!", "don't", "it's", "'hello'", "foo/bar", "a;b", "0.1", "->", "=>"] {
+        assertTypes(text, text, mode: .english)
+        #expect(clientFailures(text, text, mode: .english).isEmpty)
+    }
+}
+
+@Test func shortShellCommandsAreNotBareJamo() {
+    for word in ["cd", "ls", "cp", "rm"] {
+        let session = Session(lexicon: lexicon, mode: .korean)
+        var paper = Paper()
+        for key in word { paper.apply(session.input(key).field) }
+        #expect(paper.text == word, "\(session.debugLine)")
+        #expect(session.preedit.isEmpty)
+        #expect(session.mode == .english)
+        paper.apply(session.input(" ").field)
+        #expect(paper.text == word + " ")
+    }
+    #expect(clientFailures("cd ../src", "cd ../src", mode: .korean).isEmpty)
+}
+
 @Test func confirmedLanguageChangesInRealTime() {
     let session = Session(lexicon: lexicon, mode: .korean)
     var paper = Paper()

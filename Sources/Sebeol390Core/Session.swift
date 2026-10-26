@@ -132,6 +132,7 @@ public final class Session {
 
     public func input(_ atom: KeyAtom) -> SessionUpdate {
         let englishPunctuation = mode == .english && !atom.english.isLetter && !atom.english.isNumber
+            && !continuesAsKorean(atom)
         if (atom.isNeutralBreaker || englishPunctuation) && !continuesAsCode(atom) {
             return finishWord(appending: atom.english)
         }
@@ -629,6 +630,24 @@ public final class Session {
             return syllables < 2 && !lexicon.isKoreanWord(composition.text)
         case .trailing(let syllables):
             return syllables < 2
+        default:
+            return false
+        }
+    }
+
+    /// On 390, ; and ' are initials, / is a vowel, and ! is a final.
+    /// Keep those keys available to a Korean reading instead of committing
+    /// half a word as punctuation (0ts'gyvw → 컨트롤).
+    private func continuesAsKorean(_ atom: KeyAtom) -> Bool {
+        guard case .jamo(let jamo) = atom.korean else { return false }
+        if keys.isEmpty { return jamo.kind == .choseong }
+        // Recognized English spellings still own their punctuation: of;,
+        // it!, don't, filenames, and paths must not become Korean fragments.
+        if prefersWholeEnglishWord() || prefersWholeEnglishCode()
+            || lexicon.isCodeToken(englishText(0..<keys.count)) { return false }
+        switch shape(of: Composer.compose(keys + [atom]).pieces) {
+        case .clean(let syllables), .trailing(let syllables):
+            return syllables > 0
         default:
             return false
         }
