@@ -28,6 +28,22 @@ private let lexicon: Lexicon = {
     #expect(clientFailures(keys + "B", "고맙습니다!", mode: .korean).isEmpty)
 }
 
+@Test func apiAfterKoreanUsesTheSameReading() {
+    for mode in [Language.korean, .english] {
+        for prefix in ["", "abc. ", SebeolKeys.keys(for: "한글")! + ". ", (SebeolKeys.keys(for: "그러나")! + " " + SebeolKeys.keys(for: "한편")!) + ", "] {
+            let session = Session(lexicon: lexicon, mode: mode)
+            var paper = Paper()
+            for key in prefix { paper.apply(session.input(key).field) }
+            let before = session.document
+            for key in "api" + SebeolKeys.keys(for: "는")! {
+                paper.apply(session.input(key).field)
+            }
+            #expect(session.document == before + "api는", "\(session.debugLine)")
+            #expect(paper.text == session.document)
+        }
+    }
+}
+
 @Test func tentativeReadingsDoNotChangeMode() {
     for key: Character in ["x", "a", "5", "d"] {
         let session = Session(lexicon: lexicon, mode: .korean)
@@ -64,6 +80,73 @@ private let lexicon: Lexicon = {
         #expect(paper.text == word + " ")
         #expect(session.mode == .english)
     }
+}
+
+@Test func recognizedSingleSyllableSwitchesFromEnglishImmediately() {
+    for word in ["흠", "음", "응", "네", "예", "잘"] {
+        let keys = SebeolKeys.keys(for: word)!
+        let session = Session(lexicon: lexicon, mode: .english)
+        var paper = Paper()
+        for key in keys { paper.apply(session.input(key).field) }
+        #expect(session.document == word, "\(session.debugLine)")
+        #expect(paper.text == word)
+        #expect(session.mode == .korean)
+        paper.apply(session.input(" ").field)
+        #expect(paper.text == word + " ")
+        #expect(session.mode == .korean)
+        paper.apply(session.input("M").field)
+        #expect(paper.text == word + " 1")
+    }
+}
+
+@Test func automaticSingleSyllableConversionCanBeUndoneOrDisabled() {
+    let session = Session(lexicon: lexicon, mode: .english)
+    var paper = Paper()
+    for key in "mgz" { paper.apply(session.input(key).field) }
+    #expect(paper.text == "흠")
+    paper.apply(session.toggle().field)
+    #expect(paper.text == "mgz")
+    #expect(session.mode == .english)
+    paper.apply(session.input(" ").field)
+    #expect(paper.text == "mgz ")
+
+    let manual = Session(lexicon: lexicon, autoSwitch: false, mode: .english)
+    #expect(manual.type("mgz ") == "mgz ")
+    #expect(manual.mode == .english)
+}
+
+@Test func singleSyllableAfterModeSelectionAndRetyping() {
+    let selected = Session(lexicon: lexicon)
+    _ = selected.forceMode(.english)
+    #expect(selected.type("lfw") == "잘")
+
+    let retyped = Session(lexicon: lexicon, mode: .english)
+    var paper = Paper()
+    for key in "mgz" { paper.apply(retyped.input(key).field) }
+    paper.apply(retyped.toggle().field)
+    #expect(paper.text == "mgz")
+    for _ in 0..<3 {
+        let update = retyped.backspace()
+        if update.field == .none { paper.committed = String(paper.committed.dropLast()) }
+        else { paper.apply(update.field) }
+    }
+    #expect(paper.text.isEmpty)
+    for key in "lfw" { paper.apply(retyped.input(key).field) }
+    #expect(paper.text == "잘", "\(retyped.debugLine)")
+    #expect(retyped.mode == .korean)
+
+    let committed = Session(lexicon: lexicon, mode: .english)
+    _ = committed.type("mgz")
+    _ = committed.toggle()
+    _ = committed.commitDisplayed()
+    #expect(committed.type("lfw") == "mgz잘")
+}
+
+@Test func gitWithKoreanParticleThenJal() {
+    let keys = "git" + SebeolKeys.keys(for: "은")! + " "
+        + SebeolKeys.keys(for: "잘")! + " " + SebeolKeys.keys(for: "되네")!
+    assertTypes(keys, "git은 잘 되네", mode: .english)
+    #expect(clientFailures(keys, "git은 잘 되네", mode: .english).isEmpty)
 }
 
 @Test func confirmedLanguageChangesInRealTime() {
@@ -1184,45 +1267,24 @@ private func sticksAsKorean(_ text: String) -> Bool {
     return body.allSatisfy { $0 == .syllable || $0 == .digit }
 }
 
-@Test func arrowsAfterDashAndEquals() {
-    let dash = Session(lexicon: lexicon, mode: .korean)
-    var paper = Paper()
-    paper.apply(dash.input("-").field)
-    paper.apply(dash.input(">").field)
-    #expect(paper.text == "->")
-    #expect(dash.document == "->")
-    paper.apply(dash.toggle().field)
-    #expect(paper.text == "-3")
-    #expect(dash.document == "-3")
-    paper.apply(dash.input(" ").field)
-    #expect(paper.text == "-3 ")
-    #expect(dash.document == "-3 ")
-
-    let equals = Session(lexicon: lexicon, mode: .korean)
-    var equalsPaper = Paper()
-    equalsPaper.apply(equals.input("=").field)
-    equalsPaper.apply(equals.input(">").field)
-    #expect(equalsPaper.text == "=>")
-    equalsPaper.apply(equals.toggle().field)
-    #expect(equalsPaper.text == "=3")
-    #expect(equals.document == "=3")
-
-    #expect(Session(lexicon: lexicon, mode: .korean).type(">") == "3")
-    #expect(Session(lexicon: lexicon, mode: .korean).type("<") == "2")
-    #expect(Session(lexicon: lexicon, mode: .korean).type("-<") == "-2")
-    #expect(Session(lexicon: lexicon, mode: .korean).type("Y-") == "<-")
-    #expect(Session(lexicon: lexicon, mode: .korean).type("-->") == "-->")
-    #expect(Session(lexicon: lexicon, mode: .korean).type(">.MJ") == "3.14")
-    #expect(Session(lexicon: lexicon, mode: .english).type("=>") == "=>")
-
-    let hangul = (SebeolKeys.keys(for: "한글") ?? "") + "->"
-    #expect(Session(lexicon: lexicon, mode: .korean).type(hangul) == "한글->")
-
-    let consumed = Session(lexicon: lexicon, mode: .korean)
-    _ = consumed.type("->")
-    _ = consumed.input(" ")
-    _ = consumed.toggle()
-    #expect(consumed.document == "-> ")
+@Test func punctuationAfterDashAndEqualsFollowsMode() {
+    for automatic in [true, false] {
+        for mode in [Language.korean, .english] {
+            let examples = mode == .korean
+                ? ["->": "-3", "=>": "=3", "-->": "--3", "-<": "-2", "Y-": "<-", ">.MJ": "3.14"]
+                : ["->": "->", "=>": "=>", "-->": "-->", "-<": "-<", "Y-": "Y-", ">.MJ": ">.MJ"]
+            for (keys, expected) in examples {
+                let session = Session(lexicon: lexicon, autoSwitch: automatic, mode: mode)
+                var paper = Paper()
+                for key in keys { paper.apply(session.input(key).field) }
+                #expect(session.document == expected, "\(session.debugLine)")
+                #expect(paper.text == expected)
+                #expect(session.mode == mode)
+            }
+        }
+    }
+    let hangul = SebeolKeys.keys(for: "한글")! + "->"
+    #expect(Session(lexicon: lexicon).type(hangul) == "한글-3")
 }
 
 @Test func padDigitsStayDigitsInKoreanMode() {

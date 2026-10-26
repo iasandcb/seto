@@ -4,7 +4,7 @@ import InputMethodKit
 import Sebeol390Core
 
 @objc(SebeolInputController)
-final class SebeolInputController: IMKInputController {
+final class SebeolInputController: IMKInputController, NSMenuDelegate {
     private let session: Session = {
         let session = Session(
             lexicon: SharedLexicon.lexicon,
@@ -16,6 +16,22 @@ final class SebeolInputController: IMKInputController {
         return session
     }()
     private var sawCapsLockDown = false
+    private var active = false
+    private var clientUpdateDepth = 0
+
+    override func activateServer(_ sender: Any!) {
+        super.activateServer(sender)
+        active = true
+        let owner = ObjectIdentifier(self)
+        let mode = session.mode
+        // IMK's Objective-C callbacks run on the main thread but do not carry
+        // Swift actor annotations. Bridge this menu into the main actor below.
+        nonisolated(unsafe) let statusMenu = NSMenu(title: "세토")
+        statusMenu.delegate = self
+        MainActor.assumeIsolated {
+            ModeStatusItem.shared.activate(owner: owner, mode: mode, menu: statusMenu)
+        }
+    }
 
     override func recognizedEvents(_ sender: Any!) -> Int {
         let mask = NSEvent.EventTypeMask([.keyDown, .flagsChanged])
@@ -42,6 +58,19 @@ final class SebeolInputController: IMKInputController {
             apply(session.discard(), client: client)
             return false
         }
+        let shortcutFlags = flags.intersection([.command, .control, .option, .shift, .function])
+        if shortcutFlags == .control {
+            let arrow: Character?
+            switch Keymap.qwertyCharacter(keyCode: event.keyCode, shift: false) {
+            case ",": arrow = "←"
+            case ".": arrow = "→"
+            default: arrow = nil
+            }
+            if let arrow {
+                apply(session.input(arrow), client: client)
+                return true
+            }
+        }
         if flags.contains(.command) || flags.contains(.control) || flags.contains(.option) {
             apply(session.commitDisplayed(), client: client)
             return false
@@ -49,6 +78,7 @@ final class SebeolInputController: IMKInputController {
 
         if event.keyCode == Keymap.delete {
             let update = session.backspace()
+            updateModeStatus()
             guard update.field != .none else { return false }
             apply(update, client: client)
             return true
@@ -73,6 +103,11 @@ final class SebeolInputController: IMKInputController {
     }
 
     override func commitComposition(_ sender: Any!) {
+        // Some editors synchronously ask us to commit while insertText or
+        // setMarkedText is still applying our update. This is an echo of that
+        // edit, not a new boundary: clearing keys here loses Latin prefixes
+        // before they can be recognized as Hangul (lfw → 잘).
+        guard clientUpdateDepth == 0 else { return }
         guard let client = sender as? IMKTextInput else { return }
         apply(session.commitDisplayed(), client: client)
     }
@@ -91,7 +126,30 @@ final class SebeolInputController: IMKInputController {
 
     override func deactivateServer(_ sender: Any!) {
         commitComposition(sender)
+        active = false
+        let owner = ObjectIdentifier(self)
+        MainActor.assumeIsolated {
+            ModeStatusItem.shared.hide(owner: owner)
+        }
         super.deactivateServer(sender)
+    }
+
+    private func updateModeStatus() {
+        guard active else { return }
+        let owner = ObjectIdentifier(self)
+        let mode = session.mode
+        MainActor.assumeIsolated {
+            ModeStatusItem.shared.update(owner: owner, mode: mode)
+        }
+    }
+
+    func menuNeedsUpdate(_ statusMenu: NSMenu) {
+        statusMenu.removeAllItems()
+        guard let current = menu() else { return }
+        for entry in current.items {
+            current.removeItem(entry)
+            statusMenu.addItem(entry)
+        }
     }
 
     override func menu() -> NSMenu! {
@@ -146,6 +204,7 @@ final class SebeolInputController: IMKInputController {
         } else {
             _ = session.forceMode(.korean)
         }
+        updateModeStatus()
     }
 
     @objc private func selectEnglish(_ sender: Any?) {
@@ -154,6 +213,7 @@ final class SebeolInputController: IMKInputController {
         } else {
             _ = session.forceMode(.english)
         }
+        updateModeStatus()
     }
 
     private func handleFlags(_ event: NSEvent, client: IMKTextInput) -> Bool {
@@ -172,6 +232,9 @@ final class SebeolInputController: IMKInputController {
     }
 
     private func apply(_ update: SessionUpdate, client: IMKTextInput) {
+        clientUpdateDepth += 1
+        defer { clientUpdateDepth -= 1 }
+        updateModeStatus()
         let notFound = NSRange(location: NSNotFound, length: NSNotFound)
         switch update.field {
         case .none:

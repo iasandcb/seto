@@ -131,9 +131,6 @@ public final class Session {
     }
 
     public func input(_ atom: KeyAtom) -> SessionUpdate {
-        if let arrow = arrowInsteadOfDigit(atom) {
-            return arrow
-        }
         let englishPunctuation = mode == .english && !atom.english.isLetter && !atom.english.isNumber
         if (atom.isNeutralBreaker || englishPunctuation) && !continuesAsCode(atom) {
             return finishWord(appending: atom.english)
@@ -201,25 +198,8 @@ public final class Session {
         return emit(toPlain: nextPlain, toMarked: nextMarked, didAutoConvert: false)
     }
 
-    /// `-` or `=` then Shift+. is `->` or `=>`, not `-3` or `=3`.
-    /// Shift+Space puts the digit back.
-    private func arrowInsteadOfDigit(_ atom: KeyAtom) -> SessionUpdate? {
-        guard mode == .korean, atom.english == ">", case .character("3") = atom.korean else { return nil }
-        guard preedit.isEmpty, let previous = document.last, previous == "-" || previous == "=" else { return nil }
-        finished += plain
-        clearToken()
-        finished.append(">")
-        contextAtWordStart = contextLanguage
-        pendingUndo = Undo(
-            keys: [atom],
-            segments: [Segment(start: 0, end: 1, lang: .korean)],
-            committedSuffix: ">"
-        )
-        return make(.insert(">"), marked: "", didAutoConvert: true)
-    }
-
     /// Shift+Space / Caps Lock. Immediately after an automatic conversion,
-    /// typo correction, or `->` this restores what was typed and holds it.
+    /// or typo correction, this restores what was typed and holds it.
     /// Otherwise it flips the reading of the current word, or the mode for the next word.
     public func toggle() -> SessionUpdate {
         if let undo = pendingUndo {
@@ -622,7 +602,8 @@ public final class Session {
             let composition = Composer.compose(atoms)
             switch shape(of: composition.pieces) {
             case .clean(let syllables), .trailing(let syllables):
-                if syllables >= 2 || (segments.count > 1 && Self.particles.contains(composition.text)) {
+                if syllables >= 2 || lexicon.isKoreanWord(composition.text)
+                    || (segments.count > 1 && Self.particles.contains(composition.text)) {
                     mode = .korean
                 }
             default:
@@ -638,10 +619,15 @@ public final class Session {
             || spelling.allSatisfy({ $0.isLetter && $0.isUppercase }) {
             return true
         }
-        switch bufferShape() {
+        let composition = Composer.compose(keys)
+        switch shape(of: composition.pieces) {
         case .singleBare, .digits, .symbol:
             return true
-        case .clean(let syllables), .trailing(let syllables):
+        case .clean(let syllables):
+            // A recognized Korean word is stronger evidence than its length.
+            // English words/prefixes were checked first, so of stays English.
+            return syllables < 2 && !lexicon.isKoreanWord(composition.text)
+        case .trailing(let syllables):
             return syllables < 2
         default:
             return false
