@@ -21,6 +21,105 @@ private let lexicon: Lexicon = {
     }
 }
 
+@Test func thanksStaysKorean() {
+    let keys = SebeolKeys.keys(for: "고맙습니다")!
+    assertTypes(keys, "고맙습니다")
+    assertTypes(keys + "B", "고맙습니다!")
+    #expect(clientFailures(keys + "B", "고맙습니다!", mode: .korean).isEmpty)
+}
+
+@Test func tentativeReadingsDoNotChangeMode() {
+    for key: Character in ["x", "a", "5", "d"] {
+        let session = Session(lexicon: lexicon, mode: .korean)
+        let update = session.input(key)
+        #expect(update.mode == .korean)
+        #expect(session.mode == .korean)
+        _ = session.backspace()
+        #expect(session.mode == .korean)
+        _ = session.input(key)
+        _ = session.commitDisplayed()
+        #expect(session.mode == .korean)
+        #expect(session.type("M") == "\(key)1")
+    }
+    // A dictionary prefix alone does not select the next keyboard layout.
+    let session = Session(lexicon: Lexicon(english: ["deployment"], korean: []))
+    _ = session.type("dep")
+    #expect(session.document == "dep")
+    #expect(session.mode == .korean)
+}
+
+@Test func englishModeSurvivesSyllableShapedWords() {
+    for word in ["of", "to", "in", "md", "yex"] {
+        let session = Session(lexicon: lexicon, mode: .english)
+        var paper = Paper()
+        var typed = ""
+        for key in word {
+            typed.append(key)
+            paper.apply(session.input(key).field)
+            #expect(paper.text == typed, "\(session.debugLine)")
+            #expect(session.mode == .english)
+            #expect(paper.marked.isEmpty)
+        }
+        paper.apply(session.input(" ").field)
+        #expect(paper.text == word + " ")
+        #expect(session.mode == .english)
+    }
+}
+
+@Test func confirmedLanguageChangesInRealTime() {
+    let session = Session(lexicon: lexicon, mode: .korean)
+    var paper = Paper()
+    for key in "hello" { paper.apply(session.input(key).field) }
+    #expect(paper.text == "hello")
+    #expect(session.mode == .english)
+    paper.apply(session.input(" ").field)
+    #expect(session.mode == .english)
+    for key in SebeolKeys.keys(for: "한글")! {
+        paper.apply(session.input(key).field)
+    }
+    // Neither conversion waits for a space.
+    #expect(paper.text == "hello 한글")
+    #expect(session.mode == .korean)
+    paper.apply(session.input("B").field)
+    #expect(paper.text == "hello 한글!")
+    #expect(paper.text == session.document)
+}
+
+@Test func mixedWordsStillConvertInEitherMode() {
+    for mode in [Language.korean, .english] {
+        for (keys, expected) in [("deploymr2hgsuc", "deploy했는데"), ("AIyv", "AI로"), ("ktxhgs", "ktx는")] {
+            let session = Session(lexicon: lexicon, mode: mode)
+            var paper = Paper()
+            for key in keys { paper.apply(session.input(key).field) }
+            #expect(session.document == expected, "\(session.debugLine)")
+            #expect(paper.text == expected)
+            #expect(session.mode == .korean)
+        }
+    }
+}
+
+@Test func shiftedKeysFollowConfirmedMode() {
+    for automatic in [true, false] {
+        for (key, hangul) in [("M", "1"), (">", "3"), ("<", "2"), ("B", "!"), ("P", ">"), ("G", "/")] {
+            let korean = Session(lexicon: lexicon, autoSwitch: automatic, mode: .korean)
+            #expect(korean.type(key) == hangul)
+            #expect(korean.mode == .korean)
+            let english = Session(lexicon: lexicon, autoSwitch: automatic, mode: .english)
+            #expect(english.type(key) == key)
+            #expect(english.mode == .english)
+        }
+    }
+    let session = Session(lexicon: lexicon, mode: .english)
+    #expect(session.type("of>") == "of>")
+    #expect(session.mode == .english)
+    #expect(session.forceMode(.korean).mode == .korean)
+    #expect(session.type("M") == "of>1")
+
+    let english = Session(lexicon: lexicon, mode: .english)
+    #expect(english.type("hello!") == "hello!")
+    #expect(english.mode == .english)
+}
+
 @Test func agentsStayEnglish() {
     assertTypes("agents", "agents")
     assertTypes("agents ", "agents ")
@@ -706,8 +805,8 @@ private func drive(_ paper: inout Paper, _ session: Session, _ keys: String) {
     for (keys, expected) in korean {
         failures += clientFailures(keys, expected, mode: .korean)
     }
-    failures += clientFailures("N.M", "0.1", mode: .english)
-    failures += clientFailures(">.MJ", "3.14", mode: .english)
+    failures += clientFailures("N.M", "N.M", mode: .english)
+    failures += clientFailures(">.MJ", ">.MJ", mode: .english)
     failures += clientFailures("MN", "MN", mode: .english)
     failures += clientFailures("OK", "OK", mode: .english)
     failures += clientFailures("agents.md", "agents.md", mode: .english)
@@ -1126,24 +1225,6 @@ private func sticksAsKorean(_ text: String) -> Bool {
     #expect(consumed.document == "-> ")
 }
 
-@Test func shiftDigitKeysCanStaySymbols() {
-    let symbols = Session(lexicon: lexicon, mode: .korean)
-    symbols.shiftDigitsAsSymbols = true
-    #expect(symbols.type("MN<>") == "MN<>")
-    #expect(symbols.type("UIOJKL") == "MN<>UIOJKL")
-
-    let arrow = Session(lexicon: lexicon, mode: .korean)
-    arrow.shiftDigitsAsSymbols = true
-    #expect(arrow.type("->") == "->")
-    _ = arrow.toggle()
-    #expect(arrow.document == "->")
-
-    let digits = Session(lexicon: lexicon, mode: .korean)
-    #expect(digits.shiftDigitsAsSymbols == false)
-    #expect(digits.type("MN<>") == "1023")
-    #expect(digits.type("UIOJKLMN") == "102378945610")
-}
-
 @Test func padDigitsStayDigitsInKoreanMode() {
     let pad = ["M": "1", "N": "0", "U": "7", "I": "8", "O": "9", "J": "4", "K": "5", "L": "6", "<": "2", ">": "3"]
     var failures: [String] = []
@@ -1223,8 +1304,8 @@ private func sticksAsKorean(_ text: String) -> Bool {
     assertTypes(han + " of", "한 차")
     assertTypes(han + " the", "한 the")
     assertTypes("of", "차")
-    assertTypes("one. of", "one. 차")
-    assertTypes("one\nof", "one\n차")
+    assertTypes("one. of", "one. of")
+    assertTypes("one\nof", "one\nof")
 
     let session = Session(lexicon: lexicon, mode: .korean)
     var paper = Paper()

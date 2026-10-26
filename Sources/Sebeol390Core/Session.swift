@@ -86,8 +86,7 @@ public final class Session {
     public var autoSwitch: Bool
     /// When false, a finished word stays as typed. Retype logging still runs.
     public var correctsTypos = true
-    /// When true, Shift on a 390 digit key inserts the QWERTY character (`>` not `3`).
-    public var shiftDigitsAsSymbols = false
+    /// Confirmed input language. Tentative readings do not change the keyboard mode.
     public private(set) var mode: Language
     /// Hangul still open. Empty while the current token is English, digits, or finished.
     public private(set) var preedit = ""
@@ -95,11 +94,13 @@ public final class Session {
     public var document: String { finished + plain + preedit }
 
     private let lexicon: Lexicon
-    private var keys: [KeyAtom] = []
+    private var keys: [KeyAtom] = [] {
+        didSet { compositionBoundaries.removeAll(keepingCapacity: true) }
+    }
+    private var compositionBoundaries: [Int: Bool] = [:]
     private var segments: [Segment] = []
-    /// Language at the start of the open word. A lone jungseong such as ㅠ
-    /// is typed as its QWERTY key and flips `mode`, but the word is still
-    /// the Korean word the user started.
+    /// Confirmed language when the open word started, even when a lone
+    /// jamo is temporarily displayed as QWERTY.
     private var wordMode: Language
     private var locked: Language?
     private var pendingUndo: Undo?
@@ -130,12 +131,20 @@ public final class Session {
     }
 
     public func input(_ atom: KeyAtom) -> SessionUpdate {
-        let atom = shiftedDigit(atom)
         if let arrow = arrowInsteadOfDigit(atom) {
             return arrow
         }
-        if atom.isNeutralBreaker && !continuesAsCode(atom) {
+        let englishPunctuation = mode == .english && !atom.english.isLetter && !atom.english.isNumber
+        if (atom.isNeutralBreaker || englishPunctuation) && !continuesAsCode(atom) {
             return finishWord(appending: atom.english)
+        }
+        // Moved 390 punctuation (Shift+B → !) ends a Hangul word too.
+        // Including it in language scoring invalidates the clean Hangul
+        // reading and can turn 고맙습니다 into kvif3습니다!.
+        if mode == .korean, !keys.isEmpty, prefersWholeKorean(),
+           case .character(let character) = atom.korean,
+           !character.isLetter, !character.isNumber {
+            return finishWord(appending: character)
         }
         pendingUndo = nil
         if keys.isEmpty {
@@ -192,17 +201,10 @@ public final class Session {
         return emit(toPlain: nextPlain, toMarked: nextMarked, didAutoConvert: false)
     }
 
-    /// A 390 digit key typed with Shift. With the symbol switch on, keep the
-    /// QWERTY character (`M` stays `M`, `>` stays `>`).
-    private func shiftedDigit(_ atom: KeyAtom) -> KeyAtom {
-        guard shiftDigitsAsSymbols, isPadDigit(atom) else { return atom }
-        return KeyAtom(english: atom.english, korean: .character(atom.english))
-    }
-
     /// `-` or `=` then Shift+. is `->` or `=>`, not `-3` or `=3`.
     /// Shift+Space puts the digit back.
     private func arrowInsteadOfDigit(_ atom: KeyAtom) -> SessionUpdate? {
-        guard atom.english == ">", case .character("3") = atom.korean else { return nil }
+        guard mode == .korean, atom.english == ">", case .character("3") = atom.korean else { return nil }
         guard preedit.isEmpty, let previous = document.last, previous == "-" || previous == "=" else { return nil }
         finished += plain
         clearToken()
@@ -317,7 +319,7 @@ public final class Session {
         if sentence {
             contextLanguage = nil
         } else if !keys.isEmpty, let language = composedSegments.last?.lang {
-            contextLanguage = language
+            contextLanguage = language == mode ? language : nil
         }
         let converted = composed != before && !before.isEmpty
         clearToken()
@@ -400,6 +402,10 @@ public final class Session {
     @discardableResult
     private func recompute(wordFinal: Bool, previous: [Segment]?) -> Bool {
         preferredUndo = nil
+        // Keep real-time conversion; word boundaries do not drive mode changes.
+        defer {
+            if !wordFinal { confirmMode() }
+        }
         if let locked {
             segments = keys.isEmpty ? [] : [Segment(start: 0, end: keys.count, lang: locked)]
             mode = locked
@@ -424,7 +430,6 @@ public final class Session {
             let changed = previous.flatMap { extend($0, to: keys.count) }
                 .map { render(parts) != render($0) } ?? false
             segments = parts
-            mode = .korean
             return changed
         }
 
@@ -438,7 +443,6 @@ public final class Session {
                 changed = render(english) != render(extended)
             }
             segments = english
-            mode = .english
             return changed
         }
 
@@ -455,7 +459,6 @@ public final class Session {
                 changed = render(parts) != render(extended)
             }
             segments = parts
-            mode = .korean
             return changed
         }
 
@@ -474,7 +477,16 @@ public final class Session {
                 changed = changed || render(english) != render(extended)
             }
             segments = english
-            mode = .english
+            return changed
+        }
+
+        // In English mode a syllable-shaped prefix is not evidence of a
+        // language change. Keep QWERTY until a stronger Korean reading appears.
+        if prefersCurrentEnglishMode() {
+            let english = [Segment(start: 0, end: keys.count, lang: .english)]
+            let changed = previous.flatMap { extend($0, to: keys.count) }
+                .map { render(english) != render($0) } ?? false
+            segments = english
             return changed
         }
 
@@ -488,7 +500,6 @@ public final class Session {
                 changed = render(korean) != render(extended)
             }
             segments = korean
-            mode = .korean
             return changed
         }
 
@@ -501,7 +512,6 @@ public final class Session {
                 changed = render(korean) != render(extended)
             }
             segments = korean
-            mode = .korean
             return changed
         }
 
@@ -514,7 +524,6 @@ public final class Session {
                 changed = render(korean) != render(extended)
             }
             segments = korean
-            mode = .korean
             return changed
         }
 
@@ -527,12 +536,11 @@ public final class Session {
                 changed = render(korean) != render(extended)
             }
             segments = korean
-            mode = .korean
             return changed
         }
 
-        // ㅎㅎ, ㅋㅋ, ㅠㅠ, ㄱㅅ. The first ㅠ is only the key "5", so the
-        // mode flips, but the word was started in Korean.
+        // ㅎㅎ, ㅋㅋ, ㅠㅠ, ㄱㅅ. A lone ㅠ may display as "5", but
+        // that tentative reading does not change the Korean mode.
         if prefersBareJamoRun(previous) {
             let korean = [Segment(start: 0, end: keys.count, lang: .korean)]
             var changed = false
@@ -540,7 +548,6 @@ public final class Session {
                 changed = render(korean) != render(extended)
             }
             segments = korean
-            mode = .korean
             return changed
         }
 
@@ -553,7 +560,6 @@ public final class Session {
                 changed = render(english) != render(extended)
             }
             segments = english
-            mode = .english
             return changed
         }
 
@@ -567,7 +573,6 @@ public final class Session {
                 changed = render(english) != render(extended)
             }
             segments = english
-            mode = .english
             return changed
         }
 
@@ -578,7 +583,9 @@ public final class Session {
             let reserved = reservesEnglishPrefix(extended, wordFinal: wordFinal)
             let chosenScore = score(chosen, wordFinal: wordFinal) ?? Int.min
             let takeNew: Bool
-            if extendedSolid || reserved {
+            if !preservesComposition(in: extended) {
+                takeNew = true
+            } else if extendedSolid || reserved {
                 takeNew = false
             } else if extendedScore == nil {
                 takeNew = true
@@ -588,17 +595,57 @@ public final class Session {
             if takeNew {
                 let changed = render(chosen) != render(extended)
                 segments = chosen
-                mode = segments.last?.lang ?? mode
                 return changed
             }
             segments = extended
-            mode = segments.last?.lang ?? mode
             return false
         }
 
         segments = chosen
-        mode = segments.last?.lang ?? mode
         return false
+    }
+
+    /// Only recognized words/tokens or a multi-syllable Korean reading may
+    /// change the mode. Lone keys, digits, and dictionary prefixes cannot.
+    private func confirmMode() {
+        guard autoSwitch, locked == nil, let last = segments.last else { return }
+        let atoms = keys[last.start..<last.end]
+        switch last.lang {
+        case .english:
+            let spelling = englishText(last.start..<last.end)
+            guard spelling.count >= 2, !atoms.allSatisfy(isPadDigit) else { return }
+            if lexicon.isEnglishWord(spelling.lowercased()) || lexicon.isAbbreviation(spelling)
+                || lexicon.isCodeToken(spelling) || isEnglishCode(spelling) {
+                mode = .english
+            }
+        case .korean:
+            let composition = Composer.compose(atoms)
+            switch shape(of: composition.pieces) {
+            case .clean(let syllables), .trailing(let syllables):
+                if syllables >= 2 || (segments.count > 1 && Self.particles.contains(composition.text)) {
+                    mode = .korean
+                }
+            default:
+                break
+            }
+        }
+    }
+
+    private func prefersCurrentEnglishMode() -> Bool {
+        guard mode == .english else { return false }
+        let spelling = englishText(0..<keys.count)
+        if prefersWholeEnglishWord() || prefersWholeEnglishCode() || lexicon.isCodeToken(spelling)
+            || spelling.allSatisfy({ $0.isLetter && $0.isUppercase }) {
+            return true
+        }
+        switch bufferShape() {
+        case .singleBare, .digits, .symbol:
+            return true
+        case .clean(let syllables), .trailing(let syllables):
+            return syllables < 2
+        default:
+            return false
+        }
     }
 
     private func bestPath(wordFinal: Bool) -> [Segment]? {
@@ -610,11 +657,12 @@ public final class Session {
 
         for start in 0..<count {
             guard let base = best[start] else { continue }
+            let canSwitch = preservesComposition(at: start)
             let limit = min(count, start + Scoring.maxSegment)
             if limit <= start { continue }
             for end in (start + 1)...limit {
                 for lang in order {
-                    if lang == .english && continuesKoreanSyllable(at: start) { continue }
+                    if start > 0, (lang == .korean || base.lang == .korean), !canSwitch { continue }
                     let isFinal = wordFinal && end == count
                     guard let quality = self.quality(start..<end, lang: lang, wordFinal: isFinal) else { continue }
                     var total = base.score + quality.score
@@ -648,6 +696,8 @@ public final class Session {
         guard !parts.isEmpty else { return 0 }
         var total = 0
         for (index, part) in parts.enumerated() {
+            if index > 0, (parts[index - 1].lang == .korean || part.lang == .korean),
+               !preservesComposition(at: part.start) { return nil }
             let isFinal = wordFinal && index == parts.count - 1
             guard let quality = quality(part.start..<part.end, lang: part.lang, wordFinal: isFinal) else { return nil }
             total += quality.score
@@ -788,15 +838,21 @@ public final class Session {
         }
     }
 
-    /// "she" must not borrow the ㄴ of 안. A jongseong that changes the
-    /// previous syllable in place is still that syllable.
-    private func continuesKoreanSyllable(at index: Int) -> Bool {
-        guard index > 0 else { return false }
-        guard case .jamo(let incoming) = keys[index].korean, incoming.kind == .jongseong else { return false }
-        let from = max(0, index - 4)
-        let head = Composer.compose(keys[from..<index])
-        let full = Composer.compose(keys[from...index])
-        return full.pieces.last == .syllable && full.text.count == head.text.count && full.text != head.text
+    /// A language boundary must also be a composition boundary. Splitting
+    /// inside an initial, vowel, or final changes the Hangul on either side.
+    private func preservesComposition(at index: Int) -> Bool {
+        if let cached = compositionBoundaries[index] { return cached }
+        let safe = Composer.preservesBoundary(index, in: keys)
+        compositionBoundaries[index] = safe
+        return safe
+    }
+
+    private func preservesComposition(in parts: [Segment]) -> Bool {
+        for index in parts.indices.dropFirst() {
+            if (parts[index - 1].lang == .korean || parts[index].lang == .korean),
+               !preservesComposition(at: parts[index].start) { return false }
+        }
+        return true
     }
 
     /// The buffer is still a Korean word being typed: one or more syllables,
@@ -827,7 +883,7 @@ public final class Session {
             guard Self.particles.contains(tail) else { continue }
             let head = englishText(0..<end)
             guard let last = head.last, last.isLetter || last.isNumber else { continue }
-            if isEnglishCode(head) { return end }
+            if isEnglishCode(head), preservesComposition(at: end) { return end }
         }
         return nil
     }
@@ -851,7 +907,8 @@ public final class Session {
     }
 
     /// The whole buffer is one English letter run: a word, or the start of one.
-    /// Checked only after Hangul stickiness, so 입력 and 녀 stay Korean.
+    /// In Korean mode Hangul stickiness runs first; English mode gives
+    /// dictionary words and prefixes priority over syllable-shaped readings.
     /// An all-digit pad run is handled first, so "MN" is not read as a prefix.
     private func prefersWholeEnglishWord() -> Bool {
         let lower = englishText(0..<keys.count).lowercased()
@@ -868,7 +925,7 @@ public final class Session {
     private static let particles = KoreanEndings.set
 
     /// Short words that are a real English word and also a Hangul reading.
-    /// `of` is 차. Only the word before them, in the same run, picks a side.
+    /// `of` is 차. Preserve an explicit undo reading for English context.
     private static let englishContextWords: Set<String> = [
         "of", "to", "in", "is", "it", "on", "at", "as", "or", "if", "an",
         "be", "do", "go", "no", "so", "up", "we", "me", "my", "the",
@@ -894,7 +951,7 @@ public final class Session {
     /// Index where an English acronym ends and a Hangul particle begins.
     /// Nil when the buffer should stay one language.
     private func acronymParticleSplit() -> Int? {
-        guard wordMode == .korean, keys.count >= 4 else { return nil }
+        guard keys.count >= 4 else { return nil }
         let spelling = englishText(0..<keys.count).lowercased()
         // Still typing "backfall" or "hello". A particle-shaped tail is a coincidence.
         if lexicon.isEnglishWord(spelling) || lexicon.isEnglishPrefix(spelling) { return nil }
@@ -909,6 +966,7 @@ public final class Session {
             let tail = Composer.compose(keys[headEnd..<keys.count])
             guard Self.particles.contains(tail.text) else { continue }
             guard case .clean = shape(of: tail.pieces) else { continue }
+            guard preservesComposition(at: headEnd) else { continue }
             let head = Composer.compose(keys[0..<headEnd])
             // 열 is "jew". The syllable itself is a Korean word.
             if lexicon.isKoreanWord(head.text) { continue }
@@ -963,7 +1021,7 @@ public final class Session {
     /// or ',' between them. "OK." stays an abbreviation: a trailing
     /// separator after a word is a period, not a decimal point.
     private func prefersShiftedNumber() -> Bool {
-        guard !keys.isEmpty else { return false }
+        guard mode == .korean, !keys.isEmpty else { return false }
         var digits = 0
         var separators = 0
         for atom in keys {
@@ -1050,7 +1108,7 @@ public final class Session {
     /// dotted token ("agents.md", "a.b.c", "https://…") stays in that token.
     private func continuesAsCode(_ atom: KeyAtom) -> Bool {
         guard autoSwitch, locked == nil, !keys.isEmpty else { return false }
-        guard CodeToken.joiners.contains(atom.english) else { return false }
+        guard CodeToken.joiners.contains(atom.english) || (mode == .english && atom.english == "/") else { return false }
         if !segments.isEmpty, segments.allSatisfy({ $0.lang == .english }) {
             return true
         }

@@ -13,7 +13,6 @@ final class SebeolInputController: IMKInputController {
             typos: SharedTypoLog.store
         )
         session.correctsTypos = Preferences.correctsTypos
-        session.shiftDigitsAsSymbols = Preferences.shiftDigitsAsSymbols
         return session
     }()
     private var sawCapsLockDown = false
@@ -104,9 +103,6 @@ final class SebeolInputController: IMKInputController {
         let typos = menu.addItem(withTitle: "오타 자동 교정", action: #selector(toggleTypoCorrection(_:)), keyEquivalent: "")
         typos.state = session.correctsTypos ? .on : .off
         typos.target = self
-        let symbols = menu.addItem(withTitle: "Shift 숫자 대신 기호", action: #selector(toggleShiftSymbols(_:)), keyEquivalent: "")
-        symbols.state = session.shiftDigitsAsSymbols ? .on : .off
-        symbols.target = self
         menu.addItem(.separator())
         let korean = menu.addItem(withTitle: "한글 (세벌식 390)", action: #selector(selectKorean(_:)), keyEquivalent: "")
         korean.state = session.mode == .korean ? .on : .off
@@ -139,15 +135,9 @@ final class SebeolInputController: IMKInputController {
         Preferences.correctsTypos = session.correctsTypos
     }
 
-    @objc private func toggleShiftSymbols(_ sender: Any?) {
-        session.shiftDigitsAsSymbols.toggle()
-        Preferences.shiftDigitsAsSymbols = session.shiftDigitsAsSymbols
-    }
-
     private func syncPreferences() {
         session.autoSwitch = Preferences.autoSwitch
         session.correctsTypos = Preferences.correctsTypos
-        session.shiftDigitsAsSymbols = Preferences.shiftDigitsAsSymbols
     }
 
     @objc private func selectKorean(_ sender: Any?) {
@@ -315,7 +305,6 @@ enum SharedTypingStatistics {
 enum Preferences {
     private static let autoSwitchKey = "autoSwitch"
     private static let correctTyposKey = "correctTypos"
-    private static let shiftDigitsAsSymbolsKey = "shiftDigitsAsSymbols"
 
     static var autoSwitch: Bool {
         get { stored(autoSwitchKey, default: true) }
@@ -325,11 +314,6 @@ enum Preferences {
     static var correctsTypos: Bool {
         get { stored(correctTyposKey, default: true) }
         set { UserDefaults.standard.set(newValue, forKey: correctTyposKey) }
-    }
-
-    static var shiftDigitsAsSymbols: Bool {
-        get { stored(shiftDigitsAsSymbolsKey, default: false) }
-        set { UserDefaults.standard.set(newValue, forKey: shiftDigitsAsSymbolsKey) }
     }
 
     private static func stored(_ key: String, default fallback: Bool) -> Bool {

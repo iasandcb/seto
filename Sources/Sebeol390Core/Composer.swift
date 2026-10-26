@@ -19,6 +19,13 @@ public struct Composition: Equatable, Sendable {
 }
 
 public enum Composer {
+    /// A split is safe only when both sides compose exactly as they did
+    /// together, including doubled initials and compound vowels/finals.
+    static func preservesBoundary(_ index: Int, in atoms: [KeyAtom]) -> Bool {
+        guard index > 0, index < atoms.count else { return true }
+        return compose(atoms).text == compose(atoms[..<index]).text + compose(atoms[index...]).text
+    }
+
     public static func compose<S: Sequence>(_ atoms: S) -> Composition where S.Element == KeyAtom {
         var engine = Engine()
         for atom in atoms {
