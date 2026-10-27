@@ -499,6 +499,22 @@ public final class Session {
             return changed
         }
 
+        // Two-set keys can form clean but unknown Hangul from an ordinary
+        // English word (world → 재깅). Prefer the known whole English word,
+        // while preserving known Korean readings and short ambiguous words.
+        if keys.allSatisfy(\.isDubeol) {
+            let spelling = englishText(0..<keys.count)
+            let korean = Composer.compose(keys).text
+            if spelling.count >= 3, lexicon.isEnglishWord(spelling),
+               !lexicon.isKoreanWord(korean), !lexicon.isValidKorean(korean) {
+                let english = [Segment(start: 0, end: keys.count, lang: .english)]
+                let changed = previous.flatMap { extend($0, to: keys.count) }
+                    .map { render(english) != render($0) } ?? false
+                segments = english
+                return changed
+            }
+        }
+
         // A later syllable's keys can spell an English word ("력" is y-e-x,
         // and "yex" is a Webster headword). While the buffer is still one or
         // more syllables, optionally with a trailing choseong, it stays Korean.
@@ -999,11 +1015,29 @@ public final class Session {
     private func acronymParticleSplit() -> Int? {
         guard keys.count >= 4 else { return nil }
         let spelling = englishText(0..<keys.count).lowercased()
-        // Still typing "backfall" or "hello". A particle-shaped tail is a coincidence.
-        if lexicon.isEnglishWord(spelling) || lexicon.isEnglishPrefix(spelling) { return nil }
         let whole = Composer.compose(keys)
         // 아까, 아는, 뭔가, 쪽에서. A dictionary reading is never an acronym.
         if lexicon.isKoreanWord(whole.text) { return nil }
+        if keys.allSatisfy(\.isDubeol) {
+            // In two-set input the final consonant of an English spelling can
+            // borrow a vowel from the particle. The Hangul-only composition
+            // boundary therefore cannot decide an English/Korean split.
+            for headEnd in 3..<keys.count {
+                let head = englishText(0..<headEnd)
+                guard head.allSatisfy(\.isLetter),
+                      lexicon.isEnglishWord(head) || Self.acronymHeads.contains(head.lowercased())
+                        || lexicon.isAbbreviation(head) else { continue }
+                let listed = Self.acronymHeads.contains(head.lowercased())
+                if !listed, lexicon.isEnglishWord(spelling) || lexicon.isEnglishPrefix(spelling) { continue }
+                let tail = Composer.compose(keys[headEnd...])
+                guard Self.particles.contains(tail.text),
+                      case .clean = shape(of: tail.pieces) else { continue }
+                return headEnd
+            }
+        }
+        // Retain whole English words except for explicit two-set acronym
+        // plus particle readings above (apisms is also an English plural).
+        if lexicon.isEnglishWord(spelling) || lexicon.isEnglishPrefix(spelling) { return nil }
         let limit = min(6, keys.count - 1)
         guard limit >= 3 else { return nil }
         let wholeClean: Bool

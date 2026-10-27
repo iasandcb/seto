@@ -12,8 +12,9 @@ final class KeyboardView: UIView {
     var onToggle: (() -> Void)?
     var onNext: ((UIButton, UIEvent) -> Void)?
     var onAutoSwitch: (() -> Void)?
-    var showsInputModeSwitch = true { didSet { globe.isHidden = !showsInputModeSwitch } }
+    var showsInputModeSwitch = true { didSet { globe.isHidden = !showsInputModeSwitch; refreshPhrases() } }
     private let globe = UIButton(type: .system)
+    private var languageButton: UIButton?
     private var shifted = false
     private var english = false
     private var hostEnglish = false
@@ -106,15 +107,20 @@ final class KeyboardView: UIView {
         globe.setTitle("🌐", for: .normal)
         globe.accessibilityLabel = "다음 키보드"
         globe.addTarget(self, action: #selector(nextKeyboard(_:event:)), for: .allTouchEvents)
-        controls.addArrangedSubview(globe)
+        globe.widthAnchor.constraint(equalToConstant: 32).isActive = true
         let symbolKey = makeButton("#") { [weak self] in
             self?.symbols.toggle(); self?.refresh()
         }
         symbolKey.accessibilityLabel = "기호 자판 전환"
         controls.addArrangedSubview(symbolKey)
         let languageKey = makeButton("↔") { [weak self] in self?.toggleLanguage() }
+        languageButton = languageKey
         languageKey.accessibilityLabel = "한영 전환 및 자동 변환 되돌리기"
+        languageKey.accessibilityHint = "길게 눌러 자동 한영 전환 설정"
         controls.addArrangedSubview(languageKey)
+        let arrowKey = makeButton("→") { [weak self] in self?.emitLiteral("→") }
+        arrowKey.accessibilityLabel = "오른쪽 화살표 입력"
+        controls.addArrangedSubview(arrowKey)
         let space = makeButton("간격") { [weak self] in self?.emitKey(" ") }
         space.widthAnchor.constraint(greaterThanOrEqualToConstant: 80).isActive = true
         controls.addArrangedSubview(space)
@@ -125,16 +131,15 @@ final class KeyboardView: UIView {
                 if self.shifted { self.shifted = false; self.refresh() }
             }
             controls.addArrangedSubview(punctuationKey)
-            punctuationKey.widthAnchor.constraint(equalTo: controls.widthAnchor, multiplier: 0.105).isActive = true
         }
         controls.addArrangedSubview(makeButton("↵") { [weak self] in self?.emitKey("\n") })
+        rows.addArrangedSubview(controls)
         for case let button as UIButton in controls.arrangedSubviews {
             button.titleLabel?.font = .systemFont(ofSize: 16)
-            if button !== space && button.title(for: .normal) != "." && button.title(for: .normal) != "?" {
-                button.widthAnchor.constraint(equalTo: controls.widthAnchor, multiplier: 0.105).isActive = true
+            if button !== space {
+                button.widthAnchor.constraint(equalTo: numbers.arrangedSubviews[0].widthAnchor).isActive = true
             }
         }
-        rows.addArrangedSubview(controls)
         for row in rows.arrangedSubviews.dropFirst() {
             row.heightAnchor.constraint(equalToConstant: 42).isActive = true
         }
@@ -144,6 +149,9 @@ final class KeyboardView: UIView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func update(mode: Language, automatic: Bool) {
+        languageButton?.menu = UIMenu(children: [UIAction(title: "자동 한영 전환", state: automatic ? .on : .off) { [weak self] _ in
+            self?.onAutoSwitch?()
+        }])
         hostEnglish = mode == .english
         if phraseSession == nil { english = hostEnglish }
         refresh()
@@ -200,6 +208,7 @@ final class KeyboardView: UIView {
 
     private func refreshPhrases() {
         for view in phraseBar.arrangedSubviews { phraseBar.removeArrangedSubview(view); view.removeFromSuperview() }
+        if showsInputModeSwitch { phraseBar.addArrangedSubview(globe) }
         if let phraseSession {
             let draft = UILabel()
             draft.font = .systemFont(ofSize: 14)
@@ -217,7 +226,7 @@ final class KeyboardView: UIView {
                 self.phraseSession = nil; self.editingPhraseIndex = nil
                 self.english = self.hostEnglish; self.refresh(); self.refreshPhrases()
             })
-            for button in phraseBar.arrangedSubviews.compactMap({ $0 as? UIButton }) {
+            for button in phraseBar.arrangedSubviews.compactMap({ $0 as? UIButton }) where button !== globe {
                 button.titleLabel?.font = .systemFont(ofSize: 13)
                 button.widthAnchor.constraint(equalToConstant: 40).isActive = true
             }

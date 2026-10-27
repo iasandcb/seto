@@ -1,4 +1,5 @@
 import Testing
+import Foundation
 @testable import Sebeol390Core
 
 @Test func dubeolComposition() {
@@ -15,4 +16,34 @@ import Testing
     #expect(session.document == "한그")
     _ = session.backspace()
     #expect(session.document == "한ㄱ")
+}
+
+@Test func dubeolAutomaticLanguageSwitching() throws {
+    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    let lexicon = try Lexicon.load(from: root.appendingPathComponent("Resources"))
+    for (initial, keys, expected, finalMode) in [
+        (Language.korean, "hello ", "hello ", Language.english),
+        (.korean, "world ", "world ", .english),
+        (.english, "dkssudgktpdy ", "안녕하세요 ", .korean),
+        (.english, "gksrmf ", "한글 ", .korean)
+    ] {
+        let session = Session(lexicon: lexicon, autoSwitch: true, mode: initial)
+        for key in keys { _ = session.input(LayoutDubeol.atom(for: key)) }
+        #expect(session.document == expected, "\(keys): \(session.document)")
+        #expect(session.mode == finalMode)
+    }
+}
+
+@Test func dubeolEnglishHeadsWithKoreanParticles() throws {
+    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    let lexicon = try Lexicon.load(from: root.appendingPathComponent("Resources"))
+    for initial in [Language.korean, .english] {
+        for (keys, expected) in [("apisms", "api는"), ("gitdms", "git은"), ("apifmf", "api를"), ("gitdmf", "git을"), ("githubdptj", "github에서")] {
+            let session = Session(lexicon: lexicon, autoSwitch: true, mode: initial)
+            for key in keys { _ = session.input(LayoutDubeol.atom(for: key)) }
+            #expect(session.document == expected, "\(initial) \(keys): \(session.document)")
+            _ = session.input(LayoutDubeol.atom(for: " "))
+            #expect(session.document == expected + " ")
+        }
+    }
 }

@@ -221,6 +221,57 @@ final class InputSettingsTests: XCTestCase {
 }
 
 final class TouchKeyboardLayoutTests: XCTestCase {
+    @MainActor func testDubeolEnglishWordAndParticleThroughTouchKeys() {
+        for (spelling, expected) in [("apisms", "api는"), ("gitdms", "git은")] {
+            let editor = HardwareTextView()
+            editor.hardwareKeyboardIsConnected = { false }
+            editor.setHardwareKeyboardConnected(false)
+            editor.configure(automatic: true, mode: .korean)
+            let keyboard = (editor.inputView as! TouchKeyboardInputView).keyboard
+            func buttons(in view: UIView) -> [UIButton] {
+                view.subviews.flatMap { ($0 as? UIButton).map { [$0] } ?? buttons(in: $0) }
+            }
+            let keys = buttons(in: keyboard)
+            for letter in spelling {
+                keys.first { $0.accessibilityLabel?.contains("영문 \(letter),") == true }!.sendActions(for: .touchUpInside)
+            }
+            XCTAssertEqual(editor.text, expected)
+            keys.first { $0.title(for: .normal) == "간격" }!.sendActions(for: .touchUpInside)
+            XCTAssertEqual(editor.text, expected + " ")
+        }
+    }
+
+    @MainActor func testBottomKeyWidthsAndDubeolAutoSwitch() {
+        let editor = HardwareTextView()
+        editor.hardwareKeyboardIsConnected = { false }
+        editor.setHardwareKeyboardConnected(false)
+        editor.configure(automatic: true, mode: .korean)
+        let input = editor.inputView as! TouchKeyboardInputView
+        input.frame = CGRect(x: 0, y: 0, width: 402, height: KeyboardView.preferredHeight)
+        input.layoutIfNeeded()
+        let keyboard = input.keyboard
+        func buttons(in view: UIView) -> [UIButton] {
+            view.subviews.flatMap { ($0 as? UIButton).map { [$0] } ?? buttons(in: $0) }
+        }
+        let keys = buttons(in: keyboard)
+        let letter = keys.first { $0.accessibilityLabel?.contains("영문 q,") == true }!
+        let titles = ["#", "↔", "→", ".", "?", "↵"]
+        let bottom = titles.map { title in keys.first { $0.title(for: .normal) == title }! }
+        // Stack views align frames to display pixels; equal constraints can
+        // differ by one pixel after distributing a fractional key width.
+        let pixel = 1 / input.traitCollection.displayScale
+        for key in bottom { XCTAssertEqual(key.bounds.width, letter.bounds.width, accuracy: pixel + 0.001) }
+        let space = keys.first { $0.title(for: .normal) == "간격" }!
+        XCTAssertLessThan(bottom[2].convert(bottom[2].bounds, to: keyboard).maxX, space.convert(space.bounds, to: keyboard).minX)
+        for character in "world dkssudgktpdy " {
+            if character == " " { space.sendActions(for: .touchUpInside) }
+            else { keys.first { $0.accessibilityLabel?.contains("영문 \(character),") == true }!.sendActions(for: .touchUpInside) }
+        }
+        XCTAssertEqual(editor.text, "world 안녕하세요 ")
+        bottom[2].sendActions(for: .touchUpInside)
+        XCTAssertEqual(editor.text, "world 안녕하세요 →")
+    }
+
     @MainActor func testHardwareConnectionHidesTouchKeyboardWithoutLosingComposition() {
         let editor = HardwareTextView()
         editor.configure(automatic: false, mode: .korean)
