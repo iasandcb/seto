@@ -7,6 +7,11 @@ public final class TypingStatistics: @unchecked Sendable {
         public var typed = 0
         public var backspaces = 0
 
+        public init(typed: Int = 0, backspaces: Int = 0) {
+            self.typed = typed
+            self.backspaces = backspaces
+        }
+
         public var backspaceRatio: Double {
             typed == 0 ? 0 : Double(backspaces) / Double(typed)
         }
@@ -16,6 +21,38 @@ public final class TypingStatistics: @unchecked Sendable {
         var total = Counts()
         var today = Counts()
         var day: Date
+        var daily: [String: Counts]?
+    }
+
+    public static var koreanCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Seoul")!
+        return calendar
+    }
+
+    public func dayKey(at date: Date) -> String {
+        let parts = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", parts.year!, parts.month!, parts.day!)
+    }
+
+    /// Only records collected after this feature was installed; legacy totals stay separate.
+    public func dailyHistory() -> [String: Counts] {
+        lock.lock()
+        defer { lock.unlock() }
+        return state.daily ?? [:]
+    }
+
+    public static func combined(_ histories: [[String: Counts]]) -> [String: Counts] {
+        var result: [String: Counts] = [:]
+        for history in histories {
+            for (day, counts) in history {
+                var sum = result[day] ?? Counts()
+                sum.typed += counts.typed
+                sum.backspaces += counts.backspaces
+                result[day] = sum
+            }
+        }
+        return result
     }
 
     private let defaults: UserDefaults
@@ -24,7 +61,7 @@ public final class TypingStatistics: @unchecked Sendable {
     private let lock = NSLock()
     private var state: State
 
-    public init(defaults: UserDefaults = .standard, calendar: Calendar = .current) {
+    public init(defaults: UserDefaults = .standard, calendar: Calendar = TypingStatistics.koreanCalendar) {
         self.defaults = defaults
         self.calendar = calendar
         if let data = defaults.data(forKey: storageKey),
@@ -47,13 +84,20 @@ public final class TypingStatistics: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         rollDay(at: date)
+        let key = dayKey(at: date)
+        var daily = state.daily ?? [:]
+        var counts = daily[key] ?? Counts()
         if deleting {
+            counts.backspaces += 1
             state.total.backspaces += 1
             state.today.backspaces += 1
         } else {
+            counts.typed += 1
             state.total.typed += 1
             state.today.typed += 1
         }
+        daily[key] = counts
+        state.daily = daily
         if let data = try? JSONEncoder().encode(state) {
             defaults.set(data, forKey: storageKey)
         }

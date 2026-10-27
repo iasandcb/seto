@@ -63,3 +63,48 @@ import Testing
     #expect(restored.total.typed == 2)
     #expect(restored.total.backspaces == 1)
 }
+
+@Test func dailyHistorySurvivesMidnightAndRestart() throws {
+    let suite = "Sebeol390.DailyTests.\(UUID())"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let before = try #require(ISO8601DateFormatter().date(from: "2026-10-26T14:59:00Z"))
+    let after = before.addingTimeInterval(120)
+    let store = TypingStatistics(defaults: defaults)
+    store.record(keyCode: 0, at: before)
+    store.record(keyCode: Keymap.delete, at: after)
+    let restored = TypingStatistics(defaults: defaults).dailyHistory()
+    #expect(restored["2026-10-26"]?.typed == 1)
+    #expect(restored["2026-10-27"]?.backspaces == 1)
+}
+
+@Test func legacyCountsRemainSeparateFromNewDailyHistory() throws {
+    let suite = "Sebeol390.LegacyTests.\(UUID())"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    struct Legacy: Encodable {
+        var total = TypingStatistics.Counts(typed: 100, backspaces: 10)
+        var today = TypingStatistics.Counts(typed: 20, backspaces: 2)
+        var day = TypingStatistics.koreanCalendar.startOfDay(for: Date())
+    }
+    defaults.set(try JSONEncoder().encode(Legacy()), forKey: "typingStatistics.v1")
+    let store = TypingStatistics(defaults: defaults)
+    #expect(store.snapshot().total.typed == 100)
+    #expect(store.dailyHistory().isEmpty)
+    store.record(keyCode: 0)
+    #expect(store.snapshot().total.typed == 101)
+    #expect(store.dailyHistory().values.first?.typed == 1)
+}
+
+@Test func combinedRatioUsesSummedCounts() {
+    let day = "2026-10-27"
+    let histories = [
+        [day: TypingStatistics.Counts(typed: 100, backspaces: 10)],
+        [day: TypingStatistics.Counts(typed: 900, backspaces: 9)],
+        [day: TypingStatistics.Counts(typed: 0, backspaces: 1)]
+    ]
+    let sum = TypingStatistics.combined(histories)[day]
+    #expect(sum?.typed == 1000)
+    #expect(sum?.backspaces == 20)
+    #expect(sum?.backspaceRatio == 0.02)
+}

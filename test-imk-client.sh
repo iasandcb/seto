@@ -21,6 +21,7 @@ swiftc -swift-version 6 -module-cache-path "${CLANG_MODULE_CACHE_PATH}" \
     Sources/Sebeol390IME/InputController.swift \
     Sources/Sebeol390IME/ModeStatusItem.swift \
     Sources/Sebeol390IME/CapsLock.swift \
+    Sources/Sebeol390IME/StatisticsSync.swift \
     Tests/Integration/ClientSmoke.swift "${SEBEOL_CORE_OBJECTS[@]}" \
     -o "${SEBEOL_SMOKE_DIR}/ClientSmoke"
 "${SEBEOL_SMOKE_DIR}/ClientSmoke"

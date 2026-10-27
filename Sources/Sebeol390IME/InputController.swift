@@ -154,7 +154,7 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
 
     override func menu() -> NSMenu! {
         syncPreferences()
-        let menu = NSMenu(title: "세벌식 390")
+        let menu = NSMenu(title: "세토")
         let auto = menu.addItem(withTitle: "자동 한/영 전환", action: #selector(toggleAutoSwitch(_:)), keyEquivalent: "")
         auto.state = session.autoSwitch ? .on : .off
         auto.target = self
@@ -183,15 +183,37 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         let statistics = menu.addItem(withTitle: "타자 통계", action: nil, keyEquivalent: "")
         let detail = NSMenu(title: "타자 통계")
         let snapshot = SharedTypingStatistics.store.snapshot()
-        for (label, counts) in [("오늘", snapshot.today), ("누적", snapshot.total)] {
+        for (label, counts) in [("이 맥 오늘", snapshot.today), ("이 맥 누적", snapshot.total)] {
             let ratio = counts.typed == 0 ? "—" : String(format: "%.2f%%", counts.backspaceRatio * 100)
             detail.addItem(withTitle: "\(label): \(ratio) (백스페이스 \(counts.backspaces)회 / 입력 \(counts.typed)타)", action: nil, keyEquivalent: "")
         }
+        detail.addItem(.separator())
+        let (history, syncStatus) = MainActor.assumeIsolated {
+            (StatisticsSync.shared.combinedHistory(), StatisticsSync.shared.status)
+        }
+        let todayKey = SharedTypingStatistics.store.dayKey(at: Date())
+        let today = history[todayKey] ?? .init()
+        detail.addItem(withTitle: "맥 통합 오늘: \(today.typed)타 · 백스페이스 \(today.backspaces)회", action: nil, keyEquivalent: "")
+        let daysMenu = NSMenu(title: "일별 통합")
+        for day in history.keys.sorted(by: >).prefix(30) {
+            let counts = history[day]!
+            let ratio = counts.typed == 0 ? "—" : String(format: "%.2f%%", counts.backspaceRatio * 100)
+            daysMenu.addItem(withTitle: "\(day): \(counts.typed)타 · 삭제 \(counts.backspaces)회 · \(ratio)", action: nil, keyEquivalent: "")
+        }
+        let days = detail.addItem(withTitle: "최근 30개 기록일 (한국 시간)", action: nil, keyEquivalent: "")
+        days.submenu = daysMenu
+        detail.addItem(withTitle: syncStatus, action: nil, keyEquivalent: "")
+        let refresh = detail.addItem(withTitle: "지금 동기화", action: #selector(syncStatistics(_:)), keyEquivalent: "")
+        refresh.target = self
         detail.addItem(.separator())
         detail.addItem(withTitle: "비율 = 백스페이스 횟수 ÷ 입력 타수", action: nil, keyEquivalent: "")
         detail.addItem(withTitle: "입력 타수: 자모·문자·공백·Enter·Tab", action: nil, keyEquivalent: "")
         statistics.submenu = detail
         return menu
+    }
+
+    @objc private func syncStatistics(_ sender: NSMenuItem) {
+        MainActor.assumeIsolated { StatisticsSync.shared.sync() }
     }
 
     @objc private func editDictionary(_ sender: NSMenuItem) {
