@@ -414,6 +414,16 @@ public final class Session {
             return changed
         }
 
+        // Shifted number keys can initially look like a capitalized English
+        // prefix (Mu…). Once the tail is Korean, recover the number too.
+        if prefersNumberWithKoreanTail() {
+            let korean = [Segment(start: 0, end: keys.count, lang: .korean)]
+            let changed = previous.flatMap { extend($0, to: keys.count) }
+                .map { render(korean) != render($0) } ?? false
+            segments = korean
+            return changed
+        }
+
         // "Open" is 9펴 and "Int" is 8서: a shifted digit plus a syllable.
         // That shape must not outrank a capitalized English word. A pure
         // digit run (OK → 95) is excluded and stays a number.
@@ -1007,6 +1017,29 @@ public final class Session {
         guard case .jamo(let first) = keys[0].korean, case .jamo(let second) = keys[1].korean else { return false }
         guard first.kind == .choseong, second.kind == .choseong, Hangul.merge(first, second) != nil else { return false }
         return Composer.compose(keys).pieces == [.bareChoseong]
+    }
+
+    private static let numberCounters: Set<String> = [
+        "개", "대", "명", "분", "번", "회", "권", "장", "잔", "병", "마리",
+        "살", "세", "년", "월", "일", "시", "초", "원", "층", "곳", "쪽", "줄",
+    ]
+
+    private func prefersNumberWithKoreanTail() -> Bool {
+        let numberEnd = keys.prefix(while: isPadDigit).count
+        guard numberEnd > 0, numberEnd < keys.count else { return false }
+        let spelling = englishText(0..<keys.count)
+        if spelling.allSatisfy(\.isLetter),
+           lexicon.isEnglishWord(spelling) || lexicon.isEnglishPrefix(spelling) {
+            return false
+        }
+        let tail = Composer.compose(keys[numberEnd...])
+        switch shape(of: tail.pieces) {
+        case .clean(let syllables):
+            return syllables >= 2 || lexicon.isKoreanWord(tail.text)
+                || Self.numberCounters.contains(tail.text)
+        default:
+            return false
+        }
     }
 
     /// "Introduce" / "Open" / "Hello". The first shifted key is a digit or

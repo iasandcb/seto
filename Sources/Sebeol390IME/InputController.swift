@@ -5,7 +5,7 @@ import Sebeol390Core
 
 @objc(SebeolInputController)
 final class SebeolInputController: IMKInputController, NSMenuDelegate {
-    private let session: Session = {
+    private var session: Session = {
         let session = Session(
             lexicon: SharedLexicon.lexicon,
             autoSwitch: Preferences.autoSwitch,
@@ -169,6 +169,17 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         english.state = session.mode == .english ? .on : .off
         english.target = self
         menu.addItem(.separator())
+        let dictionaries = menu.addItem(withTitle: "단어 사전", action: nil, keyEquivalent: "")
+        let dictionaryMenu = NSMenu(title: "단어 사전")
+        for (title, filename) in [("영어 사전 편집…", "english-words.txt"), ("영어 추가 사전 편집…", "english-extra.txt"), ("한국어 사전 편집…", "korean-words.txt"), ("한국어 오타 보호 사전 편집…", "korean-valid.txt")] {
+            let entry = dictionaryMenu.addItem(withTitle: title, action: #selector(editDictionary(_:)), keyEquivalent: "")
+            entry.representedObject = filename
+            entry.target = self
+        }
+        dictionaryMenu.addItem(.separator())
+        let reload = dictionaryMenu.addItem(withTitle: "수정한 사전 다시 불러오기", action: #selector(reloadDictionaries(_:)), keyEquivalent: "")
+        reload.target = self
+        dictionaries.submenu = dictionaryMenu
         let statistics = menu.addItem(withTitle: "타자 통계", action: nil, keyEquivalent: "")
         let detail = NSMenu(title: "타자 통계")
         let snapshot = SharedTypingStatistics.store.snapshot()
@@ -181,6 +192,40 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         detail.addItem(withTitle: "입력 타수: 자모·문자·공백·Enter·Tab", action: nil, keyEquivalent: "")
         statistics.submenu = detail
         return menu
+    }
+
+    @objc private func editDictionary(_ sender: NSMenuItem) {
+        do {
+            let directory = try SharedLexicon.editableDirectory()
+            guard let filename = sender.representedObject as? String else { return }
+            let url = directory.appendingPathComponent(filename)
+            NSWorkspace.shared.open(url)
+        } catch {
+            showDictionaryError(error)
+        }
+    }
+
+    @objc private func reloadDictionaries(_ sender: Any?) {
+        do {
+            let loaded = try Lexicon.load(from: SharedLexicon.editableDirectory())
+            if let client = client() { apply(session.commitDisplayed(), client: client) }
+            let replacement = Session(lexicon: loaded, autoSwitch: session.autoSwitch,
+                                      mode: session.mode, typos: SharedTypoLog.store)
+            replacement.correctsTypos = session.correctsTypos
+            SharedLexicon.lexicon = loaded
+            session = replacement
+        } catch {
+            showDictionaryError(error)
+        }
+    }
+
+    private func showDictionaryError(_ error: Error) {
+        MainActor.assumeIsolated {
+            let alert = NSAlert()
+            alert.messageText = "사전을 열 수 없습니다"
+            alert.informativeText = error.localizedDescription
+            alert.runModal()
+        }
     }
 
     @objc private func toggleAutoSwitch(_ sender: Any?) {
@@ -386,7 +431,27 @@ enum Preferences {
 }
 
 enum SharedLexicon {
-    static let lexicon: Lexicon = {
+    static func editableDirectory() throws -> URL {
+        let manager = FileManager.default
+        let directory = try manager.url(for: .applicationSupportDirectory, in: .userDomainMask,
+                                        appropriateFor: nil, create: true)
+            .appendingPathComponent("Sebeol390/Dictionaries", isDirectory: true)
+        try manager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let bundled = Bundle.main.resourceURL ?? URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent()
+        for filename in ["english-words.txt", "english-extra.txt", "korean-words.txt", "korean-valid.txt"] {
+            let destination = directory.appendingPathComponent(filename)
+            if !manager.fileExists(atPath: destination.path) {
+                try manager.copyItem(at: bundled.appendingPathComponent(filename), to: destination)
+            }
+        }
+        return directory
+    }
+
+    // IMK controller creation and menu callbacks are serialized on the main thread.
+    nonisolated(unsafe) static var lexicon: Lexicon = {
+        if let directory = try? editableDirectory(), let loaded = try? Lexicon.load(from: directory) {
+            return loaded
+        }
         if let url = Bundle.main.resourceURL {
             if let loaded = try? Lexicon.load(from: url) {
                 return loaded

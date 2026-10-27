@@ -17,7 +17,22 @@ public final class Lexicon: @unchecked Sendable {
         techStems: [String] = [],
         validKorean: [String] = []
     ) {
-        self.english = Array(Set(english.map { $0.lowercased() })).sorted()
+        let baseWords = Set(english.map { $0.lowercased() })
+        var recognized = baseWords
+        // Webster's headwords omit many regular plurals. Index the inflected
+        // forms too, so their intermediate prefixes stay English while typing.
+        for word in baseWords where word.count >= 3 && word.allSatisfy({ $0.isASCII && $0.isLetter }) {
+            if word.hasSuffix("y"), let preceding = word.dropLast().last,
+               !"aeiou".contains(preceding) {
+                recognized.insert(String(word.dropLast()) + "ies")
+            } else if word.hasSuffix("s") || word.hasSuffix("x") || word.hasSuffix("z")
+                        || word.hasSuffix("ch") || word.hasSuffix("sh") {
+                recognized.insert(word + "es")
+            } else {
+                recognized.insert(word + "s")
+            }
+        }
+        self.english = recognized.sorted()
         self.korean = Set(korean.map { $0.precomposedStringWithCanonicalMapping })
         self.validKorean = Set(validKorean.map { $0.precomposedStringWithCanonicalMapping })
         self.abbreviations = Set(abbreviations.map { $0.uppercased() })

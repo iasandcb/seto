@@ -1906,3 +1906,36 @@ private extension Session {
         }
     }
 }
+
+@Test func regularEnglishPluralsStayEnglishWhileTyping() {
+    for mode in [Language.korean, .english] {
+        for word in ["commands", "documents", "scripts", "servers", "packages", "files", "directories", "repositories", "queries", "batches", "boxes", "processes"] {
+            let session = Session(lexicon: lexicon, mode: mode)
+            var paper = Paper()
+            var typed = ""
+            for key in word {
+                typed.append(key)
+                paper.apply(session.input(key).field)
+                if typed.count >= 4 && (mode == .english || !sticksAsKorean(typed)) {
+                    #expect(paper.text == typed, "\(word): \(session.debugLine)")
+                }
+            }
+            paper.apply(session.input(" ").field)
+            #expect(paper.text == word + " ")
+        }
+    }
+}
+
+@Test func shiftedNumbersBeforeKoreanCounters() {
+    for mode in [Language.korean, .english] {
+        for (keys, expected) in [("Murj8", "1대의"), ("MNurj8", "10대의"), ("Mkr", "1개")] {
+            let session = Session(lexicon: lexicon, mode: mode)
+            var paper = Paper()
+            for key in keys { paper.apply(session.input(key).field) }
+            #expect(session.document == expected, "\(session.debugLine)")
+            #expect(paper.text == expected)
+            paper.apply(session.input(" ").field)
+            #expect(paper.text == expected + " ")
+        }
+    }
+}
