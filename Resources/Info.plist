@@ -43,5 +43,39 @@
 		<string>Hang</string>
 		<string>Latn</string>
 	</array>
+	<key>TISIconIsTemplate</key>
+	<true/>
+	<key>tsInputMethodIconFileKey</key>
+	<string>SetoMenu.pdf</string>
+	<!-- Register a Unicode input mode so native text clients can select it. -->
+	<key>tsInputModeListKey</key>
+	<dict>
+		<key>com.ias.inputmethod.seto.Korean</key>
+		<dict>
+			<key>TISInputSourceID</key>
+			<string>com.ias.inputmethod.seto.Korean</string>
+			<key>TISIntendedLanguage</key>
+			<string>ko</string>
+			<key>tsInputModeCharacterRepertoireKey</key>
+			<array>
+				<string>Hang</string>
+				<string>Latn</string>
+			</array>
+			<key>tsInputModeDefaultStateKey</key>
+			<true/>
+			<key>tsInputModeIsVisibleKey</key>
+			<true/>
+			<key>TISIconIsTemplate</key>
+			<true/>
+			<key>tsInputModeMenuIconFileKey</key>
+			<string>SetoMenu.pdf</string>
+			<key>tsInputModePaletteLocalizationKey</key>
+			<string>세토</string>
+			<key>tsInputModePrimaryInScriptKey</key>
+			<true/>
+			<key>tsInputModeScriptKey</key>
+			<string>smUnicodeScript</string>
+		</dict>
+	</dict>
 </dict>
 </plist>
