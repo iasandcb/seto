@@ -125,7 +125,7 @@ final class KeyboardView: UIView {
                 if self.shifted { self.shifted = false; self.refresh() }
             }
             controls.addArrangedSubview(punctuationKey)
-            punctuationKey.widthAnchor.constraint(equalTo: controls.widthAnchor, multiplier: 0.075).isActive = true
+            punctuationKey.widthAnchor.constraint(equalTo: controls.widthAnchor, multiplier: 0.105).isActive = true
         }
         controls.addArrangedSubview(makeButton("↵") { [weak self] in self?.emitKey("\n") })
         for case let button as UIButton in controls.arrangedSubviews {

@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import GameController
 
 /// The containing app receives hardware events; a keyboard extension cannot
 /// register a system-wide hardware input method on iOS.
@@ -58,6 +59,10 @@ final class HardwareTextView: UITextView, UITextViewDelegate {
     var onFocus: ((Bool) -> Void)?
     var onMode: ((Language) -> Void)?
     var onAutomatic: ((Bool) -> Void)?
+    private lazy var softwareInputView = TouchKeyboardInputView(keyboard: touchKeyboard)
+    private let hardwareInputView = UIView(frame: .zero)
+    private var hardwareKeyboardConnected = false
+    var hardwareKeyboardIsConnected: () -> Bool = { GCKeyboard.coalesced != nil }
     private let touchKeyboard = KeyboardView(frame: CGRect(x: 0, y: 0, width: 0, height: KeyboardView.preferredHeight))
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {
@@ -88,12 +93,30 @@ final class HardwareTextView: UITextView, UITextViewDelegate {
             self.onAutomatic?(self.session.autoSwitch)
             self.refreshKeyboard()
         }
-        inputView = TouchKeyboardInputView(keyboard: touchKeyboard)
+        NotificationCenter.default.addObserver(self, selector: #selector(hardwareKeyboardChanged), name: .GCKeyboardDidConnect, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(hardwareKeyboardChanged), name: .GCKeyboardDidDisconnect, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(hardwareKeyboardChanged), name: UIApplication.didBecomeActiveNotification, object: nil)
+        inputView = softwareInputView
+        setHardwareKeyboardConnected(hardwareKeyboardIsConnected())
         refreshKeyboard()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    @objc private func hardwareKeyboardChanged() {
+        setHardwareKeyboardConnected(hardwareKeyboardIsConnected())
+    }
+
+    /// Swap only the input view; keep focus, selection, and composition intact.
+    func setHardwareKeyboardConnected(_ connected: Bool) {
+        guard hardwareKeyboardConnected != connected else { return }
+        hardwareKeyboardConnected = connected
+        if !connected { softwareInputView.prepare(bottomInset: window?.safeAreaInsets.bottom ?? 0) }
+        inputView = connected ? hardwareInputView : softwareInputView
+        if isFirstResponder { reloadInputViews() }
+    }
+
     override func becomeFirstResponder() -> Bool {
+        setHardwareKeyboardConnected(hardwareKeyboardIsConnected())
         (inputView as? TouchKeyboardInputView)?.prepare(bottomInset: window?.safeAreaInsets.bottom ?? 0)
         return super.becomeFirstResponder()
     }
@@ -108,6 +131,7 @@ final class HardwareTextView: UITextView, UITextViewDelegate {
     @objc private func toggleLanguage() { apply { $0.toggle() } }
 
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if presses.contains(where: { $0.key != nil }) { setHardwareKeyboardConnected(true) }
         var remaining = Set<UIPress>()
         for press in presses {
             guard let key = press.key else { remaining.insert(press); continue }

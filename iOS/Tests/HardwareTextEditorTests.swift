@@ -221,6 +221,27 @@ final class InputSettingsTests: XCTestCase {
 }
 
 final class TouchKeyboardLayoutTests: XCTestCase {
+    @MainActor func testHardwareConnectionHidesTouchKeyboardWithoutLosingComposition() {
+        let editor = HardwareTextView()
+        editor.configure(automatic: false, mode: .korean)
+        editor.setHardwareKeyboardConnected(false)
+        let software = editor.inputView
+        editor.handleKey(usage: 14)
+        editor.handleKey(usage: 9)
+        XCTAssertEqual(editor.text, "가")
+        let selection = editor.selectedRange
+        editor.setHardwareKeyboardConnected(true)
+        XCTAssertFalse(editor.inputView is TouchKeyboardInputView)
+        XCTAssertEqual(editor.inputView?.bounds.height, 0)
+        XCTAssertEqual(editor.text, "가")
+        XCTAssertEqual(editor.selectedRange, selection)
+        editor.handleKey(usage: 27)
+        XCTAssertEqual(editor.text, "각")
+        editor.setHardwareKeyboardConnected(false)
+        XCTAssertTrue(editor.inputView === software)
+        XCTAssertEqual(editor.text, "각")
+    }
+
     @MainActor func testAppKeyboardKeepsBottomRowAboveSafeArea() {
         let keyboard = KeyboardView()
         let input = TouchKeyboardInputView(keyboard: keyboard)
@@ -275,6 +296,8 @@ final class TouchKeyboardLayoutTests: XCTestCase {
     @MainActor func testTouchUsesDubeolWhileHardwareKeeps390() {
         let editor = HardwareTextView()
         editor.configure(automatic: false, mode: .korean)
+        editor.hardwareKeyboardIsConnected = { false }
+        editor.setHardwareKeyboardConnected(false)
         let keyboard = (editor.inputView as! TouchKeyboardInputView).keyboard
         func buttons(in view: UIView) -> [UIButton] {
             view.subviews.flatMap { ($0 as? UIButton).map { [$0] } ?? buttons(in: $0) }
@@ -327,6 +350,8 @@ final class PresentedKeyboardTests: XCTestCase {
         controller.view.backgroundColor = .systemBackground
         window.rootViewController = controller
         let editor = HardwareTextView(frame: CGRect(x: 20, y: 100, width: 300, height: 100))
+        editor.hardwareKeyboardIsConnected = { false }
+        editor.setHardwareKeyboardConnected(false)
         controller.view.addSubview(editor)
         window.makeKeyAndVisible()
         defer { editor.resignFirstResponder(); window.isHidden = true }
