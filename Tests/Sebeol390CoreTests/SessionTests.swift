@@ -83,7 +83,7 @@ private let lexicon: Lexicon = {
 }
 
 @Test func recognizedSingleSyllableSwitchesFromEnglishImmediately() {
-    for word in ["흠", "음", "응", "네", "예", "잘"] {
+    for word in ["흠", "음", "응", "네", "예", "잘", "로"] {
         let keys = SebeolKeys.keys(for: word)!
         let session = Session(lexicon: lexicon, mode: .english)
         var paper = Paper()
@@ -1970,4 +1970,26 @@ private extension Session {
             #expect(paper.text == expected, "\(session.debugLine)")
         }
     }
+}
+
+@Test func roOverridesEnglishNamePrefixAndCanBeUndone() {
+    #expect(lexicon.isEnglishPrefix("yv"))
+    let session = Session(lexicon: lexicon, mode: .english)
+    var paper = Paper()
+    paper.apply(session.input("y").field)
+    #expect(paper.text == "y")
+    #expect(session.mode == .english)
+    paper.apply(session.input("v").field)
+    #expect(paper.text == "로")
+    #expect(session.mode == .korean)
+    paper.apply(session.toggle().field)
+    #expect(paper.text == "yv")
+    #expect(session.mode == .english)
+    paper.apply(session.input(" ").field)
+    #expect(paper.text == "yv ")
+
+    let manual = Session(lexicon: lexicon, autoSwitch: false, mode: .english)
+    #expect(manual.type("yv ") == "yv ")
+    let uppercase = Session(lexicon: lexicon, mode: .english)
+    #expect(uppercase.type("YV ") == "YV ")
 }

@@ -221,8 +221,45 @@ final class InputSettingsTests: XCTestCase {
 }
 
 final class TouchKeyboardLayoutTests: XCTestCase {
+    @MainActor func testKeyPreviewFollowsPressAndDoesNotInsertEarly() {
+        let keyboard = KeyboardView(frame: CGRect(x: 0, y: 0, width: 320, height: KeyboardView.preferredHeight))
+        keyboard.showsInputModeSwitch = false
+        keyboard.update(mode: .korean, automatic: true)
+        keyboard.layoutIfNeeded()
+        func descendants(_ view: UIView) -> [UIView] { view.subviews.flatMap { [$0] + descendants($0) } }
+        let keys = descendants(keyboard).compactMap { $0 as? UIButton }
+        let q = keys.first { $0.accessibilityLabel?.contains("영문 q,") == true }!
+        let preview = descendants(keyboard).first { $0.accessibilityIdentifier == "keyPreview" }!
+        let label = descendants(preview).first { $0.accessibilityIdentifier == "keyPreviewText" } as! UILabel
+        var inserted: [Character] = []
+        keyboard.onKey = { inserted.append($0) }
+        q.sendActions(for: .touchDown)
+        XCTAssertFalse(preview.isHidden)
+        XCTAssertEqual(label.text, "ㅂ")
+        XCTAssertTrue(inserted.isEmpty)
+        XCTAssertGreaterThanOrEqual(preview.frame.minX, 0)
+        XCTAssertLessThanOrEqual(preview.frame.maxX, keyboard.bounds.width)
+        q.sendActions(for: .touchUpInside)
+        XCTAssertTrue(preview.isHidden)
+        XCTAssertEqual(inserted, ["q"])
+        keyboard.update(mode: .english, automatic: true)
+        q.sendActions(for: .touchDown)
+        XCTAssertEqual(label.text, "q")
+        q.sendActions(for: .touchCancel)
+        XCTAssertTrue(preview.isHidden)
+        XCTAssertEqual(inserted, ["q"])
+        let shift = keys.first { $0.title(for: .normal) == "⇧" }!
+        shift.sendActions(for: .touchUpInside)
+        let one = keys.first { $0.accessibilityLabel?.hasPrefix("숫자 1,") == true }!
+        one.sendActions(for: .touchDown)
+        XCTAssertEqual(label.text, "!")
+        XCTAssertGreaterThanOrEqual(preview.frame.minY, 0)
+        one.sendActions(for: .touchDragExit)
+        XCTAssertTrue(preview.isHidden)
+    }
+
     @MainActor func testDubeolEnglishWordAndParticleThroughTouchKeys() {
-        for (spelling, expected) in [("apisms", "api는"), ("gitdms", "git은")] {
+        for (spelling, expected) in [("apisms", "api는"), ("gitdms", "git은"), ("akadp emfdj", "맘에 들어"), ("akadp emfdjdy", "맘에 들어요")] {
             let editor = HardwareTextView()
             editor.hardwareKeyboardIsConnected = { false }
             editor.setHardwareKeyboardConnected(false)
@@ -233,7 +270,8 @@ final class TouchKeyboardLayoutTests: XCTestCase {
             }
             let keys = buttons(in: keyboard)
             for letter in spelling {
-                keys.first { $0.accessibilityLabel?.contains("영문 \(letter),") == true }!.sendActions(for: .touchUpInside)
+                if letter == " " { keys.first { $0.title(for: .normal) == "간격" }!.sendActions(for: .touchUpInside) }
+                else { keys.first { $0.accessibilityLabel?.contains("영문 \(letter),") == true }!.sendActions(for: .touchUpInside) }
             }
             XCTAssertEqual(editor.text, expected)
             keys.first { $0.title(for: .normal) == "간격" }!.sendActions(for: .touchUpInside)

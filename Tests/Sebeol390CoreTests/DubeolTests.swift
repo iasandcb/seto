@@ -47,3 +47,17 @@ import Foundation
         }
     }
 }
+
+@Test func dubeolNaturalKoreanPhraseStaysKorean() throws {
+    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    let lexicon = try Lexicon.load(from: root.appendingPathComponent("Resources"))
+    for initial in [Language.korean, .english] {
+        for (keys, expected) in [("akadp emfdj", "맘에 들어"), ("akadp emfdjdy", "맘에 들어요"), ("akdma", "마음"), ("emfdj", "들어")] {
+            let session = Session(lexicon: lexicon, autoSwitch: true, mode: initial)
+            for key in keys { _ = session.input(LayoutDubeol.atom(for: key)) }
+            #expect(session.document == expected, "\(initial) \(keys): \(session.document)")
+            _ = session.input(LayoutDubeol.atom(for: " "))
+            #expect(session.document == expected + " ")
+        }
+    }
+}

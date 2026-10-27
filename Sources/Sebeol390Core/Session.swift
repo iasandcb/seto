@@ -443,6 +443,23 @@ public final class Session {
             return changed
         }
 
+        if keys.allSatisfy(\.isDubeol) {
+            let koreanText = Composer.compose(keys).text
+            let knownWhole = lexicon.isKoreanWord(koreanText) || lexicon.isValidKorean(koreanText)
+            let knownStem = KoreanEndings.split(koreanText).map {
+                lexicon.isKoreanWord($0.stem) || lexicon.isValidKorean($0.stem)
+            } ?? false
+            let spelling = englishText(0..<keys.count)
+            if (knownWhole || knownStem),
+               mode == .korean || knownStem || !lexicon.isEnglishWord(spelling) {
+                let korean = [Segment(start: 0, end: keys.count, lang: .korean)]
+                let changed = previous.flatMap { extend($0, to: keys.count) }
+                    .map { render(korean) != render($0) } ?? false
+                segments = korean
+                return changed
+            }
+        }
+
         // After a known acronym, start the Korean mark on its initial key.
         // Committing AI+h first would require replacing plain text when 느
         // appears, which web editors can leave behind as AIh느.
@@ -962,6 +979,12 @@ public final class Session {
     private func prefersWholeEnglishWord() -> Bool {
         let lower = englishText(0..<keys.count).lowercased()
         guard lower.count >= 2, lower.allSatisfy(\.isLetter) else { return false }
+        // 390 yv is the common particle 로. Do not let the name Yvonne's
+        // dictionary prefix keep this explicitly preferred reading in English.
+        if lower == "yv", keys.allSatisfy({ !$0.isDubeol }),
+           englishText(0..<keys.count) == "yv" {
+            return false
+        }
         return lexicon.isEnglishWord(lower) || lexicon.isEnglishPrefix(lower)
     }
 

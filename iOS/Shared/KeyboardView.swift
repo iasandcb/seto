@@ -26,6 +26,9 @@ final class KeyboardView: UIView {
     private var editingPhraseIndex: Int?
     private var numberKeys: [(UIButton, Character, Character)] = []
     private var keys: [(UIButton, Character)] = []
+    private let keyPreview = KeyPreviewView()
+    private weak var previewedButton: UIButton?
+    private var previewText: [ObjectIdentifier: () -> String] = [:]
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -53,6 +56,7 @@ final class KeyboardView: UIView {
                 self.emitLiteral(self.shifted ? symbol : digit)
                 if self.shifted { self.shifted = false; self.refresh() }
             }
+            addPreview(to: button) { [weak self] in String(self?.shifted == true ? symbol : digit) }
             numberKeys.append((button, digit, symbol))
             numbers.addArrangedSubview(button)
         }
@@ -70,6 +74,9 @@ final class KeyboardView: UIView {
                 }
                 button.titleLabel?.numberOfLines = 2
                 button.titleLabel?.textAlignment = .center
+                addPreview(to: button) { [weak button] in
+                    button?.attributedTitle(for: .normal)?.string.components(separatedBy: "\n").first ?? ""
+                }
                 keys.append((button, character))
                 row.addArrangedSubview(button)
             }
@@ -119,6 +126,7 @@ final class KeyboardView: UIView {
         languageKey.accessibilityHint = "길게 눌러 자동 한영 전환 설정"
         controls.addArrangedSubview(languageKey)
         let arrowKey = makeButton("→") { [weak self] in self?.emitLiteral("→") }
+        addPreview(to: arrowKey) { "→" }
         arrowKey.accessibilityLabel = "오른쪽 화살표 입력"
         controls.addArrangedSubview(arrowKey)
         let space = makeButton("간격") { [weak self] in self?.emitKey(" ") }
@@ -130,6 +138,7 @@ final class KeyboardView: UIView {
                 self.emitLiteral(punctuation)
                 if self.shifted { self.shifted = false; self.refresh() }
             }
+            addPreview(to: punctuationKey) { String(punctuation) }
             controls.addArrangedSubview(punctuationKey)
         }
         controls.addArrangedSubview(makeButton("↵") { [weak self] in self?.emitKey("\n") })
@@ -143,6 +152,8 @@ final class KeyboardView: UIView {
         for row in rows.arrangedSubviews.dropFirst() {
             row.heightAnchor.constraint(equalToConstant: 42).isActive = true
         }
+        keyPreview.isHidden = true
+        addSubview(keyPreview)
         refresh()
     }
 
@@ -328,6 +339,53 @@ final class KeyboardView: UIView {
         }
     }
 
+    private func addPreview(to button: UIButton, text: @escaping () -> String) {
+        previewText[ObjectIdentifier(button)] = text
+        button.addTarget(self, action: #selector(showPreview(_:)), for: [.touchDown, .touchDragEnter])
+        button.addTarget(self, action: #selector(hidePreview(_:)), for: [.touchUpInside, .touchUpOutside, .touchCancel, .touchDragExit])
+    }
+
+    @objc private func showPreview(_ button: UIButton) {
+        guard let text = previewText[ObjectIdentifier(button)]?() else { return }
+        layoutIfNeeded()
+        let key = button.convert(button.bounds, to: self)
+        let width = min(bounds.width, max(60, key.width + 24))
+        let top = max(0, key.minY - 54)
+        let x = max(0, min(bounds.width - width, key.midX - width / 2))
+        keyPreview.layer.removeAllAnimations()
+        keyPreview.transform = .identity
+        keyPreview.frame = CGRect(x: x, y: top, width: width, height: key.maxY - top)
+        keyPreview.configure(text: text, keyFrame: key.offsetBy(dx: -x, dy: -top))
+        previewedButton = button
+        bringSubviewToFront(keyPreview)
+        keyPreview.isHidden = false
+        if !UIAccessibility.isReduceMotionEnabled {
+            keyPreview.alpha = 0
+            keyPreview.transform = CGAffineTransform(scaleX: 0.92, y: 0.92)
+            UIView.animate(withDuration: 0.08, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
+                self.keyPreview.alpha = 1
+                self.keyPreview.transform = .identity
+            }
+        } else { keyPreview.alpha = 1 }
+    }
+
+    @objc private func hidePreview(_ button: UIButton) {
+        guard previewedButton === button else { return }
+        dismissPreview()
+    }
+
+    private func dismissPreview() {
+        keyPreview.layer.removeAllAnimations()
+        keyPreview.isHidden = true
+        keyPreview.transform = .identity
+        previewedButton = nil
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil { dismissPreview() }
+    }
+
     private func style(_ button: UIButton) {
         button.backgroundColor = .tertiarySystemBackground
         button.layer.cornerRadius = 5
@@ -341,5 +399,44 @@ final class KeyboardView: UIView {
         button.setTitle(title, for: .normal)
         button.addAction(UIAction { _ in action() }, for: .touchUpInside)
         return button
+    }
+}
+
+/// A noninteractive balloon drawn inside the keyboard's permitted bounds.
+@MainActor
+private final class KeyPreviewView: UIView {
+    private let shape = CAShapeLayer()
+    private let label = UILabel()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        accessibilityElementsHidden = true
+        accessibilityIdentifier = "keyPreview"
+        layer.addSublayer(shape)
+        shape.shadowColor = UIColor.black.cgColor
+        shape.shadowOpacity = 0.25
+        shape.shadowRadius = 3
+        shape.shadowOffset = CGSize(width: 0, height: 2)
+        label.font = .systemFont(ofSize: 32, weight: .medium)
+        label.textAlignment = .center
+        label.textColor = .label
+        label.accessibilityIdentifier = "keyPreviewText"
+        addSubview(label)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func configure(text: String, keyFrame: CGRect) {
+        let headHeight = min(54, bounds.height)
+        let path = UIBezierPath(roundedRect: CGRect(x: 0, y: 0, width: bounds.width, height: headHeight), cornerRadius: 10)
+        let stem = CGRect(x: keyFrame.minX, y: max(0, headHeight - 14), width: keyFrame.width, height: bounds.height - max(0, headHeight - 14))
+        path.append(UIBezierPath(roundedRect: stem, cornerRadius: 5))
+        shape.frame = bounds
+        shape.path = path.cgPath
+        shape.shadowPath = path.cgPath
+        shape.fillColor = UIColor.tertiarySystemBackground.resolvedColor(with: traitCollection).cgColor
+        label.frame = CGRect(x: 0, y: 0, width: bounds.width, height: headHeight)
+        label.text = text
     }
 }
