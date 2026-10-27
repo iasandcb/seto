@@ -1939,3 +1939,35 @@ private extension Session {
         }
     }
 }
+
+@Test func punctuationDigitBeforeKoreanSubject() throws {
+    let subject = try #require(SebeolKeys.keys(for: "과목"))
+    for mode in [Language.korean, .english] {
+        for (key, number) in [("<", "2"), (">", "3")] {
+            let session = Session(lexicon: lexicon, mode: mode)
+            var paper = Paper()
+            for character in key + subject { paper.apply(session.input(character).field) }
+            #expect(session.document == number + "과목", "\(session.debugLine)")
+            #expect(paper.text == number + "과목")
+            paper.apply(session.input(" ").field)
+            #expect(paper.text == number + "과목 ")
+        }
+    }
+    for text in [">", "<", "> ", "< ", "->", "=>", "-->", "-<", ">.MJ"] {
+        #expect(clientFailures(text, text, mode: .english).isEmpty)
+    }
+}
+
+@Test func aiParticleDoesNotLeaveLatinInitial() {
+    for mode in [Language.korean, .english] {
+        for (keys, expected) in [("AIhgs", "AI는"), ("AIyv", "AI로"), ("apihgs", "api는")] {
+            let session = Session(lexicon: lexicon, mode: mode)
+            var paper = Paper()
+            for character in keys {
+                let update = session.input(character)
+                paper.apply(update.field)
+            }
+            #expect(paper.text == expected, "\(session.debugLine)")
+        }
+    }
+}

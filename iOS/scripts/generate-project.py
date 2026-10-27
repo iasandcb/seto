@@ -21,10 +21,28 @@ core = sorted('../' + str(p.relative_to(repo)) for p in (repo / 'Sources/Sebeol3
 resources = ['../Resources/' + name for name in ['english-words.txt', 'english-extra.txt', 'korean-words.txt', 'korean-valid.txt', 'korean-valid.LICENSE', '../LICENSE', '../NOTICE']]
 # LICENSE and NOTICE live in the repository root.
 resources = [p.replace('Resources/../', '') for p in resources]
-app_sources = core + ['App/Sebeol390App.swift', 'App/HardwareTextEditor.swift', 'App/MarkVectorView.swift', 'App/MarkVectorLiveSync.swift']
+app_sources = core + ['Shared/KeyboardView.swift', 'App/Sebeol390App.swift', 'App/HardwareTextEditor.swift', 'App/MarkVectorView.swift', 'App/MarkVectorLiveSync.swift']
 keyboard_sources = core + ['Shared/KeyboardView.swift', 'Keyboard/KeyboardViewController.swift']
 all_files = [file(p, 'sourcecode.swift') for p in dict.fromkeys(app_sources + keyboard_sources)]
 all_files += [file(p, 'text') for p in resources]
+all_files.append(file('App/Assets.xcassets', 'folder.assetcatalog'))
+# Generate immutable lookup lists at build preparation time, not extension launch.
+def word_lines(name):
+    return [line.strip() for line in (repo / 'Resources' / name).read_text().splitlines()
+            if line.strip() and not line.strip().startswith('#')]
+base = set(w.lower() for w in word_lines('english-words.txt') + word_lines('english-extra.txt'))
+recognized = set(base)
+for word in base:
+    if len(word) < 3 or not word.isascii() or not word.isalpha(): continue
+    if word.endswith('y') and word[-2] not in 'aeiou': recognized.add(word[:-1] + 'ies')
+    elif word.endswith(('s', 'x', 'z', 'ch', 'sh')): recognized.add(word + 'es')
+    else: recognized.add(word + 's')
+compact_dir = root / 'Keyboard' / 'Resources'
+compact_dir.mkdir(exist_ok=True)
+compact_resources = ['Keyboard/Resources/keyboard-english.txt', 'Keyboard/Resources/keyboard-korean-valid.txt']
+(compact_dir / 'keyboard-english.txt').write_text('\n'.join(sorted(recognized)) + '\n')
+(compact_dir / 'keyboard-korean-valid.txt').write_text('\n'.join(sorted(set(word_lines('korean-valid.txt')))) + '\n')
+all_files += [file(p, 'text') for p in compact_resources]
 products = []
 targets = []
 project_configs = []
@@ -37,7 +55,9 @@ for name, sources, ext in [('Sebeol390Keyboard', keyboard_sources, True), ('Sebe
     products.append(product)
     builds = [obj(name + p, f'{{isa = PBXBuildFile; fileRef = {ident(p)};}}') for p in sources]
     source_phase = obj(name + '-sources', '{isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ' + refs(builds) + '; runOnlyForDeploymentPostprocessing = 0;}')
-    resource_builds = [obj(name + p, f'{{isa = PBXBuildFile; fileRef = {ident(p)};}}') for p in resources]
+    resource_builds = [obj(name + p, f'{{isa = PBXBuildFile; fileRef = {ident(p)};}}') for p in (resources if not ext else [p for p in resources if not p.endswith(('english-words.txt', 'english-extra.txt', 'korean-valid.txt'))] + compact_resources)]
+    if not ext:
+        resource_builds.append(obj(name + '-assets', '{isa = PBXBuildFile; fileRef = ' + ident('App/Assets.xcassets') + ';}'))
     resource_phase = obj(name + '-resources', '{isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = ' + refs(resource_builds) + '; runOnlyForDeploymentPostprocessing = 0;}')
     phases = [source_phase, resource_phase]
     dependencies = []
@@ -48,7 +68,9 @@ for name, sources, ext in [('Sebeol390Keyboard', keyboard_sources, True), ('Sebe
         dependencies.append(obj('dependency', '{isa = PBXTargetDependency; target = ' + ident('Sebeol390Keyboard-target') + '; targetProxy = ' + proxy + ';}'))
     configs = []
     for config in ['Debug', 'Release']:
-        cfg = {'PRODUCT_NAME': name, 'PRODUCT_BUNDLE_IDENTIFIER': 'com.sebeol390.ios' + ('.keyboard' if ext else ''), 'INFOPLIST_FILE': 'Keyboard/Info.plist' if ext else 'App/Info.plist', 'GENERATE_INFOPLIST_FILE': 'NO', 'CODE_SIGN_STYLE': 'Automatic', 'TARGETED_DEVICE_FAMILY': '1,2', 'SUPPORTED_PLATFORMS': 'iphoneos iphonesimulator', 'MARKETING_VERSION': '1.0', 'CURRENT_PROJECT_VERSION': '1', 'APPLICATION_EXTENSION_API_ONLY': 'YES' if ext else 'NO', 'SKIP_INSTALL': 'YES' if ext else 'NO', 'SWIFT_STRICT_CONCURRENCY': 'complete', 'ENABLE_TESTABILITY': 'YES' if config == 'Debug' else 'NO'}
+        cfg = {'PRODUCT_NAME': name, 'PRODUCT_BUNDLE_IDENTIFIER': 'com.ias.seto' + ('.keyboard' if ext else ''), 'INFOPLIST_FILE': 'Keyboard/Info.plist' if ext else 'App/Info.plist', 'GENERATE_INFOPLIST_FILE': 'NO', 'CODE_SIGN_STYLE': 'Automatic', 'TARGETED_DEVICE_FAMILY': '1,2', 'SUPPORTED_PLATFORMS': 'iphoneos iphonesimulator', 'MARKETING_VERSION': '1.0', 'CURRENT_PROJECT_VERSION': '3', 'APPLICATION_EXTENSION_API_ONLY': 'YES' if ext else 'NO', 'SKIP_INSTALL': 'YES' if ext else 'NO', 'SWIFT_STRICT_CONCURRENCY': 'complete', 'ENABLE_TESTABILITY': 'YES' if config == 'Debug' else 'NO'}
+        cfg['DEVELOPMENT_TEAM'] = 'RZUH4T3FCB'
+        if not ext: cfg['ASSETCATALOG_COMPILER_APPICON_NAME'] = 'AppIcon'
         configs.append(obj(name + config, f'{{isa = XCBuildConfiguration; name = {config}; buildSettings = {settings(cfg)};}}'))
     config_list = obj(name + '-configs', '{isa = XCConfigurationList; buildConfigurations = ' + refs(configs) + '; defaultConfigurationName = Release;}')
     targets.append(obj(name + '-target', '{isa = PBXNativeTarget; buildConfigurationList = ' + config_list + '; buildPhases = ' + refs(phases) + '; buildRules = (); dependencies = ' + refs(dependencies) + f'; name = {name}; productName = {name}; productReference = {product}; productType = "com.apple.product-type.{"app-extension" if ext else "application"}";}}'))
@@ -61,7 +83,7 @@ test_build = obj('test-build', '{isa = PBXBuildFile; fileRef = ' + ident(test_so
 test_phase = obj('test-phase', '{isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (' + test_build + ',); runOnlyForDeploymentPostprocessing = 0;}')
 test_configs = []
 for config in ['Debug', 'Release']:
-    cfg = {'PRODUCT_NAME': 'Sebeol390Tests', 'PRODUCT_BUNDLE_IDENTIFIER': 'com.sebeol390.ios.tests', 'GENERATE_INFOPLIST_FILE': 'YES', 'CODE_SIGN_STYLE': 'Automatic', 'TARGETED_DEVICE_FAMILY': '1,2', 'TEST_HOST': '$(BUILT_PRODUCTS_DIR)/Sebeol390.app/Sebeol390', 'BUNDLE_LOADER': '$(TEST_HOST)'}
+    cfg = {'PRODUCT_NAME': 'Sebeol390Tests', 'PRODUCT_BUNDLE_IDENTIFIER': 'com.ias.seto.tests', 'GENERATE_INFOPLIST_FILE': 'YES', 'CODE_SIGN_STYLE': 'Automatic', 'TARGETED_DEVICE_FAMILY': '1,2', 'TEST_HOST': '$(BUILT_PRODUCTS_DIR)/Sebeol390.app/Sebeol390', 'BUNDLE_LOADER': '$(TEST_HOST)'}
     test_configs.append(obj('test-' + config, ''))
     objects[test_configs[-1]] = '{isa = XCBuildConfiguration; name = ' + config + '; buildSettings = ' + settings(cfg) + ';}'
 test_config_list = obj('test-configs', '{isa = XCConfigurationList; buildConfigurations = ' + refs(test_configs) + '; defaultConfigurationName = Release;}')
@@ -80,7 +102,7 @@ for ext in [False, True]:
     if ext:
         data['NSExtension'] = {'NSExtensionPointIdentifier': 'com.apple.keyboard-service', 'NSExtensionPrincipalClass': '$(PRODUCT_MODULE_NAME).KeyboardViewController', 'NSExtensionAttributes': {'IsASCIICapable': True, 'PrimaryLanguage': 'ko-KR', 'RequestsOpenAccess': False, 'PrefersRightToLeft': False}}
     else:
-        data.update(LSRequiresIPhoneOS=True, UILaunchScreen={}, UIApplicationSceneManifest={'UIApplicationSupportsMultipleScenes': False}, UISupportedInterfaceOrientations=['UIInterfaceOrientationPortrait', 'UIInterfaceOrientationLandscapeLeft', 'UIInterfaceOrientationLandscapeRight'])
+        data.update(LSRequiresIPhoneOS=True, UILaunchScreen={}, UIApplicationSceneManifest={'UIApplicationSupportsMultipleScenes': False}, UISupportedInterfaceOrientations=['UIInterfaceOrientationPortrait', 'UIInterfaceOrientationPortraitUpsideDown', 'UIInterfaceOrientationLandscapeLeft', 'UIInterfaceOrientationLandscapeRight'])
     with (root / ('Keyboard' if ext else 'App') / 'Info.plist').open('wb') as f: plistlib.dump(data, f)
 scheme = f'''<?xml version="1.0" encoding="UTF-8"?>
 <Scheme LastUpgradeVersion="1600" version="1.3"><BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES"><BuildActionEntries><BuildActionEntry buildForTesting="YES" buildForRunning="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{ident('Sebeol390-target')}" BuildableName="Sebeol390.app" BlueprintName="Sebeol390" ReferencedContainer="container:Sebeol390.xcodeproj"/></BuildActionEntry></BuildActionEntries></BuildAction><LaunchAction buildConfiguration="Debug" launchStyle="0" useCustomWorkingDirectory="NO" ignoresPersistentStateOnLaunch="NO" debugDocumentVersioning="YES" allowLocationSimulation="YES"><BuildableProductRunnable runnableDebuggingMode="0"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{ident('Sebeol390-target')}" BuildableName="Sebeol390.app" BlueprintName="Sebeol390" ReferencedContainer="container:Sebeol390.xcodeproj"/></BuildableProductRunnable></LaunchAction><ProfileAction buildConfiguration="Release"/><AnalyzeAction buildConfiguration="Debug"/><ArchiveAction buildConfiguration="Release" revealArchiveInOrganizer="YES"/></Scheme>'''

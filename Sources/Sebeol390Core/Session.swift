@@ -131,9 +131,13 @@ public final class Session {
     }
 
     public func input(_ atom: KeyAtom) -> SessionUpdate {
+        // Keep a leading shifted digit available until its following text
+        // distinguishes a Korean number from QWERTY punctuation (>과목).
+        let pendingNumber = autoSwitch && locked == nil && isPadDigit(atom)
+            && (keys.isEmpty || keys.allSatisfy(isPadDigit))
         let englishPunctuation = mode == .english && !atom.english.isLetter && !atom.english.isNumber
             && !continuesAsKorean(atom)
-        if (atom.isNeutralBreaker || englishPunctuation) && !continuesAsCode(atom) {
+        if (atom.isNeutralBreaker || englishPunctuation) && !pendingNumber && !continuesAsCode(atom) {
             return finishWord(appending: atom.english)
         }
         // Moved 390 punctuation (Shift+B → !) ends a Hangul word too.
@@ -309,6 +313,8 @@ public final class Session {
 
     /// A finished token whose spelling was not what the keys composed.
     private func corrected(_ composed: String) -> String? {
+        // Typo distance and inverse key lookup currently target hardware 390.
+        guard !keys.contains(where: \.isDubeol) else { return nil }
         guard segments.count == 1, let only = segments.first, only.start == 0, only.end == keys.count else { return nil }
         return TypoCorrector.correction(
             composed: composed,
@@ -434,6 +440,18 @@ public final class Session {
                 changed = render(english) != render(extended)
             }
             segments = english
+            return changed
+        }
+
+        // After a known acronym, start the Korean mark on its initial key.
+        // Committing AI+h first would require replacing plain text when 느
+        // appears, which web editors can leave behind as AIh느.
+        if let headEnd = pendingAcronymInitialSplit() {
+            let parts = [Segment(start: 0, end: headEnd, lang: .english),
+                         Segment(start: headEnd, end: keys.count, lang: .korean)]
+            let changed = previous.flatMap { extend($0, to: keys.count) }
+                .map { render(parts) != render($0) } ?? false
+            segments = parts
             return changed
         }
 
@@ -962,6 +980,19 @@ public final class Session {
         "ktx", "srt", "api", "url", "mvp", "sdk", "llm", "gpt", "nlp",
         "cpu", "gpu", "html", "css", "aws",
     ]
+
+    private func pendingAcronymInitialSplit() -> Int? {
+        guard keys.count >= 3 else { return nil }
+        let headEnd = keys.count - 1
+        let head = englishText(0..<headEnd)
+        guard Self.acronymHeads.contains(head.lowercased()) || lexicon.isAbbreviation(head) else { return nil }
+        let spelling = englishText(0..<keys.count)
+        guard !lexicon.isEnglishWord(spelling), !lexicon.isEnglishPrefix(spelling) else { return nil }
+        guard Composer.compose(keys[headEnd...]).pieces == [.bareChoseong],
+              preservesComposition(at: headEnd) else { return nil }
+        guard !lexicon.isKoreanWord(Composer.compose(keys).text) else { return nil }
+        return headEnd
+    }
 
     /// Index where an English acronym ends and a Hangul particle begins.
     /// Nil when the buffer should stay one language.

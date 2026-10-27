@@ -31,7 +31,7 @@ public enum Composer {
         for atom in atoms {
             switch atom.korean {
             case .jamo(let jamo):
-                engine.push(jamo)
+                if atom.isDubeol { engine.pushDubeol(jamo) } else { engine.push(jamo) }
             case .character(let character):
                 engine.pushCharacter(character)
             }
@@ -47,7 +47,7 @@ public enum Composer {
         for atom in atoms {
             switch atom.korean {
             case .jamo(let jamo):
-                engine.push(jamo)
+                if atom.isDubeol { engine.pushDubeol(jamo) } else { engine.push(jamo) }
             case .character:
                 return nil
             }
@@ -107,6 +107,25 @@ public enum Composer {
                     jong = [jamo]
                 }
             }
+        }
+
+        mutating func pushDubeol(_ jamo: Jamo) {
+            if jamo.kind == .jungseong {
+                if let last = jong.popLast() {
+                    // The last final becomes the next initial; earlier finals stay.
+                    let initial = LayoutDubeol.initial(forFinal: last)
+                    flush()
+                    if let initial { cho = [initial] }
+                }
+                push(jamo)
+                return
+            }
+            if !jung.isEmpty, let final = LayoutDubeol.final(forInitial: jamo) {
+                if jong.isEmpty { jong = [final]; return }
+                if canAppend(jong, final) { jong.append(final); return }
+            }
+            flush()
+            cho = [jamo]
         }
 
         mutating func pushCharacter(_ character: Character) {

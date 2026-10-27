@@ -6,13 +6,14 @@ import Sebeol390Core
 final class SmokeClient: NSObject, IMKTextInput {
     var text = ""
     var mark = NSRange(location: NSNotFound, length: 0)
+    var ignoresReplacementOutsideMark = false
     var onInsert: (() -> Void)?
     var onMark: (() -> Void)?
     private func value(_ input: Any?) -> String {
         (input as? NSAttributedString)?.string ?? (input as? String ?? "")
     }
     private func target(_ range: NSRange) -> NSRange {
-        if range.location != NSNotFound { return range }
+        if range.location != NSNotFound && !(ignoresReplacementOutsideMark && mark.location == NSNotFound) { return range }
         return mark.location != NSNotFound ? mark : NSRange(location: (text as NSString).length, length: 0)
     }
     func insertText(_ input: Any?, replacementRange: NSRange) {
@@ -145,6 +146,36 @@ private func press(_ raw: Character, modifiers: NSEvent.ModifierFlags = [], cont
                         }
                     }
                     if client.text != expected { failures += 1 }
+                }
+            }
+        }
+        // Model a web editor that ignores replacement ranges outside a live
+        // composition. An acronym's particle must never need that operation.
+        for callbacks in [false, true] {
+            for startsInEnglish in [false, true] {
+                for (keys, expected) in [("AIhgs", "AI는"), ("AIyv", "AI로"), ("apihgs", "api는")] {
+                    cases += 1
+                    let client = SmokeClient()
+                    client.ignoresReplacementOutsideMark = true
+                    let controller = SebeolInputController()
+                    if startsInEnglish { precondition(press(" ", modifiers: [.shift], controller: controller, client: client)) }
+                    if callbacks {
+                        let commit = { [weak controller, weak client] in
+                            guard let client else { return }
+                            controller?.commitComposition(client)
+                        }
+                        client.onInsert = commit
+                        client.onMark = commit
+                    }
+                    for raw in keys {
+                        let modifiers: NSEvent.ModifierFlags = raw.isUppercase ? [.shift] : []
+                        precondition(press(raw, modifiers: modifiers, controller: controller, client: client))
+                    }
+                    controller.commitComposition(client)
+                    if client.text != expected || client.mark.length != 0 {
+                        print("FAIL web acronym callbacks=\(callbacks) english=\(startsInEnglish): \(keys) → \(client.text), expected \(expected)")
+                        failures += 1
+                    }
                 }
             }
         }

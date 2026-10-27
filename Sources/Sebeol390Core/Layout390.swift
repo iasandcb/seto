@@ -6,6 +6,7 @@ public enum KeyOutput: Equatable, Sendable {
 }
 
 public struct KeyAtom: Equatable, Sendable {
+    public var isDubeol = false
     public var english: Character
     public var korean: KeyOutput
 

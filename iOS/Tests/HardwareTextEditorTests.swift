@@ -147,3 +147,200 @@ final class MarkVectorLiveSyncTests: XCTestCase {
         XCTAssertEqual(MarkVectorLiveSync.socketURL(for: document)?.absoluteString, "wss://example.test/ws/documents/p%20x/c/a%23b.md?write=1")
     }
 }
+
+final class InputSettingsTests: XCTestCase {
+    @MainActor func testAutomaticSettingSurvivesCursorAndFocusResets() async {
+        let view = HardwareTextView()
+        view.configure(automatic: false, mode: .english)
+        for key in "hello " { view.inputCharacter(key) }
+        XCTAssertEqual(view.text, "hello ")
+        view.selectedRange = NSRange(location: 0, length: 0)
+        view.resetSession()
+        view.textViewDidEndEditing(view)
+        view.textViewDidBeginEditing(view)
+        XCTAssertFalse(view.session.autoSwitch)
+        XCTAssertEqual(view.session.mode, .english)
+        view.configure(automatic: true, mode: .english)
+        view.resetSession()
+        XCTAssertTrue(view.session.autoSwitch)
+    }
+
+    @MainActor func testModeControlCommitsWithoutChangingTextOrSelection() async {
+        let view = HardwareTextView()
+        view.configure(automatic: false, mode: .korean)
+        for key in "kfx" { view.inputCharacter(key) }
+        XCTAssertEqual(view.text, "각")
+        let caret = view.selectedRange
+        view.configure(automatic: false, mode: .english)
+        XCTAssertEqual(view.text, "각")
+        XCTAssertEqual(view.selectedRange, caret)
+        XCTAssertEqual(view.session.mode, .english)
+        view.inputCharacter("a")
+        XCTAssertEqual(view.text, "각a")
+    }
+
+    @MainActor func testTouchUsesCurrentMacCoreAndReportsConfirmedMode() async throws {
+        for (keys, expected, mode) in [
+            ("cd ../src", "cd ../src", Language.korean),
+            ("ls ", "ls ", .korean),
+            ("of;", "of;", .english),
+            ("don't", "don't", .english),
+            ("->", "-3", .korean),
+            ("kfx", "각", .korean)
+        ] {
+            let view = HardwareTextView()
+            view.configure(automatic: true, mode: mode)
+            var displayedMode = mode
+            view.onMode = { displayedMode = $0 }
+            let keyboard = try XCTUnwrap(view.inputView as? KeyboardView)
+            for key in keys { keyboard.onKey?(key) }
+            XCTAssertEqual(view.text, expected, keys)
+            XCTAssertEqual(displayedMode, view.session.mode)
+            if keys.hasPrefix("cd") || keys.hasPrefix("ls") { XCTAssertEqual(displayedMode, .english) }
+            view.resetSession()
+            XCTAssertEqual(displayedMode, view.session.mode)
+        }
+    }
+
+    @MainActor func testTouchAutomaticSwitchUpdatesSettingsWithoutDiscardingComposition() async throws {
+        let view = HardwareTextView()
+        view.configure(automatic: true, mode: .korean)
+        var setting = true
+        view.onAutomatic = { setting = $0 }
+        let keyboard = try XCTUnwrap(view.inputView as? KeyboardView)
+        keyboard.onKey?("k")
+        keyboard.onKey?("f")
+        keyboard.onAutoSwitch?()
+        XCTAssertFalse(setting)
+        XCTAssertFalse(view.session.autoSwitch)
+        keyboard.onKey?("x")
+        XCTAssertEqual(view.text, "각")
+        view.resetSession()
+        XCTAssertFalse(view.session.autoSwitch)
+    }
+}
+
+final class TouchKeyboardLayoutTests: XCTestCase {
+    @MainActor func testAppKeyboardKeepsBottomRowAboveSafeArea() {
+        let keyboard = KeyboardView()
+        let input = TouchKeyboardInputView(keyboard: keyboard)
+        let host = UIViewController()
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 500))
+        window.rootViewController = host
+        window.isHidden = false
+        defer { window.isHidden = true }
+        host.additionalSafeAreaInsets.bottom = 34
+        host.view.addSubview(input)
+        host.view.layoutIfNeeded()
+        let height = KeyboardView.preferredHeight + host.view.safeAreaInsets.bottom
+        input.frame = CGRect(x: 0, y: host.view.bounds.height - height, width: 390, height: height)
+        host.view.layoutIfNeeded()
+        input.layoutIfNeeded()
+        XCTAssertGreaterThanOrEqual(input.safeAreaInsets.bottom, 34)
+        XCTAssertTrue(input.allowsSelfSizing)
+        XCTAssertEqual(input.systemLayoutSizeFitting(CGSize(width: 390, height: 0)).height, KeyboardView.preferredHeight + max(input.safeAreaInsets.bottom, window.safeAreaInsets.bottom), accuracy: 0.01)
+        func buttons(in view: UIView) -> [UIButton] {
+            view.subviews.flatMap { ($0 as? UIButton).map { [$0] } ?? buttons(in: $0) }
+        }
+        let space = buttons(in: keyboard).first { $0.title(for: .normal) == "간격" }!
+        let frame = space.convert(space.bounds, to: input)
+        XCTAssertEqual(frame.height, 42, accuracy: 0.01)
+        XCTAssertLessThanOrEqual(frame.maxY, input.bounds.height - input.safeAreaInsets.bottom - 6 + 0.01)
+    }
+
+    @MainActor func testQuickPhraseRegistrationAndInsertion() {
+        let previous = UserDefaults.standard.object(forKey: "quickPhrases")
+        defer { UserDefaults.standard.set(previous, forKey: "quickPhrases") }
+        UserDefaults.standard.removeObject(forKey: "quickPhrases")
+        let keyboard = KeyboardView(frame: CGRect(x: 0, y: 0, width: 320, height: KeyboardView.preferredHeight))
+        func buttons(in view: UIView) -> [UIButton] {
+            view.subviews.flatMap { ($0 as? UIButton).map { [$0] } ?? buttons(in: $0) }
+        }
+        var document = ""
+        keyboard.onKey = { document.append($0) }
+        keyboard.onPhrase = { document += $0 }
+        buttons(in: keyboard).first { $0.accessibilityLabel == "문구 등록" }!.sendActions(for: .touchUpInside)
+        for letter in "gksrmf" {
+            buttons(in: keyboard).first { $0.accessibilityLabel?.contains("영문 \(letter),") == true }!.sendActions(for: .touchUpInside)
+        }
+        XCTAssertEqual(document, "")
+        buttons(in: keyboard).first { $0.accessibilityIdentifier == "savePhrase" }!.sendActions(for: .touchUpInside)
+        XCTAssertEqual(UserDefaults.standard.stringArray(forKey: "quickPhrases"), ["한글"])
+        buttons(in: keyboard).first { $0.accessibilityLabel == "한글" }!.sendActions(for: .touchUpInside)
+        XCTAssertEqual(document, "한글")
+        let reloaded = KeyboardView()
+        XCTAssertNotNil(buttons(in: reloaded).first { $0.accessibilityLabel == "한글" })
+    }
+
+    @MainActor func testTouchUsesDubeolWhileHardwareKeeps390() {
+        let editor = HardwareTextView()
+        editor.configure(automatic: false, mode: .korean)
+        let keyboard = (editor.inputView as! TouchKeyboardInputView).keyboard
+        func buttons(in view: UIView) -> [UIButton] {
+            view.subviews.flatMap { ($0 as? UIButton).map { [$0] } ?? buttons(in: $0) }
+        }
+        let keys = buttons(in: keyboard)
+        for letter in "gksrmf" {
+            keys.first { $0.accessibilityLabel?.contains("영문 \(letter),") == true }!.sendActions(for: .touchUpInside)
+        }
+        XCTAssertEqual(editor.text, "한글")
+        editor.handleKey(usage: 42)
+        XCTAssertEqual(editor.text, "한그")
+    }
+
+    @MainActor func testNumberShiftAndPunctuationAtNarrowWidth() {
+        let keyboard = KeyboardView(frame: CGRect(x: 0, y: 0, width: 320, height: KeyboardView.preferredHeight))
+        keyboard.update(mode: .korean, automatic: true)
+        keyboard.layoutIfNeeded()
+        func buttons(in view: UIView) -> [UIButton] {
+            view.subviews.flatMap { child in
+                (child as? UIButton).map { [$0] } ?? buttons(in: child)
+            }
+        }
+        let keys = buttons(in: keyboard)
+        var inserted: [Character] = []
+        keyboard.onLiteral = { inserted.append($0) }
+        let shift = keys.first { $0.title(for: .normal) == "⇧" }!
+        let one = keys.first { $0.accessibilityLabel?.hasPrefix("숫자 1,") == true }!
+        shift.sendActions(for: .touchUpInside)
+        one.sendActions(for: .touchUpInside)
+        one.sendActions(for: .touchUpInside)
+        for symbol in [".", "?"] {
+            let key = keys.first { $0.title(for: .normal) == symbol }!
+            let frame = key.convert(key.bounds, to: keyboard)
+            XCTAssertGreaterThan(frame.width, 0)
+            XCTAssertGreaterThanOrEqual(frame.minX, 0)
+            XCTAssertLessThanOrEqual(frame.maxX, 320)
+            key.sendActions(for: .touchUpInside)
+        }
+        XCTAssertEqual(inserted, ["!", "1", ".", "?"])
+    }
+}
+
+final class PresentedKeyboardTests: XCTestCase {
+    @MainActor func testPresentedAppKeyboardFitsVisibleWindow() async throws {
+        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first!
+        let window = UIWindow(windowScene: scene)
+        window.frame = scene.screen.bounds
+        window.windowLevel = .alert + 1
+        let controller = UIViewController()
+        controller.view.backgroundColor = .systemBackground
+        window.rootViewController = controller
+        let editor = HardwareTextView(frame: CGRect(x: 20, y: 100, width: 300, height: 100))
+        controller.view.addSubview(editor)
+        window.makeKeyAndVisible()
+        defer { editor.resignFirstResponder(); window.isHidden = true }
+        editor.becomeFirstResponder()
+        try await Task.sleep(for: .seconds(3))
+        let input = editor.inputView as! TouchKeyboardInputView
+        let keyboard = input.keyboard
+        func buttons(in view: UIView) -> [UIButton] {
+            view.subviews.flatMap { ($0 as? UIButton).map { [$0] } ?? buttons(in: $0) }
+        }
+        let space = buttons(in: keyboard).first { $0.title(for: .normal) == "간격" }!
+        let keyboardWindow = input.window!
+        let keyFrame = space.convert(space.bounds, to: keyboardWindow)
+        XCTAssertEqual(space.bounds.height, 42, accuracy: 0.1)
+        XCTAssertLessThanOrEqual(keyFrame.maxY, keyboardWindow.bounds.height - keyboardWindow.safeAreaInsets.bottom)
+    }
+}

@@ -3,14 +3,13 @@ import UIKit
 @MainActor
 final class KeyboardViewController: UIInputViewController {
     private static let lexicon: Lexicon = {
-        guard let url = Bundle.main.resourceURL, let lexicon = try? Lexicon.load(from: url) else {
+        guard let url = Bundle.main.resourceURL, let lexicon = try? Lexicon.loadForKeyboard(from: url) else {
             return Lexicon(english: [], korean: [])
         }
         return lexicon
     }()
     private var session = Session(lexicon: KeyboardViewController.lexicon)
     private var expectedContext: String?
-    private var documentID: UUID?
     private let keyboard = KeyboardView()
 
     override func viewDidLoad() {
@@ -22,12 +21,18 @@ final class KeyboardViewController: UIInputViewController {
             keyboard.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             keyboard.topAnchor.constraint(equalTo: view.topAnchor),
             keyboard.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            view.heightAnchor.constraint(equalToConstant: 290)
+            view.heightAnchor.constraint(equalToConstant: KeyboardView.preferredHeight)
         ])
-        keyboard.onKey = { [weak self] key in self?.edit { $0.input(key) } }
+        keyboard.onKey = { [weak self] key in self?.edit { $0.input(LayoutDubeol.atom(for: key)) } }
         keyboard.onLiteral = { [weak self] key in
             guard let self else { return }
             self.textDocumentProxy.insertText(String(key))
+            self.reset()
+        }
+        keyboard.onPhrase = { [weak self] phrase in
+            guard let self else { return }
+            self.synchronize()
+            self.textDocumentProxy.insertText(phrase)
             self.reset()
         }
         keyboard.onDelete = { [weak self] in self?.delete() }
@@ -41,6 +46,7 @@ final class KeyboardViewController: UIInputViewController {
             UserDefaults.standard.set(self.session.autoSwitch, forKey: "autoSwitch")
             self.reset()
         }
+        keyboard.showsInputModeSwitch = needsInputModeSwitchKey
         reset()
     }
 
@@ -55,8 +61,9 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func synchronize() {
-        if documentID != textDocumentProxy.documentIdentifier ||
-            expectedContext != textDocumentProxy.documentContextBeforeInput ||
+        // documentIdentifier may be nil in UIKit before the host attaches even
+        // though Swift imports it as nonoptional UUID. Accessing it traps.
+        if expectedContext != textDocumentProxy.documentContextBeforeInput ||
             !(textDocumentProxy.selectedText ?? "").isEmpty {
             reset()
         }
@@ -66,7 +73,6 @@ final class KeyboardViewController: UIInputViewController {
         let automatic = UserDefaults.standard.object(forKey: "autoSwitch") as? Bool ?? true
         session = Session(lexicon: Self.lexicon, autoSwitch: automatic, mode: session.mode)
         expectedContext = textDocumentProxy.documentContextBeforeInput
-        documentID = textDocumentProxy.documentIdentifier
         keyboard.update(mode: session.mode, automatic: automatic)
     }
 
@@ -98,7 +104,6 @@ final class KeyboardViewController: UIInputViewController {
         }
         if !change.inserted.isEmpty { textDocumentProxy.insertText(change.inserted) }
         expectedContext = textDocumentProxy.documentContextBeforeInput
-        documentID = textDocumentProxy.documentIdentifier
         keyboard.update(mode: update.mode, automatic: session.autoSwitch)
         // Bound memory to the current word and its undo window.
         if after.count > 512, session.preedit.isEmpty { reset() }

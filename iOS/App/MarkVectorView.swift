@@ -165,7 +165,8 @@ private struct MarkVectorEditor: View {
     @ObservedObject var connection: MarkVectorConnection
     @Environment(\.dismiss) private var dismiss
     @State private var focused = false
-    @State private var mode = "한글"
+    @AppStorage("app.inputMode") private var mode: Language = .korean
+    @AppStorage("app.autoSwitch") private var automatic = true
     @State private var saving = false
     @StateObject private var live = MarkVectorLiveSync()
     @Environment(\.scenePhase) private var scenePhase
@@ -173,7 +174,10 @@ private struct MarkVectorEditor: View {
 
     var body: some View {
         NavigationStack {
-            HardwareTextEditor(text: $document.content, focused: $focused, modeLabel: $mode)
+            VStack(spacing: 8) {
+                InputControls(mode: $mode, automatic: $automatic).padding(.horizontal, 16)
+                HardwareTextEditor(text: $document.content, focused: $focused, mode: $mode, automatic: $automatic)
+            }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(.horizontal, 12)
                 .navigationTitle(document.filename)

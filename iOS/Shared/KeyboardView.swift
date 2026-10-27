@@ -1,19 +1,29 @@
 import UIKit
 
-/// Physical QWERTY positions retain the desktop engine's 390 mapping.
+/// Touch keyboard uses standard Korean two-set and English QWERTY positions.
 @MainActor
 final class KeyboardView: UIView {
+    static let preferredHeight: CGFloat = 280
+
     var onKey: ((Character) -> Void)?
+    var onPhrase: ((String) -> Void)?
     var onLiteral: ((Character) -> Void)?
     var onDelete: (() -> Void)?
     var onToggle: (() -> Void)?
     var onNext: ((UIButton, UIEvent) -> Void)?
     var onAutoSwitch: (() -> Void)?
+    var showsInputModeSwitch = true { didSet { globe.isHidden = !showsInputModeSwitch } }
+    private let globe = UIButton(type: .system)
     private var shifted = false
     private var english = false
+    private var hostEnglish = false
     private var symbols = false
     private let rows = UIStackView()
-    private let status = UIButton(type: .system)
+    private let phraseBar = UIStackView()
+    private var phrases = UserDefaults.standard.stringArray(forKey: "quickPhrases") ?? []
+    private var phraseSession: Session?
+    private var editingPhraseIndex: Int?
+    private var numberKeys: [(UIButton, Character, Character)] = []
     private var keys: [(UIButton, Character)] = []
 
     override init(frame: CGRect) {
@@ -29,10 +39,24 @@ final class KeyboardView: UIView {
             rows.topAnchor.constraint(equalTo: topAnchor, constant: 6),
             rows.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor, constant: -6)
         ])
-        status.titleLabel?.font = .systemFont(ofSize: 13, weight: .medium)
-        status.addAction(UIAction { [weak self] _ in self?.onAutoSwitch?() }, for: .touchUpInside)
-        rows.addArrangedSubview(status)
-        for letters in ["1234567890", "qwertyuiop", "asdfghjkl;", "zxcvbnm,./"] {
+        phraseBar.spacing = 4
+        phraseBar.heightAnchor.constraint(equalToConstant: 28).isActive = true
+        rows.addArrangedSubview(phraseBar)
+        refreshPhrases()
+        let numbers = UIStackView()
+        numbers.spacing = 4
+        numbers.distribution = .fillEqually
+        for (digit, symbol) in zip("1234567890", "!@#$%^&*()") {
+            let button = makeButton("") { [weak self] in
+                guard let self else { return }
+                self.emitLiteral(self.shifted ? symbol : digit)
+                if self.shifted { self.shifted = false; self.refresh() }
+            }
+            numberKeys.append((button, digit, symbol))
+            numbers.addArrangedSubview(button)
+        }
+        rows.addArrangedSubview(numbers)
+        for letters in ["qwertyuiop", "asdfghjkl", "zxcvbnm"] {
             let row = UIStackView()
             row.spacing = 4
             row.distribution = .fillEqually
@@ -40,35 +64,76 @@ final class KeyboardView: UIView {
                 let button = makeButton("") { [weak self] in
                     guard let self else { return }
                     let output = self.output(character)
-                    if self.symbols { self.onLiteral?(output) } else { self.onKey?(output) }
+                    if self.symbols { self.emitLiteral(output) } else { self.emitKey(output) }
                     if self.shifted { self.shifted = false; self.refresh() }
                 }
+                button.titleLabel?.numberOfLines = 2
+                button.titleLabel?.textAlignment = .center
                 keys.append((button, character))
                 row.addArrangedSubview(button)
             }
-            rows.addArrangedSubview(row)
+            if letters.count < 10 {
+                let inset = UIStackView()
+                let leading: UIView
+                let trailing: UIView
+                if letters.count == 7 {
+                    leading = makeButton("⇧") { [weak self] in self?.shifted.toggle(); self?.refresh() }
+                    trailing = makeButton("⌫") { [weak self] in self?.emitDelete() }
+                    inset.spacing = 14
+                } else {
+                    leading = UIView()
+                    trailing = UIView()
+                }
+                inset.addArrangedSubview(leading)
+                inset.addArrangedSubview(row)
+                inset.addArrangedSubview(trailing)
+                rows.addArrangedSubview(inset)
+                leading.widthAnchor.constraint(equalTo: trailing.widthAnchor).isActive = true
+                if letters.count == 7 {
+                    // Match the number / Q–P key width exactly at every screen size.
+                    row.arrangedSubviews[0].widthAnchor.constraint(equalTo: numbers.arrangedSubviews[0].widthAnchor).isActive = true
+                } else {
+                    leading.widthAnchor.constraint(equalTo: inset.widthAnchor, multiplier: 0.05).isActive = true
+                }
+            } else {
+                rows.addArrangedSubview(row)
+            }
         }
         let controls = UIStackView()
         controls.spacing = 4
-        controls.distribution = .fillProportionally
-        controls.addArrangedSubview(makeButton("⇧") { [weak self] in
-            self?.shifted.toggle(); self?.refresh()
-        })
-        let globe = UIButton(type: .system)
+        controls.distribution = .fill
         style(globe)
         globe.setTitle("🌐", for: .normal)
         globe.accessibilityLabel = "다음 키보드"
         globe.addTarget(self, action: #selector(nextKeyboard(_:event:)), for: .allTouchEvents)
         controls.addArrangedSubview(globe)
-        controls.addArrangedSubview(makeButton("123") { [weak self] in
+        let symbolKey = makeButton("#") { [weak self] in
             self?.symbols.toggle(); self?.refresh()
-        })
-        controls.addArrangedSubview(makeButton("한/영 ↶") { [weak self] in self?.onToggle?() })
-        let space = makeButton("간격") { [weak self] in self?.onKey?(" ") }
-        space.widthAnchor.constraint(greaterThanOrEqualToConstant: 70).isActive = true
+        }
+        symbolKey.accessibilityLabel = "기호 자판 전환"
+        controls.addArrangedSubview(symbolKey)
+        let languageKey = makeButton("↔") { [weak self] in self?.toggleLanguage() }
+        languageKey.accessibilityLabel = "한영 전환 및 자동 변환 되돌리기"
+        controls.addArrangedSubview(languageKey)
+        let space = makeButton("간격") { [weak self] in self?.emitKey(" ") }
+        space.widthAnchor.constraint(greaterThanOrEqualToConstant: 80).isActive = true
         controls.addArrangedSubview(space)
-        controls.addArrangedSubview(makeButton("⌫") { [weak self] in self?.onDelete?() })
-        controls.addArrangedSubview(makeButton("↵") { [weak self] in self?.onKey?("\n") })
+        for punctuation: Character in [".", "?"] {
+            let punctuationKey = makeButton(String(punctuation)) { [weak self] in
+                guard let self else { return }
+                self.emitLiteral(punctuation)
+                if self.shifted { self.shifted = false; self.refresh() }
+            }
+            controls.addArrangedSubview(punctuationKey)
+            punctuationKey.widthAnchor.constraint(equalTo: controls.widthAnchor, multiplier: 0.075).isActive = true
+        }
+        controls.addArrangedSubview(makeButton("↵") { [weak self] in self?.emitKey("\n") })
+        for case let button as UIButton in controls.arrangedSubviews {
+            button.titleLabel?.font = .systemFont(ofSize: 16)
+            if button !== space && button.title(for: .normal) != "." && button.title(for: .normal) != "?" {
+                button.widthAnchor.constraint(equalTo: controls.widthAnchor, multiplier: 0.105).isActive = true
+            }
+        }
         rows.addArrangedSubview(controls)
         for row in rows.arrangedSubviews.dropFirst() {
             row.heightAnchor.constraint(equalToConstant: 42).isActive = true
@@ -79,9 +144,126 @@ final class KeyboardView: UIView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func update(mode: Language, automatic: Bool) {
-        english = mode == .english
-        status.setTitle("세토 · \(english ? "영문" : "세벌식 390") · 자동 전환 \(automatic ? "켬" : "끔")", for: .normal)
+        hostEnglish = mode == .english
+        if phraseSession == nil { english = hostEnglish }
         refresh()
+    }
+
+    private func emitKey(_ key: Character) {
+        guard let phraseSession else { onKey?(key); return }
+        if key == "\n" { savePhrase(); return }
+        _ = phraseSession.input(LayoutDubeol.atom(for: key))
+        refreshPhrases()
+    }
+
+    private func emitLiteral(_ key: Character) {
+        guard let phraseSession else { onLiteral?(key); return }
+        _ = phraseSession.input(KeyAtom(english: key, korean: .character(key)))
+        refreshPhrases()
+    }
+
+    private func emitDelete() {
+        guard let phraseSession else { onDelete?(); return }
+        _ = phraseSession.backspace()
+        refreshPhrases()
+    }
+
+    private func toggleLanguage() {
+        guard let phraseSession else { onToggle?(); return }
+        english.toggle()
+        _ = phraseSession.forceMode(english ? .english : .korean)
+        refresh()
+    }
+
+    private func beginPhrase(at index: Int? = nil) {
+        editingPhraseIndex = index
+        let editor = Session(lexicon: Lexicon(english: [], korean: []), autoSwitch: false, mode: english ? .english : .korean)
+        editor.correctsTypos = false
+        if let index {
+            for character in phrases[index] { _ = editor.input(KeyAtom(english: character, korean: .character(character))) }
+        }
+        phraseSession = editor
+        refreshPhrases()
+    }
+
+    private func savePhrase() {
+        guard let text = phraseSession?.document, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        if let index = editingPhraseIndex { phrases[index] = text }
+        else { phrases.append(text) }
+        UserDefaults.standard.set(phrases, forKey: "quickPhrases")
+        phraseSession = nil
+        editingPhraseIndex = nil
+        english = hostEnglish
+        refresh()
+        refreshPhrases()
+    }
+
+    private func refreshPhrases() {
+        for view in phraseBar.arrangedSubviews { phraseBar.removeArrangedSubview(view); view.removeFromSuperview() }
+        if let phraseSession {
+            let draft = UILabel()
+            draft.font = .systemFont(ofSize: 14)
+            draft.textColor = .label
+            draft.text = phraseSession.document.isEmpty ? "저장할 문구를 입력하세요" : phraseSession.document
+            draft.lineBreakMode = .byTruncatingHead
+            draft.accessibilityIdentifier = "phraseDraft"
+            phraseBar.addArrangedSubview(draft)
+            let save = makeButton("저장") { [weak self] in self?.savePhrase() }
+            save.accessibilityIdentifier = "savePhrase"
+            save.isEnabled = !phraseSession.document.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            phraseBar.addArrangedSubview(save)
+            phraseBar.addArrangedSubview(makeButton("취소") { [weak self] in
+                guard let self else { return }
+                self.phraseSession = nil; self.editingPhraseIndex = nil
+                self.english = self.hostEnglish; self.refresh(); self.refreshPhrases()
+            })
+            for button in phraseBar.arrangedSubviews.compactMap({ $0 as? UIButton }) {
+                button.titleLabel?.font = .systemFont(ofSize: 13)
+                button.widthAnchor.constraint(equalToConstant: 40).isActive = true
+            }
+            return
+        }
+        let scroll = UIScrollView()
+        scroll.showsHorizontalScrollIndicator = false
+        let items = UIStackView()
+        items.spacing = 6
+        items.translatesAutoresizingMaskIntoConstraints = false
+        scroll.addSubview(items)
+        NSLayoutConstraint.activate([
+            items.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
+            items.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
+            items.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
+            items.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
+            items.heightAnchor.constraint(equalTo: scroll.frameLayoutGuide.heightAnchor)
+        ])
+        if phrases.isEmpty {
+            let hint = UILabel()
+            hint.text = "＋ 자주 쓰는 문구 등록"
+            hint.textColor = .secondaryLabel
+            hint.font = .systemFont(ofSize: 13)
+            items.addArrangedSubview(hint)
+        }
+        for (index, phrase) in phrases.enumerated() {
+            let button = makeButton(String(phrase.prefix(18))) { [weak self] in self?.onPhrase?(phrase) }
+            button.titleLabel?.font = .systemFont(ofSize: 13)
+            button.accessibilityLabel = phrase
+            button.accessibilityHint = "눌러 입력, 길게 눌러 수정 또는 삭제"
+            button.menu = UIMenu(children: [
+                UIAction(title: "수정", image: UIImage(systemName: "pencil")) { [weak self] _ in self?.beginPhrase(at: index) },
+                UIAction(title: "삭제", image: UIImage(systemName: "trash"), attributes: .destructive) { [weak self] _ in
+                    guard let self else { return }
+                    self.phrases.remove(at: index)
+                    UserDefaults.standard.set(self.phrases, forKey: "quickPhrases")
+                    self.refreshPhrases()
+                }
+            ])
+            items.addArrangedSubview(button)
+        }
+        phraseBar.addArrangedSubview(scroll)
+        let add = makeButton("＋") { [weak self] in self?.beginPhrase() }
+        add.accessibilityLabel = "문구 등록"
+        add.widthAnchor.constraint(equalToConstant: 32).isActive = true
+        phraseBar.addArrangedSubview(add)
     }
 
     @objc private func nextKeyboard(_ sender: UIButton, event: UIEvent) { onNext?(sender, event) }
@@ -100,18 +282,40 @@ final class KeyboardView: UIView {
     }
 
     private func refresh() {
+        for (button, digit, symbol) in numberKeys {
+            let label = NSMutableAttributedString(string: String(digit), attributes: [
+                .font: UIFont.systemFont(ofSize: shifted ? 16 : 21, weight: shifted ? .regular : .semibold),
+                .foregroundColor: shifted ? UIColor.secondaryLabel : UIColor.label
+            ])
+            label.append(NSAttributedString(string: " " + String(symbol), attributes: [
+                .font: UIFont.systemFont(ofSize: 14, weight: shifted ? .semibold : .regular),
+                .foregroundColor: shifted ? UIColor.label : UIColor.secondaryLabel
+            ]))
+            button.setAttributedTitle(label, for: .normal)
+            button.accessibilityLabel = "숫자 \(digit), Shift \(symbol), 현재 \(shifted ? symbol : digit)"
+        }
         for (button, character) in keys {
             let key = output(character)
             let title: String
-            if english || symbols { title = String(key) }
-            else {
-                switch Layout390.atom(for: key).korean {
-                case .jamo(let jamo): title = String(jamo.compat)
-                case .character(let value): title = String(value)
-                }
+            let korean: String
+            switch LayoutDubeol.atom(for: key).korean {
+            case .jamo(let jamo): korean = String(jamo.compat)
+            case .character(let value): korean = String(value)
             }
-            button.setTitle(title, for: .normal)
-            button.accessibilityLabel = "\(title), \(key)"
+            title = english || symbols ? String(key) : korean
+            let secondary = english ? korean : String(key)
+            let label = NSMutableAttributedString(string: title, attributes: [
+                .font: UIFont.systemFont(ofSize: 21, weight: .semibold),
+                .foregroundColor: UIColor.label
+            ])
+            if !symbols && secondary != title {
+                label.append(NSAttributedString(string: "\n" + secondary, attributes: [
+                    .font: UIFont.systemFont(ofSize: 14, weight: .regular),
+                    .foregroundColor: UIColor.secondaryLabel
+                ]))
+            }
+            button.setAttributedTitle(label, for: .normal)
+            button.accessibilityLabel = symbols ? title : "한글 \(korean), 영문 \(key), 현재 \(title)"
         }
     }
 

@@ -6,7 +6,8 @@ import UIKit
 struct HardwareTextEditor: UIViewRepresentable {
     @Binding var text: String
     @Binding var focused: Bool
-    @Binding var modeLabel: String
+    @Binding var mode: Language
+    @Binding var automatic: Bool
 
     func makeUIView(context: Context) -> HardwareTextView {
         let view = HardwareTextView()
@@ -16,13 +17,15 @@ struct HardwareTextEditor: UIViewRepresentable {
         view.autocapitalizationType = .none
         view.smartQuotesType = .no
         view.smartDashesType = .no
-        view.accessibilityLabel = "세벌식 연습장"
+        view.accessibilityLabel = "세토 연습장"
+        view.configure(automatic: automatic, mode: mode)
         updateCallbacks(view)
         return view
     }
 
     func updateUIView(_ view: HardwareTextView, context: Context) {
         updateCallbacks(view)
+        view.configure(automatic: automatic, mode: mode)
         if view.text != text {
             view.text = text
             view.resetSession()
@@ -33,7 +36,8 @@ struct HardwareTextEditor: UIViewRepresentable {
     private func updateCallbacks(_ view: HardwareTextView) {
         view.onText = { text = $0 }
         view.onFocus = { focused = $0 }
-        view.onMode = { modeLabel = $0 }
+        view.onMode = { mode = $0 }
+        view.onAutomatic = { automatic = $0 }
     }
 }
 
@@ -45,20 +49,54 @@ final class HardwareTextView: UITextView, UITextViewDelegate {
         }
         return lexicon
     }()
-    private var session = Session(lexicon: HardwareTextView.lexicon)
+    private(set) var session = Session(lexicon: HardwareTextView.lexicon)
     private var expectedText = ""
     private var expectedSelection = NSRange(location: 0, length: 0)
     private var applying = false
     private var consumed: Set<Int> = []
     var onText: ((String) -> Void)?
     var onFocus: ((Bool) -> Void)?
-    var onMode: ((String) -> Void)?
+    var onMode: ((Language) -> Void)?
+    var onAutomatic: ((Bool) -> Void)?
+    private let touchKeyboard = KeyboardView(frame: CGRect(x: 0, y: 0, width: 0, height: KeyboardView.preferredHeight))
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {
         super.init(frame: frame, textContainer: textContainer)
         delegate = self
+        touchKeyboard.showsInputModeSwitch = false
+        touchKeyboard.autoresizingMask = [.flexibleWidth]
+        touchKeyboard.onKey = { [weak self] character in self?.apply { $0.input(LayoutDubeol.atom(for: character)) } }
+        touchKeyboard.onLiteral = { [weak self] character in
+            guard let self else { return }
+            self.resetSession()
+            self.insertText(String(character))
+            self.resetSession()
+            self.onText?(self.text ?? "")
+        }
+        touchKeyboard.onPhrase = { [weak self] phrase in
+            guard let self else { return }
+            self.resetSession()
+            self.insertText(phrase)
+            self.resetSession()
+            self.onText?(self.text ?? "")
+        }
+        touchKeyboard.onDelete = { [weak self] in self?.handleKey(usage: 42) }
+        touchKeyboard.onToggle = { [weak self] in self?.toggleLanguage() }
+        touchKeyboard.onAutoSwitch = { [weak self] in
+            guard let self else { return }
+            self.session.autoSwitch.toggle()
+            self.onAutomatic?(self.session.autoSwitch)
+            self.refreshKeyboard()
+        }
+        inputView = TouchKeyboardInputView(keyboard: touchKeyboard)
+        refreshKeyboard()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func becomeFirstResponder() -> Bool {
+        (inputView as? TouchKeyboardInputView)?.prepare(bottomInset: window?.safeAreaInsets.bottom ?? 0)
+        return super.becomeFirstResponder()
+    }
 
     override var keyCommands: [UIKeyCommand]? {
         let toggle = UIKeyCommand(input: " ", modifierFlags: .shift, action: #selector(toggleLanguage))
@@ -91,7 +129,7 @@ final class HardwareTextView: UITextView, UITextViewDelegate {
             option: flags.contains(.alternate)
         )
         switch action {
-        case .input(let character): apply { $0.input(character) }
+        case .input(let character): inputCharacter(character)
         case .toggle: toggleLanguage()
         case .backspace:
             synchronize()
@@ -122,8 +160,23 @@ final class HardwareTextView: UITextView, UITextViewDelegate {
         super.pressesCancelled(presses, with: event)
     }
 
+    func configure(automatic: Bool, mode: Language) {
+        session.autoSwitch = automatic
+        if session.mode != mode { _ = session.forceMode(mode) }
+        refreshKeyboard()
+    }
+
+    func inputCharacter(_ character: Character) { apply { $0.input(character) } }
+
+    private func refreshKeyboard() {
+        touchKeyboard.update(mode: session.mode, automatic: session.autoSwitch)
+    }
+
     func resetSession() {
-        session = Session(lexicon: Self.lexicon, mode: session.mode)
+        let correctsTypos = session.correctsTypos
+        session = Session(lexicon: Self.lexicon, autoSwitch: session.autoSwitch, mode: session.mode)
+        session.correctsTypos = correctsTypos
+        refreshKeyboard()
         expectedText = text ?? ""
         expectedSelection = selectedRange
     }
@@ -157,7 +210,8 @@ final class HardwareTextView: UITextView, UITextViewDelegate {
         expectedText = text ?? ""
         expectedSelection = selectedRange
         onText?(expectedText)
-        onMode?(update.mode == .korean ? "한글" : "영문")
+        onMode?(update.mode)
+        refreshKeyboard()
         if session.document.count > 512, session.preedit.isEmpty { resetSession() }
     }
 
@@ -169,4 +223,67 @@ final class HardwareTextView: UITextView, UITextViewDelegate {
     }
     func textViewDidBeginEditing(_ textView: UITextView) { resetSession(); onFocus?(true) }
     func textViewDidEndEditing(_ textView: UITextView) { resetSession(); consumed.removeAll(); onFocus?(false) }
+}
+
+/// UIKit must reserve the full key height plus the home-indicator safe area.
+@MainActor
+final class TouchKeyboardInputView: UIInputView {
+    let keyboard: KeyboardView
+    private var bottomPadding: CGFloat = 0
+    private var keyboardHeight: NSLayoutConstraint!
+
+    init(keyboard: KeyboardView) {
+        self.keyboard = keyboard
+        super.init(frame: CGRect(x: 0, y: 0, width: 0, height: KeyboardView.preferredHeight), inputViewStyle: .keyboard)
+        allowsSelfSizing = true
+        autoresizingMask = [.flexibleWidth]
+        keyboardHeight = heightAnchor.constraint(equalToConstant: KeyboardView.preferredHeight)
+        keyboardHeight.priority = .init(999)
+        keyboardHeight.isActive = true
+        keyboard.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(keyboard)
+        NSLayoutConstraint.activate([
+            keyboard.leadingAnchor.constraint(equalTo: leadingAnchor),
+            keyboard.trailingAnchor.constraint(equalTo: trailingAnchor),
+            keyboard.topAnchor.constraint(equalTo: topAnchor),
+            keyboard.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func prepare(bottomInset: CGFloat) {
+        bottomPadding = max(0, bottomInset)
+        keyboardHeight.constant = fittedHeight
+        frame.size.height = fittedHeight
+        invalidateIntrinsicContentSize()
+        setNeedsLayout()
+    }
+
+    private var fittedHeight: CGFloat {
+        KeyboardView.preferredHeight + bottomPadding
+    }
+
+    override var intrinsicContentSize: CGSize {
+        CGSize(width: UIView.noIntrinsicMetric, height: fittedHeight)
+    }
+
+    override func systemLayoutSizeFitting(_ targetSize: CGSize) -> CGSize {
+        CGSize(width: targetSize.width, height: fittedHeight)
+    }
+
+    override func systemLayoutSizeFitting(_ targetSize: CGSize, withHorizontalFittingPriority horizontalFittingPriority: UILayoutPriority, verticalFittingPriority: UILayoutPriority) -> CGSize {
+        systemLayoutSizeFitting(targetSize)
+    }
+
+    override func safeAreaInsetsDidChange() {
+        super.safeAreaInsetsDidChange()
+        let inset = max(safeAreaInsets.bottom, window?.safeAreaInsets.bottom ?? 0)
+        if inset != bottomPadding { prepare(bottomInset: inset) }
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if let window { prepare(bottomInset: max(safeAreaInsets.bottom, window.safeAreaInsets.bottom)) }
+    }
 }

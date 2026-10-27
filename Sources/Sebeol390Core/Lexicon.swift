@@ -2,6 +2,8 @@ import Foundation
 
 public final class Lexicon: @unchecked Sendable {
     private let english: [String]
+    private var mappedEnglish: MappedWordList?
+    private var mappedValidKorean: MappedWordList?
     private let korean: Set<String>
     /// Large Hangul list used only to refuse auto-correction. Not the language lexicon.
     private let validKorean: Set<String>
@@ -41,12 +43,14 @@ public final class Lexicon: @unchecked Sendable {
 
     public func isEnglishWord(_ word: String) -> Bool {
         let key = word.lowercased()
+        if let mappedEnglish { return mappedEnglish.contains(key) }
         guard let index = lowerBound(key) else { return false }
         return english[index] == key
     }
 
     public func isEnglishPrefix(_ prefix: String) -> Bool {
         let key = prefix.lowercased()
+        if let mappedEnglish { return mappedEnglish.hasPrefix(key) }
         guard !key.isEmpty, let index = lowerBound(key) else { return false }
         return english[index].hasPrefix(key)
     }
@@ -57,12 +61,13 @@ public final class Lexicon: @unchecked Sendable {
 
     /// True when `word` is in the large validity list. Frequent words live in `isKoreanWord`.
     public func isValidKorean(_ word: String) -> Bool {
-        validKorean.contains(word.precomposedStringWithCanonicalMapping)
+        let key = word.precomposedStringWithCanonicalMapping
+        return mappedValidKorean?.contains(key) ?? validKorean.contains(key)
     }
 
     public var koreanWordCount: Int { korean.count }
 
-    public var validKoreanWordCount: Int { validKorean.count }
+    public var validKoreanWordCount: Int { mappedValidKorean?.count ?? validKorean.count }
 
     public func koreanWords() -> [String] {
         Array(korean)
@@ -71,6 +76,7 @@ public final class Lexicon: @unchecked Sendable {
     /// English dictionary entries whose length is inside `range`. The list is
     /// built once; callers use it at a word boundary, not on every key.
     public func englishWords(length: ClosedRange<Int>) -> [String] {
+        if let mappedEnglish { return mappedEnglish.words(length: length) }
         indexLock.lock()
         defer { indexLock.unlock() }
         if englishByLength == nil {
@@ -127,6 +133,20 @@ public final class Lexicon: @unchecked Sendable {
         )
     }
 
+    /// Pre-expanded, sorted word lists avoid constructing hundreds of thousands
+    /// of Strings and Sets during the keyboard extension's launch.
+    public static func loadForKeyboard(from directory: URL) throws -> Lexicon {
+        let result = Lexicon(
+            english: [],
+            korean: try lines(directory.appendingPathComponent("korean-words.txt")),
+            abbreviations: defaultAbbreviations,
+            techStems: defaultTechStems
+        )
+        result.mappedEnglish = try MappedWordList(url: directory.appendingPathComponent("keyboard-english.txt"))
+        result.mappedValidKorean = try MappedWordList(url: directory.appendingPathComponent("keyboard-korean-valid.txt"))
+        return result
+    }
+
     private func lowerBound(_ key: String) -> Int? {
         var low = 0
         var high = english.count
@@ -159,4 +179,56 @@ public final class Lexicon: @unchecked Sendable {
         "png", "jpg", "gif", "svg", "pdf", "usb", "cpu", "gpu", "ram", "api",
         "url", "npm", "js", "ts", "io", "id", "os", "ui", "ux", "db", "ip",
     ]
+}
+
+/// Immutable UTF-8 lines with only a compact offset table resident in memory.
+private final class MappedWordList: @unchecked Sendable {
+    private let data: Data
+    private let offsets: [Int]
+    var count: Int { offsets.count - 1 }
+
+    init(url: URL) throws {
+        data = try Data(contentsOf: url, options: .alwaysMapped)
+        var starts = [0]
+        for index in data.indices where data[index] == 10 { starts.append(index + 1) }
+        if starts.last != data.count { starts.append(data.count) }
+        offsets = starts
+    }
+
+    private func word(at index: Int) -> String {
+        let start = offsets[index]
+        let end = offsets[index + 1]
+        let contentEnd = end > start && data[end - 1] == 10 ? end - 1 : end
+        return String(decoding: data[start..<contentEnd], as: UTF8.self)
+    }
+
+    private func lowerBound(_ key: String) -> Int {
+        var low = 0
+        var high = count
+        while low < high {
+            let mid = (low + high) / 2
+            if word(at: mid) < key { low = mid + 1 } else { high = mid }
+        }
+        return low
+    }
+
+    func contains(_ key: String) -> Bool {
+        let index = lowerBound(key)
+        return index < count && word(at: index) == key
+    }
+
+    func hasPrefix(_ key: String) -> Bool {
+        guard !key.isEmpty else { return false }
+        let index = lowerBound(key)
+        return index < count && word(at: index).hasPrefix(key)
+    }
+
+    func words(length: ClosedRange<Int>) -> [String] {
+        var result: [String] = []
+        for index in 0..<count {
+            let word = word(at: index)
+            if length.contains(word.count) { result.append(word) }
+        }
+        return result
+    }
 }

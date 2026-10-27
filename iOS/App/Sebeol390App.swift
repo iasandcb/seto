@@ -11,7 +11,8 @@ struct Sebeol390App: App {
 private struct ContentView: View {
     @AppStorage("practiceText") private var text = ""
     @State private var focused = false
-    @State private var hardwareMode = "한글"
+    @AppStorage("app.inputMode") private var inputMode: Language = .korean
+    @AppStorage("app.autoSwitch") private var automatic = true
     @State private var expanded = false
     @State private var markVectorOpen = false
 
@@ -20,7 +21,7 @@ private struct ContentView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("손끝에 익은 세벌식.").font(.largeTitle.bold())
+                        Text("손끝에 익은 한글 자판.").font(.largeTitle.bold())
                         Text("아이폰에서도 세토와 함께 쓰세요.")
                             .foregroundStyle(.secondary)
                     }
@@ -49,13 +50,14 @@ private struct ContentView: View {
                                 Label("최대화", systemImage: "arrow.up.left.and.arrow.down.right")
                             }.font(.subheadline)
                         }
-                        Text("터치는 지구본에서 세토를 선택하세요. 하드웨어 키보드는 이 연습장에서 바로 입력할 수 있습니다.").font(.subheadline).foregroundStyle(.secondary)
-                        HardwareTextEditor(text: $text, focused: $focused, modeLabel: $hardwareMode)
+                        Text("터치·하드웨어 키보드 모두 바로 입력할 수 있습니다.").font(.subheadline).foregroundStyle(.secondary)
+                        InputControls(mode: $inputMode, automatic: $automatic)
+                        HardwareTextEditor(text: $text, focused: $focused, mode: $inputMode, automatic: $automatic)
                             .frame(height: 180)
                             .padding(8)
                             .background(.background, in: RoundedRectangle(cornerRadius: 12))
                             .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
-                            .accessibilityLabel("세벌식 연습장")
+                            .accessibilityLabel("세토 연습장")
                         HStack {
                             Button("키보드 닫기") { focused = false }
                             Spacer()
@@ -64,12 +66,12 @@ private struct ContentView: View {
                             Button("지우기", role: .destructive) { text = "" }
                         }.font(.subheadline)
                     }
-                    GroupBox("하드웨어 키보드 · " + hardwareMode) {
+                    GroupBox("하드웨어 키보드 · " + inputMode.displayName) {
                         Text("연습장을 누른 뒤 입력하세요. Shift+Space로 한/영을 전환하거나 직전 자동 변환을 되돌립니다. 연결된 키보드의 물리 QWERTY 위치를 사용하며, 방향키와 ⌘ 복사·붙여넣기를 지원합니다. 다른 앱의 하드웨어 입력에는 적용되지 않습니다.")
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     GroupBox("세토 사용법") {
-                        Text("숫자열도 자모인 390 배열입니다. ⇧로 윗글자를 입력하고, 한/영 ↶로 언어를 바꾸거나 방금 자동 변환한 단어를 되돌립니다. 상단 표시를 누르면 자동 전환을 켜고 끕니다.")
+                        Text("터치는 기본 한글 두벌식 배열이며, 외부 키보드는 세벌식 390으로 입력합니다. 맨 위 숫자 키는 ⇧와 함께 누르면 기호가 입력됩니다. 한/영 ↶로 언어를 바꾸거나 방금 자동 변환한 단어를 되돌리고, 상단 ＋로 자주 쓰는 문구를 등록하고 눌러 바로 입력합니다.")
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     Text("입력은 기기 안에서 처리합니다. 전체 접근 권한이 필요하지 않습니다. 암호 입력란 등에서는 iOS 기본 키보드가 표시됩니다.")
@@ -92,14 +94,18 @@ private struct ExpandedPracticeView: View {
     @Binding var text: String
     @Environment(\.dismiss) private var dismiss
     @State private var focused = false
-    @State private var mode = "한글"
+    @AppStorage("app.inputMode") private var mode: Language = .korean
+    @AppStorage("app.autoSwitch") private var automatic = true
 
     var body: some View {
         NavigationStack {
-            HardwareTextEditor(text: $text, focused: $focused, modeLabel: $mode)
+            VStack(spacing: 8) {
+                InputControls(mode: $mode, automatic: $automatic).padding(.horizontal, 16)
+                HardwareTextEditor(text: $text, focused: $focused, mode: $mode, automatic: $automatic)
+            }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(.horizontal, 12)
-                .navigationTitle("연습장 · " + mode)
+                .navigationTitle("연습장")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .navigationBarLeading) {
@@ -139,6 +145,31 @@ struct CopyPracticeButton: View {
             do { try await Task.sleep(for: .seconds(2)) }
             catch { return }
             copied = false
+        }
+    }
+}
+
+extension Language {
+    var displayName: String { self == .korean ? "한글" : "영문" }
+}
+
+/// All native editors bind to the same saved settings. The mode follows the
+/// core's confirmed language, including Shift+Space and automatic conversion.
+struct InputControls: View {
+    @Binding var mode: Language
+    @Binding var automatic: Bool
+
+    var body: some View {
+        HStack(spacing: 16) {
+            Button { mode = mode.flipped } label: {
+                Label(mode.displayName, systemImage: "keyboard")
+                    .font(.subheadline.weight(.semibold))
+            }
+            .buttonStyle(.bordered)
+            .accessibilityLabel("현재 입력 모드 " + mode.displayName + ", 한영 전환")
+            Toggle("자동 한/영", isOn: $automatic)
+                .font(.subheadline)
+                .accessibilityLabel("한영 자동 변환")
         }
     }
 }
