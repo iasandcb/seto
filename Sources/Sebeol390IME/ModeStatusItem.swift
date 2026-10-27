@@ -26,7 +26,15 @@ final class ModeStatusItem {
     func update(owner: ObjectIdentifier, mode: Language) {
         guard self.owner == owner, displayedMode != mode else { return }
         let description = mode == .korean ? "세토 · 한글 (세벌식 390)" : "세토 · 영문 (QWERTY)"
-        item.button?.title = mode == .korean ? "한" : "A"
+        // Match the optical baseline of neighboring menu-bar icons.
+        item.button?.attributedTitle = NSAttributedString(
+            string: mode == .korean ? "한" : "A",
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 14, weight: .semibold),
+                .foregroundColor: NSColor.labelColor,
+                .baselineOffset: -1,
+            ]
+        )
         item.button?.toolTip = description
         item.button?.setAccessibilityLabel(description)
         displayedMode = mode
