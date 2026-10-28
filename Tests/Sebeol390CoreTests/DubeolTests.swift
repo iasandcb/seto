@@ -61,3 +61,24 @@ import Foundation
         }
     }
 }
+
+@Test func dubeolChatReactionsOverrideEnglishDictionaryInBothModes() throws {
+    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    let bundle = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: bundle, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: bundle) }
+    for name in ["keyboard-english.txt", "keyboard-korean-valid.txt"] {
+        try FileManager.default.copyItem(at: root.appendingPathComponent("iOS/Keyboard/Resources/" + name), to: bundle.appendingPathComponent(name))
+    }
+    try FileManager.default.copyItem(at: root.appendingPathComponent("Resources/korean-words.txt"), to: bundle.appendingPathComponent("korean-words.txt"))
+    let lexicon = try Lexicon.loadForKeyboard(from: bundle)
+    for initial in [Language.korean, .english] {
+        for (keys, expected) in [("dd", "ㅇㅇ"), ("ddd", "ㅇㅇㅇ"), ("zz", "ㅋㅋ"), ("gg", "ㅎㅎ"), ("bb", "ㅠㅠ"), ("nn", "ㅜㅜ")] {
+            let session = Session(lexicon: lexicon, mode: initial)
+            for key in keys { _ = session.input(LayoutDubeol.atom(for: key)) }
+            #expect(session.document == expected, "\(initial) \(keys): \(session.document)")
+            _ = session.input(LayoutDubeol.atom(for: " "))
+            #expect(session.document == expected + " ")
+        }
+    }
+}

@@ -85,7 +85,7 @@ final class KeyboardView: UIView {
                 let leading: UIView
                 let trailing: UIView
                 if letters.count == 7 {
-                    leading = makeButton("⇧") { [weak self] in self?.shifted.toggle(); self?.refresh() }
+                    leading = makeButton("⇧", event: .touchDown) { [weak self] in self?.shifted.toggle(); self?.refresh() }
                     trailing = makeButton("⌫") { [weak self] in self?.emitDelete() }
                     inset.spacing = 14
                 } else {
@@ -393,11 +393,11 @@ final class KeyboardView: UIView {
         button.setTitleColor(.label, for: .normal)
     }
 
-    private func makeButton(_ title: String, action: @escaping () -> Void) -> UIButton {
+    private func makeButton(_ title: String, event: UIControl.Event = .touchUpInside, action: @escaping () -> Void) -> UIButton {
         let button = UIButton(type: .system)
         style(button)
         button.setTitle(title, for: .normal)
-        button.addAction(UIAction { _ in action() }, for: .touchUpInside)
+        button.addAction(UIAction { _ in action() }, for: event)
         return button
     }
 }

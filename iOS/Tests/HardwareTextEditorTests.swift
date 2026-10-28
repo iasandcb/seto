@@ -249,7 +249,7 @@ final class TouchKeyboardLayoutTests: XCTestCase {
         XCTAssertTrue(preview.isHidden)
         XCTAssertEqual(inserted, ["q"])
         let shift = keys.first { $0.title(for: .normal) == "⇧" }!
-        shift.sendActions(for: .touchUpInside)
+        shift.sendActions(for: .touchDown)
         let one = keys.first { $0.accessibilityLabel?.hasPrefix("숫자 1,") == true }!
         one.sendActions(for: .touchDown)
         XCTAssertEqual(label.text, "!")
@@ -414,6 +414,7 @@ final class TouchKeyboardLayoutTests: XCTestCase {
         keyboard.onLiteral = { inserted.append($0) }
         let shift = keys.first { $0.title(for: .normal) == "⇧" }!
         let one = keys.first { $0.accessibilityLabel?.hasPrefix("숫자 1,") == true }!
+        shift.sendActions(for: .touchDown)
         shift.sendActions(for: .touchUpInside)
         one.sendActions(for: .touchUpInside)
         one.sendActions(for: .touchUpInside)

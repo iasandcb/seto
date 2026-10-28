@@ -445,13 +445,18 @@ public final class Session {
 
         if keys.allSatisfy(\.isDubeol) {
             let koreanText = Composer.compose(keys).text
-            let knownWhole = lexicon.isKoreanWord(koreanText) || lexicon.isValidKorean(koreanText)
+            // Common chat reactions outrank dictionary abbreviations such as
+            // dd, even when the word starts in English mode.
+            let isChatReaction = koreanText.count >= 2
+                && koreanText.allSatisfy { $0 == koreanText.first }
+                && koreanText.first.map { "ㅇㅋㅎㅠㅜ".contains($0) } == true
+            let knownWhole = isChatReaction || lexicon.isKoreanWord(koreanText) || lexicon.isValidKorean(koreanText)
             let knownStem = KoreanEndings.split(koreanText).map {
                 lexicon.isKoreanWord($0.stem) || lexicon.isValidKorean($0.stem)
             } ?? false
             let spelling = englishText(0..<keys.count)
             if (knownWhole || knownStem),
-               mode == .korean || knownStem || !lexicon.isEnglishWord(spelling) {
+               isChatReaction || mode == .korean || knownStem || !lexicon.isEnglishWord(spelling) {
                 let korean = [Segment(start: 0, end: keys.count, lang: .korean)]
                 let changed = previous.flatMap { extend($0, to: keys.count) }
                     .map { render(korean) != render($0) } ?? false
