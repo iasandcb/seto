@@ -179,6 +179,28 @@ private func press(_ raw: Character, modifiers: NSEvent.ModifierFlags = [], cont
                 }
             }
         }
+        // Re-entering an input context starts in Korean, including after a
+        // manually selected English mode. Leaving preserves marked text.
+        for manualEnglish in [false, true] {
+            cases += 1
+            let controller = SebeolInputController()
+            let first = SmokeClient()
+            controller.beginInputContext()
+            if manualEnglish {
+                precondition(press(" ", modifiers: [.shift], controller: controller, client: first))
+            } else {
+                for raw in "hello " { precondition(press(raw, controller: controller, client: first)) }
+            }
+            controller.commitComposition(first)
+            let second = SmokeClient()
+            controller.beginInputContext()
+            for raw in "namu" { precondition(press(raw, controller: controller, client: second)) }
+            controller.commitComposition(second)
+            if second.text != "ㅅㅇㅎㄷ" || second.mark.length != 0 {
+                print("FAIL activation reset manualEnglish=\(manualEnglish): \(second.text)")
+                failures += 1
+            }
+        }
         print("IMK client integration: \(cases) cases, \(failures) failures")
         exit(failures == 0 ? 0 : 1)
     }

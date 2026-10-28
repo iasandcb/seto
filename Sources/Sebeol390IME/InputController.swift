@@ -5,7 +5,7 @@ import Sebeol390Core
 
 @objc(SebeolInputController)
 final class SebeolInputController: IMKInputController, NSMenuDelegate {
-    private var session: Session = {
+    private static func makeSession() -> Session {
         let session = Session(
             lexicon: SharedLexicon.lexicon,
             autoSwitch: Preferences.autoSwitch,
@@ -14,13 +14,19 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         )
         session.correctsTypos = Preferences.correctsTypos
         return session
-    }()
+    }
+    private var session = SebeolInputController.makeSession()
     private var sawCapsLockDown = false
     private var active = false
     private var clientUpdateDepth = 0
 
     override func activateServer(_ sender: Any!) {
         super.activateServer(sender)
+        // Each newly activated input context starts in Korean. A fresh session
+        // also drops the previous field's English context and undo history.
+        if !active {
+            beginInputContext()
+        }
         active = true
         let owner = ObjectIdentifier(self)
         let mode = session.mode
@@ -31,6 +37,13 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         MainActor.assumeIsolated {
             ModeStatusItem.shared.activate(owner: owner, mode: mode, menu: statusMenu)
         }
+    }
+
+    // Kept separate from IMK activation so the reset can be exercised by a
+    // mock client without an InputMethodKit server connection.
+    func beginInputContext() {
+        session = Self.makeSession()
+        sawCapsLockDown = false
     }
 
     override func recognizedEvents(_ sender: Any!) -> Int {

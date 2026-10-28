@@ -704,8 +704,11 @@ public final class Session {
         if keys.isEmpty { return jamo.kind == .choseong }
         // Recognized English spellings still own their punctuation: of;,
         // it!, don't, filenames, and paths must not become Korean fragments.
-        if prefersWholeEnglishWord() || prefersWholeEnglishCode()
-            || lexicon.isCodeToken(englishText(0..<keys.count)) { return false }
+        // A prefix alone (jd in jdb/jdeps) must leave the next initial
+        // available: jd;ts is 이번. Complete English words still own it.
+        let spelling = englishText(0..<keys.count)
+        if lexicon.isEnglishWord(spelling) || prefersWholeEnglishCode()
+            || lexicon.isCodeToken(spelling) { return false }
         switch shape(of: Composer.compose(keys + [atom]).pieces) {
         case .clean(let syllables), .trailing(let syllables):
             return syllables > 0
@@ -1138,6 +1141,9 @@ public final class Session {
         guard spelling.count >= 2, spelling.allSatisfy(\.isLetter) else { return false }
         guard keys.contains(where: isShiftedLetter) else { return false }
         guard !keys.allSatisfy(isPadDigit) else { return false }
+        // Unknown acronyms (DJI → D48) still carry explicit uppercase intent.
+        // Pure 390 digit runs retain their number reading above.
+        if spelling.allSatisfy(\.isUppercase) { return true }
         if lexicon.isAbbreviation(spelling) { return true }
         let lower = spelling.lowercased()
         return lexicon.isEnglishWord(lower) || lexicon.isEnglishPrefix(lower)
@@ -1230,13 +1236,20 @@ public final class Session {
         return 0
     }
 
-    /// A period after Hangul commits the word. A period inside an English or
-    /// dotted token ("agents.md", "a.b.c", "https://…") stays in that token.
+    /// A period after a Hangul syllable commits the word. After an English
+    /// token or bare jamo label, it stays available for a filename or domain.
     private func continuesAsCode(_ atom: KeyAtom) -> Bool {
         guard autoSwitch, locked == nil, !keys.isEmpty else { return false }
         guard CodeToken.joiners.contains(atom.english) || (mode == .english && atom.english == "/") else { return false }
         if !segments.isEmpty, segments.allSatisfy({ $0.lang == .english }) {
             return true
+        }
+        // Bare jamo such as namu → ㅅㅇㅎㄷ can be a domain label.
+        // Keep the period in the buffer so code scoring can recover namu.wiki.
+        // A composed Korean syllable still ends its word at a period.
+        if atom.english == ".", keys.allSatisfy({ $0.english.isLetter }) {
+            let pieces = Composer.compose(keys).pieces
+            if pieces.count >= 2, pieces.allSatisfy(isBarePiece) { return true }
         }
         guard keys.count == 1, CodeToken.starters.contains(atom.english) else { return false }
         if case .singleBare = bufferShape() { return true }

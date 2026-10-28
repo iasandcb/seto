@@ -164,6 +164,20 @@ private let lexicon: Lexicon = {
     }
 }
 
+@Test func koreanInitialAfterEnglishPrefixKeepsComposition() {
+    for word in ["이번", "이번주"] {
+        let keys = SebeolKeys.keys(for: word)!
+        for suffix in ["", " "] {
+            assertTypes(keys + suffix, word + suffix, mode: .english)
+            #expect(clientFailures(keys + suffix, word + suffix, mode: .english).isEmpty)
+        }
+    }
+    // A complete command still owns its following punctuation.
+    for command in ["jdb;", "jdeps;"] {
+        assertTypes(command, command, mode: .english)
+    }
+}
+
 @Test func shortShellCommandsAreNotBareJamo() {
     for word in ["cd", "ls", "cp", "rm"] {
         let session = Session(lexicon: lexicon, mode: .korean)
@@ -208,6 +222,20 @@ private let lexicon: Lexicon = {
             #expect(session.mode == .korean)
         }
     }
+}
+
+@Test func unknownUppercaseAcronymsStayEnglishInKoreanMode() {
+    for acronym in ["DJI", "DJ", "ZJI"] {
+        for suffix in ["", " ", "."] {
+            let typed = acronym + suffix
+            assertTypes(typed, typed, mode: .korean)
+            #expect(clientFailures(typed, typed, mode: .korean).isEmpty)
+        }
+    }
+    // Shifted keys that all belong to the 390 number pad remain numbers.
+    assertTypes("JI", "48", mode: .korean)
+    assertTypes("OK", "95", mode: .korean)
+    assertTypes("MN", "10", mode: .korean)
 }
 
 @Test func shiftedKeysFollowConfirmedMode() {
@@ -267,6 +295,16 @@ private let lexicon: Lexicon = {
     _ = session.type("agents.md ")
     _ = session.type(SebeolKeys.keys(for: "입력")!)
     #expect(session.document == "agents.md 입력", "\(session.debugLine)")
+}
+
+@Test func bareJamoDomainLabelRecoversEnglishAtPeriod() {
+    assertTypes("namu", "ㅅㅇㅎㄷ", mode: .korean)
+    for text in ["namu.", "namu.wiki", "namu.wiki ", "namu.wiki/test"] {
+        assertTypes(text, text, mode: .korean)
+        #expect(clientFailures(text, text, mode: .korean).isEmpty)
+    }
+    let manual = Session(lexicon: lexicon, autoSwitch: false, mode: .korean)
+    #expect(manual.type("namu.") == "ㅅㅇㅎㄷ.")
 }
 
 @Test func koreanParticlesAfterFileNames() throws {
