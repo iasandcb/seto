@@ -5,12 +5,13 @@ import Sebeol390Core
 
 @objc(SebeolInputController)
 final class SebeolInputController: IMKInputController, NSMenuDelegate {
-    private static func makeSession() -> Session {
+    private static func makeSession(mode: Language = .korean) -> Session {
         let session = Session(
             lexicon: SharedLexicon.lexicon,
             autoSwitch: Preferences.autoSwitch,
-            mode: .korean,
-            typos: SharedTypoLog.store
+            mode: mode,
+            typos: SharedTypoLog.store,
+            layout: Preferences.layout
         )
         session.correctsTypos = Preferences.correctsTypos
         return session
@@ -30,12 +31,13 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         active = true
         let owner = ObjectIdentifier(self)
         let mode = session.mode
+        let layout = session.layout
         // IMK's Objective-C callbacks run on the main thread but do not carry
         // Swift actor annotations. Bridge this menu into the main actor below.
         nonisolated(unsafe) let statusMenu = NSMenu(title: "세토")
         statusMenu.delegate = self
         MainActor.assumeIsolated {
-            ModeStatusItem.shared.activate(owner: owner, mode: mode, menu: statusMenu)
+            ModeStatusItem.shared.activate(owner: owner, mode: mode, layout: layout, menu: statusMenu)
         }
     }
 
@@ -53,8 +55,12 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
 
     override func handle(_ event: NSEvent!, client sender: Any!) -> Bool {
         guard let event, let client = sender as? IMKTextInput else { return false }
-        syncPreferences()
         if event.type == .flagsChanged {
+            if IsSecureEventInputEnabled() {
+                apply(session.discard(), client: client)
+                return false
+            }
+            syncPreferences(client: client)
             return handleFlags(event, client: client)
         }
         guard event.type == .keyDown else { return false }
@@ -71,6 +77,7 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
             apply(session.discard(), client: client)
             return false
         }
+        syncPreferences(client: client)
         let shortcutFlags = flags.intersection([.command, .control, .option, .shift, .function])
         if shortcutFlags == .control {
             let arrow: Character?
@@ -151,8 +158,9 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         guard active else { return }
         let owner = ObjectIdentifier(self)
         let mode = session.mode
+        let layout = session.layout
         MainActor.assumeIsolated {
-            ModeStatusItem.shared.update(owner: owner, mode: mode)
+            ModeStatusItem.shared.update(owner: owner, mode: mode, layout: layout)
         }
     }
 
@@ -175,12 +183,22 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         typos.state = session.correctsTypos ? .on : .off
         typos.target = self
         menu.addItem(.separator())
-        let korean = menu.addItem(withTitle: "한글 (세벌식 390)", action: #selector(selectKorean(_:)), keyEquivalent: "")
+        let korean = menu.addItem(withTitle: "한글 (\(session.layout.title))", action: #selector(selectKorean(_:)), keyEquivalent: "")
         korean.state = session.mode == .korean ? .on : .off
         korean.target = self
         let english = menu.addItem(withTitle: "영문 (QWERTY)", action: #selector(selectEnglish(_:)), keyEquivalent: "")
         english.state = session.mode == .english ? .on : .off
         english.target = self
+        menu.addItem(.separator())
+        let layouts = menu.addItem(withTitle: "한글 자판", action: nil, keyEquivalent: "")
+        let layoutMenu = NSMenu(title: "한글 자판")
+        for layout in KeyboardLayout.allCases {
+            let entry = layoutMenu.addItem(withTitle: layout.title, action: #selector(selectLayout(_:)), keyEquivalent: "")
+            entry.representedObject = layout.rawValue
+            entry.state = session.layout == layout ? .on : .off
+            entry.target = self
+        }
+        layouts.submenu = layoutMenu
         menu.addItem(.separator())
         let dictionaries = menu.addItem(withTitle: "단어 사전", action: nil, keyEquivalent: "")
         let dictionaryMenu = NSMenu(title: "단어 사전")
@@ -245,7 +263,7 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
             let loaded = try Lexicon.load(from: SharedLexicon.editableDirectory())
             if let client = client() { apply(session.commitDisplayed(), client: client) }
             let replacement = Session(lexicon: loaded, autoSwitch: session.autoSwitch,
-                                      mode: session.mode, typos: SharedTypoLog.store)
+                                      mode: session.mode, typos: SharedTypoLog.store, layout: session.layout)
             replacement.correctsTypos = session.correctsTypos
             SharedLexicon.lexicon = loaded
             session = replacement
@@ -273,7 +291,23 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         Preferences.correctsTypos = session.correctsTypos
     }
 
-    private func syncPreferences() {
+    @objc private func selectLayout(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let layout = KeyboardLayout(rawValue: raw) else { return }
+        Preferences.layout = layout
+        syncPreferences()
+        updateModeStatus()
+    }
+
+    private func syncPreferences(client inputClient: (any IMKTextInput)? = nil) {
+        if session.layout != Preferences.layout {
+            let update = session.commitDisplayed()
+            if update.field != .none, let client = inputClient ?? client() {
+                apply(update, client: client)
+            }
+            session = Self.makeSession(mode: session.mode)
+            updateModeStatus()
+        }
         session.autoSwitch = Preferences.autoSwitch
         session.correctsTypos = Preferences.correctsTypos
     }
@@ -446,6 +480,14 @@ enum SharedTypingStatistics {
 
 /// Menu toggles. Missing keys stay on, which is the default.
 enum Preferences {
+    static var layout: KeyboardLayout {
+        get {
+            UserDefaults.standard.string(forKey: "keyboardLayout")
+                .flatMap(KeyboardLayout.init(rawValue:)) ?? .sebeol390
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: "keyboardLayout") }
+    }
+
     private static let autoSwitchKey = "autoSwitch"
     private static let correctTyposKey = "correctTypos"
 

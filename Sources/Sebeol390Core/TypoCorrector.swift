@@ -60,7 +60,7 @@ public enum TypoCorrector {
         let typed = String(keys.map(\.english))
         guard typed.count >= 2 else { return nil }
         var winner: String?
-        for candidate in frequentCandidates(lexicon) {
+        for candidate in frequentCandidates(lexicon, layout: keys.first?.layout ?? .sebeol390) {
             guard isOneKeySubstitution(typed, candidate.keys) else { continue }
             if let winner, winner != candidate.word { return nil }
             winner = candidate.word
@@ -203,18 +203,18 @@ public enum TypoCorrector {
 
     private final class CandidateCache: @unchecked Sendable {
         let lock = NSLock()
-        var stored: [ObjectIdentifier: (count: Int, rows: [FrequentCandidate])] = [:]
+        var stored: [ObjectIdentifier: [KeyboardLayout: (count: Int, rows: [FrequentCandidate])]] = [:]
     }
 
     private static let candidateCache = CandidateCache()
 
     /// Frequent words, and each of those words with one grammatical ending.
     /// The ending's keys are part of the same one-key comparison.
-    private static func frequentCandidates(_ lexicon: Lexicon) -> [FrequentCandidate] {
+    private static func frequentCandidates(_ lexicon: Lexicon, layout: KeyboardLayout) -> [FrequentCandidate] {
         candidateCache.lock.lock()
         defer { candidateCache.lock.unlock() }
         let key = ObjectIdentifier(lexicon)
-        if let hit = candidateCache.stored[key], hit.count == lexicon.koreanWordCount {
+        if let hit = candidateCache.stored[key]?[layout], hit.count == lexicon.koreanWordCount {
             return hit.rows
         }
         var rows: [FrequentCandidate] = []
@@ -225,14 +225,14 @@ public enum TypoCorrector {
             rows.append(FrequentCandidate(word: word, keys: keys))
         }
         for word in lexicon.koreanWords() {
-            guard let keys = keystrokes(for: word) else { continue }
+            guard let keys = keystrokes(for: word, layout: layout) else { continue }
             add(word, keys)
             for ending in KoreanEndings.longestFirst {
-                guard let tail = keystrokes(for: ending) else { continue }
+                guard let tail = keystrokes(for: ending, layout: layout) else { continue }
                 add(word + ending, keys + tail)
             }
         }
-        candidateCache.stored[key] = (lexicon.koreanWordCount, rows)
+        candidateCache.stored[key, default: [:]][layout] = (lexicon.koreanWordCount, rows)
         return rows
     }
 
@@ -250,16 +250,16 @@ public enum TypoCorrector {
         return mismatches == 1
     }
 
-    private static func keystrokes(for word: String) -> String? {
+    private static func keystrokes(for word: String, layout: KeyboardLayout) -> String? {
         var result = ""
         for character in word.precomposedStringWithCanonicalMapping {
-            guard let part = keystrokes(for: character) else { return nil }
+            guard let part = keystrokes(for: character, layout: layout) else { return nil }
             result += part
         }
         return result.isEmpty ? nil : result
     }
 
-    private static func keystrokes(for syllable: Character) -> String? {
+    private static func keystrokes(for syllable: Character, layout: KeyboardLayout) -> String? {
         guard let scalar = syllable.unicodeScalars.first, syllable.unicodeScalars.count == 1 else { return nil }
         let value = scalar.value
         guard (0xAC00...0xD7A3).contains(value) else { return nil }
@@ -267,18 +267,19 @@ public enum TypoCorrector {
         let cho = 0x1100 + code / 588
         let jung = 0x1161 + (code % 588) / 28
         let jong = code % 28
-        guard let choKeys = keySequence(.choseong, cho), let jungKeys = keySequence(.jungseong, jung) else { return nil }
+        guard let choKeys = keySequence(.choseong, cho, layout: layout), let jungKeys = keySequence(.jungseong, jung, layout: layout) else { return nil }
         var text = choKeys + jungKeys
         if jong != 0 {
-            guard let jongKeys = keySequence(.jongseong, 0x11A8 + jong - 1) else { return nil }
+            guard let jongKeys = keySequence(.jongseong, 0x11A8 + jong - 1, layout: layout) else { return nil }
             text += jongKeys
         }
         return text
     }
 
-    /// A letter key wins over a digit that produces the same jamo. ㄲ·ㄸ·ㅃ·ㅆ·ㅉ
-    /// and compound vowels or batchim are the two keys that merge into them.
-    private static func keySequence(_ kind: JamoKind, _ scalar: UInt32) -> String? {
+    /// Prefer a direct key for the selected layout, then try two merging keys.
+    /// A lowercase letter wins over a digit that produces the same jamo.
+    private static func keySequence(_ kind: JamoKind, _ scalar: UInt32, layout: KeyboardLayout) -> String? {
+        let canonicalKey = canonicalKeys[layout]!
         let target = Jamo(scalar: scalar, kind: kind)
         if let key = canonicalKey[target] { return String(key) }
         for (first, firstKey) in canonicalKey where first.kind == kind {
@@ -291,21 +292,34 @@ public enum TypoCorrector {
         return nil
     }
 
-    private static let canonicalKey: [Jamo: Character] = {
+    private static let canonicalKeys: [KeyboardLayout: [Jamo: Character]] = {
+        var layouts: [KeyboardLayout: [Jamo: Character]] = [:]
+        for layout in KeyboardLayout.allCases {
+            layouts[layout] = canonicalKey(for: layout)
+        }
+        return layouts
+    }()
+
+    private static func canonicalKey(for layout: KeyboardLayout) -> [Jamo: Character] {
         var map: [Jamo: Character] = [:]
         for character in Array("abcdefghijklmnopqrstuvwxyz") {
-            if case .jamo(let jamo) = Layout390.atom(for: character).korean {
+            if case .jamo(let jamo) = layout.atom(for: character).korean {
                 map[jamo] = character
             }
         }
         let rest = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789`-=[]\\;',./~!@#$%^&*()_+{}|:\"<>?")
         for character in rest {
-            if case .jamo(let jamo) = Layout390.atom(for: character).korean, map[jamo] == nil {
+            if case .jamo(let jamo) = layout.atom(for: character).korean, map[jamo] == nil {
                 map[jamo] = character
             }
         }
+        if layout == .dubeol {
+            for (jamo, key) in Array(map) where jamo.kind == .choseong {
+                if let final = LayoutDubeol.final(forInitial: jamo) { map[final] = key }
+            }
+        }
         return map
-    }()
+    }
 
     private static let keyPosition: [Character: (Int, Int)] = {
         let rows = ["`1234567890-=", "qwertyuiop[]\\", "asdfghjkl;'", "zxcvbnm,./"]

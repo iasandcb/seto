@@ -10,22 +10,23 @@ final class ModeStatusItem {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private var owner: ObjectIdentifier?
     private var displayedMode: Language?
+    private var displayedLayout: KeyboardLayout?
 
     private init() {
         item.isVisible = false
         item.button?.font = .systemFont(ofSize: 14, weight: .semibold)
     }
 
-    func activate(owner: ObjectIdentifier, mode: Language, menu: NSMenu) {
+    func activate(owner: ObjectIdentifier, mode: Language, layout: KeyboardLayout = .sebeol390, menu: NSMenu) {
         self.owner = owner
         item.menu = menu
-        update(owner: owner, mode: mode)
+        update(owner: owner, mode: mode, layout: layout)
         item.isVisible = true
     }
 
-    func update(owner: ObjectIdentifier, mode: Language) {
-        guard self.owner == owner, displayedMode != mode else { return }
-        let description = mode == .korean ? "세토 · 한글 (세벌식 390)" : "세토 · 영문 (QWERTY)"
+    func update(owner: ObjectIdentifier, mode: Language, layout: KeyboardLayout = .sebeol390) {
+        guard self.owner == owner, displayedMode != mode || displayedLayout != layout else { return }
+        let description = mode == .korean ? "세토 · 한글 (\(layout.title))" : "세토 · 영문 (QWERTY)"
         // Match the optical baseline of neighboring menu-bar icons.
         item.button?.attributedTitle = NSAttributedString(
             string: mode == .korean ? "한" : "A",
@@ -38,6 +39,7 @@ final class ModeStatusItem {
         item.button?.toolTip = description
         item.button?.setAccessibilityLabel(description)
         displayedMode = mode
+        displayedLayout = layout
     }
 
     func hide(owner: ObjectIdentifier) {
@@ -47,5 +49,6 @@ final class ModeStatusItem {
         item.menu = nil
         self.owner = nil
         displayedMode = nil
+        displayedLayout = nil
     }
 }

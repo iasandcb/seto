@@ -60,9 +60,13 @@ private func press(_ raw: Character, modifiers: NSEvent.ModifierFlags = [], cont
         NSApplication.shared.setActivationPolicy(.accessory)
         var failures = 0
         var cases = 0
+        let previousLayout = UserDefaults.standard.object(forKey: "keyboardLayout")
+        Preferences.layout = .sebeol390
         let previousAutomatic = UserDefaults.standard.object(forKey: "autoSwitch")
         UserDefaults.standard.set(true, forKey: "autoSwitch")
         defer {
+            if let previousLayout { UserDefaults.standard.set(previousLayout, forKey: "keyboardLayout") }
+            else { UserDefaults.standard.removeObject(forKey: "keyboardLayout") }
             if let previousAutomatic { UserDefaults.standard.set(previousAutomatic, forKey: "autoSwitch") }
             else { UserDefaults.standard.removeObject(forKey: "autoSwitch") }
         }
@@ -201,6 +205,79 @@ private func press(_ raw: Character, modifiers: NSEvent.ModifierFlags = [], cont
                 failures += 1
             }
         }
+        // Each controller reads the persisted layout, and menu selections retain
+        // the current language. Reentrant editor callbacks also apply here.
+        for layout in KeyboardLayout.allCases {
+            for callbacks in [false, true] {
+                Preferences.layout = layout
+                let controller = SebeolInputController()
+                let client = SmokeClient()
+                if callbacks {
+                    let commit = { [weak controller, weak client] in
+                        guard let client else { return }
+                        controller?.commitComposition(client)
+                    }
+                    client.onInsert = commit
+                    client.onMark = commit
+                }
+                let keys = layout == .dubeol ? "gksrmf" : "mfskgw"
+                for raw in keys { precondition(press(raw, controller: controller, client: client)) }
+                // Change preferences while Hangul is marked. The next physical
+                // event must commit using the old layout and start the new one.
+                Preferences.layout = layout == .dubeol ? .sebeolFinal : .dubeol
+                let next = Preferences.layout == .dubeol ? "r" : "k"
+                precondition(press(Character(next), controller: controller, client: client))
+                controller.commitComposition(client)
+                cases += 1
+                if client.text != "한글ㄱ" || client.mark.length != 0 {
+                    print("FAIL layout switch \(layout): \(client.text)")
+                    failures += 1
+                }
+            }
+            Preferences.layout = layout
+            let controller = SebeolInputController()
+            let menu = controller.menu()!
+            let korean = menu.items.first { $0.title == "한글 (\(layout.title))" }
+            let choices = menu.items.first { $0.title == "한글 자판" }?.submenu
+            cases += 1
+            if korean == nil || choices?.items.count != 3 || choices?.items.first(where: { $0.state == .on })?.title != layout.title {
+                print("FAIL layout menu \(layout)")
+                failures += 1
+            }
+            if let selection = choices?.items.first(where: { $0.title == "세벌식 최종" }), let action = selection.action {
+                _ = NSApp.sendAction(action, to: selection.target, from: selection)
+                cases += 1
+                if Preferences.layout != .sebeolFinal { failures += 1 }
+            }
+        }
+        // Physical Shift events must use each layout's own jamo and symbols.
+        Preferences.autoSwitch = false
+        for (layout, keys, expected) in [
+            (KeyboardLayout.sebeol390, "ifDB", "맑!"),
+            (.sebeolFinal, "if@B HJKL:YUIOP", "맑? 0123456789"),
+            (.dubeol, "Rk", "까"),
+        ] {
+            for english in [false, true] {
+                Preferences.layout = layout
+                let controller = SebeolInputController()
+                let client = SmokeClient()
+                if english { precondition(press(" ", modifiers: [.shift], controller: controller, client: client)) }
+                for raw in keys {
+                    let unshifted = (0..<128).contains { Keymap.qwertyCharacter(keyCode: UInt16($0), shift: false) == raw }
+                    precondition(press(raw, modifiers: unshifted ? [] : [.shift], controller: controller, client: client))
+                }
+                controller.commitComposition(client)
+                cases += 1
+                let wanted = english ? keys : expected
+                if client.text != wanted {
+                    print("FAIL shifted layout \(layout), english=\(english): \(client.text), expected \(wanted)")
+                    failures += 1
+                }
+            }
+        }
+        UserDefaults.standard.set("unknown-layout", forKey: "keyboardLayout")
+        cases += 1
+        if Preferences.layout != .sebeol390 { failures += 1 }
         print("IMK client integration: \(cases) cases, \(failures) failures")
         exit(failures == 0 ? 0 : 1)
     }

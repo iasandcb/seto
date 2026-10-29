@@ -77,12 +77,13 @@ public enum InputGate {
 }
 
 /// One word-in-progress. Each physical key is kept, and the visible text is
-/// re-read as QWERTY or as 세벌식 390. A reading changes only when the one in
-/// progress stops being plausible and another reading is.
+/// re-read as QWERTY or using the selected Korean layout. A reading changes
+/// only when the one in progress stops being plausible and another reading is.
 ///
 /// Latin text is inserted immediately. `preedit` is only the Hangul syllable
 /// still being composed, so arrow keys never confirm an English composition.
 public final class Session {
+    public let layout: KeyboardLayout
     public var autoSwitch: Bool
     /// When false, a finished word stays as typed. Retype logging still runs.
     public var correctsTypos = true
@@ -118,7 +119,8 @@ public final class Session {
     /// Korean reading to restore when a function word was kept in English.
     private var preferredUndo: [Segment]?
 
-    public init(lexicon: Lexicon, autoSwitch: Bool = true, mode: Language = .korean, typos: (any TypoMemory)? = nil) {
+    public init(lexicon: Lexicon, autoSwitch: Bool = true, mode: Language = .korean, typos: (any TypoMemory)? = nil, layout: KeyboardLayout = .sebeol390) {
+        self.layout = layout
         self.lexicon = lexicon
         self.autoSwitch = autoSwitch
         self.mode = mode
@@ -127,7 +129,7 @@ public final class Session {
     }
 
     public func input(_ english: Character) -> SessionUpdate {
-        input(Layout390.atom(for: english))
+        input(layout.atom(for: english))
     }
 
     public func input(_ atom: KeyAtom) -> SessionUpdate {
@@ -313,8 +315,6 @@ public final class Session {
 
     /// A finished token whose spelling was not what the keys composed.
     private func corrected(_ composed: String) -> String? {
-        // Typo distance and inverse key lookup currently target hardware 390.
-        guard !keys.contains(where: \.isDubeol) else { return nil }
         guard segments.count == 1, let only = segments.first, only.start == 0, only.end == keys.count else { return nil }
         return TypoCorrector.correction(
             composed: composed,
@@ -989,7 +989,7 @@ public final class Session {
         guard lower.count >= 2, lower.allSatisfy(\.isLetter) else { return false }
         // 390 yv is the common particle 로. Do not let the name Yvonne's
         // dictionary prefix keep this explicitly preferred reading in English.
-        if lower == "yv", keys.allSatisfy({ !$0.isDubeol }),
+        if lower == "yv", Composer.compose(keys).text == "로",
            englishText(0..<keys.count) == "yv" {
             return false
         }
@@ -1234,7 +1234,8 @@ public final class Session {
     }
 
     private func cleanSyllableCount(_ text: String) -> Int {
-        let atoms = text.map { Layout390.atom(for: $0) }
+        let currentLayout = keys.first?.layout ?? layout
+        let atoms = text.map { currentLayout.atom(for: $0) }
         if case .clean(let count) = shape(of: Composer.compose(atoms).pieces) {
             return count
         }

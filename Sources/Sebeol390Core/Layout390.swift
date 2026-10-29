@@ -6,7 +6,8 @@ public enum KeyOutput: Equatable, Sendable {
 }
 
 public struct KeyAtom: Equatable, Sendable {
-    public var isDubeol = false
+    public var layout: KeyboardLayout = .sebeol390
+    public var isDubeol: Bool { layout == .dubeol }
     public var english: Character
     public var korean: KeyOutput
 
