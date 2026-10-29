@@ -250,7 +250,7 @@ public enum TypoCorrector {
         return mismatches == 1
     }
 
-    private static func keystrokes(for word: String, layout: KeyboardLayout) -> String? {
+    static func keystrokes(for word: String, layout: KeyboardLayout) -> String? {
         var result = ""
         for character in word.precomposedStringWithCanonicalMapping {
             guard let part = keystrokes(for: character, layout: layout) else { return nil }
@@ -262,7 +262,12 @@ public enum TypoCorrector {
     private static func keystrokes(for syllable: Character, layout: KeyboardLayout) -> String? {
         guard let scalar = syllable.unicodeScalars.first, syllable.unicodeScalars.count == 1 else { return nil }
         let value = scalar.value
-        guard (0xAC00...0xD7A3).contains(value) else { return nil }
+        guard (0xAC00...0xD7A3).contains(value) else {
+            // Suggestions also receive the unfinished compatibility jamo at
+            // the end of the currently displayed Korean word.
+            guard let jamo = canonicalKeys[layout]?.keys.first(where: { $0.compat == syllable }) else { return nil }
+            return keySequence(jamo.kind, jamo.scalar, layout: layout)
+        }
         let code = value - 0xAC00
         let cho = 0x1100 + code / 588
         let jung = 0x1161 + (code % 588) / 28

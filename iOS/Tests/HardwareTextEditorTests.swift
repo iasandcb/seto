@@ -220,6 +220,71 @@ final class InputSettingsTests: XCTestCase {
 }
 
 final class TouchKeyboardLayoutTests: XCTestCase {
+    @MainActor private func suggestionButtons(in view: UIView) -> [UIButton] {
+        view.subviews.flatMap { ($0 as? UIButton).map { [$0] } ?? suggestionButtons(in: $0) }
+    }
+
+    @MainActor private func waitForSuggestion(_ word: String, in keyboard: KeyboardView) async throws -> UIButton {
+        for _ in 0..<100 {
+            if let button = suggestionButtons(in: keyboard).first(where: {
+                $0.accessibilityIdentifier == "wordSuggestion" && $0.accessibilityLabel == word
+            }) { return button }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        throw NSError(domain: "WordSuggestionTests", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing candidate: \(word)"])
+    }
+
+    @MainActor func testSuggestionsTogglePhrasesAndRespectBoundaries() async throws {
+        let keyboard = KeyboardView(frame: CGRect(x: 0, y: 0, width: 320, height: KeyboardView.preferredHeight))
+        keyboard.configureSuggestions(lexicon: Lexicon(english: [], korean: ["안녕", "안녕하세요"]))
+        let context = WordSuggestionContext(before: "앞 안녕ㅎ", after: "")!
+        keyboard.updateSuggestionContext(context)
+        let candidate = try await waitForSuggestion("안녕하세요", in: keyboard)
+        keyboard.layoutIfNeeded()
+        XCTAssertGreaterThan(candidate.bounds.width, 0)
+        XCTAssertEqual(keyboard.bounds.height, KeyboardView.preferredHeight)
+        suggestionButtons(in: keyboard).first { $0.accessibilityIdentifier == "toggleSuggestions" }!.sendActions(for: .touchUpInside)
+        XCTAssertNotNil(suggestionButtons(in: keyboard).first { $0.accessibilityLabel == "문구 등록" })
+        XCTAssertFalse(suggestionButtons(in: keyboard).contains { $0.accessibilityIdentifier == "wordSuggestion" })
+        // Keep the manually opened phrases while the same word is typed.
+        keyboard.updateSuggestionContext(WordSuggestionContext(before: "앞 안녕하", after: ""))
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertFalse(suggestionButtons(in: keyboard).contains { $0.accessibilityIdentifier == "wordSuggestion" })
+        suggestionButtons(in: keyboard).first { $0.accessibilityIdentifier == "toggleSuggestions" }!.sendActions(for: .touchUpInside)
+        _ = try await waitForSuggestion("안녕하세요", in: keyboard)
+        keyboard.updateSuggestionContext(nil)
+        XCTAssertNotNil(suggestionButtons(in: keyboard).first { $0.accessibilityLabel == "문구 등록" })
+        var accepted = false
+        keyboard.onSuggestion = { _, _ in accepted = true }
+        candidate.sendActions(for: .touchUpInside)
+        XCTAssertFalse(accepted, "A detached button must not accept stale context")
+    }
+
+    @MainActor func testCandidateReplacesWholeWordAndResetsComposition() async throws {
+        let editor = HardwareTextView()
+        editor.configure(automatic: false, mode: .korean)
+        editor.hardwareKeyboardIsConnected = { false }
+        editor.setHardwareKeyboardConnected(false)
+        editor.text = "앞 👨‍👩‍👧‍👦 "
+        editor.selectedRange = NSRange(location: (editor.text as NSString).length, length: 0)
+        editor.resetSession()
+        let keyboard = (editor.inputView as! TouchKeyboardInputView).keyboard
+        let keys = suggestionButtons(in: keyboard)
+        for letter in "dkssudg" {
+            keys.first { $0.accessibilityLabel?.contains("영문 \(letter),") == true }!.sendActions(for: .touchUpInside)
+        }
+        XCTAssertEqual(editor.text, "앞 👨‍👩‍👧‍👦 안녕ㅎ")
+        let candidate = try await waitForSuggestion("안녕하세요", in: keyboard)
+        candidate.sendActions(for: .touchUpInside)
+        XCTAssertEqual(editor.text, "앞 👨‍👩‍👧‍👦 안녕하세요")
+        XCTAssertTrue(editor.session.document.isEmpty)
+        keys.first { $0.accessibilityLabel?.contains("영문 r,") == true }!.sendActions(for: .touchUpInside)
+        XCTAssertEqual(editor.text, "앞 👨‍👩‍👧‍👦 안녕하세요ㄱ")
+        editor.selectedRange = NSRange(location: 0, length: 0)
+        candidate.sendActions(for: .touchUpInside)
+        XCTAssertEqual(editor.text, "앞 👨‍👩‍👧‍👦 안녕하세요ㄱ")
+    }
+
     @MainActor func testKeyPreviewFollowsPressAndDoesNotInsertEarly() {
         let keyboard = KeyboardView(frame: CGRect(x: 0, y: 0, width: 320, height: KeyboardView.preferredHeight))
         keyboard.showsInputModeSwitch = false

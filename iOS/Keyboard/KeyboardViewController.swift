@@ -14,6 +14,7 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        keyboard.configureSuggestions(lexicon: Self.lexicon)
         keyboard.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(keyboard)
         NSLayoutConstraint.activate([
@@ -36,6 +37,7 @@ final class KeyboardViewController: UIInputViewController {
             self.reset()
         }
         keyboard.onDelete = { [weak self] in self?.delete() }
+        keyboard.onSuggestion = { [weak self] context, candidate in self?.accept(context, candidate: candidate) }
         keyboard.onToggle = { [weak self] in self?.edit { $0.toggle() } }
         keyboard.onNext = { [weak self] button, event in
             self?.handleInputModeList(from: button, with: event)
@@ -74,6 +76,16 @@ final class KeyboardViewController: UIInputViewController {
         session = Session(lexicon: Self.lexicon, autoSwitch: automatic, mode: session.mode, layout: .dubeol)
         expectedContext = textDocumentProxy.documentContextBeforeInput
         keyboard.update(mode: session.mode, automatic: automatic)
+        keyboard.updateSuggestionContext(nil)
+    }
+
+    private func accept(_ context: WordSuggestionContext, candidate: String) {
+        guard textDocumentProxy.documentContextBeforeInput == context.before,
+              textDocumentProxy.documentContextAfterInput == context.after,
+              (textDocumentProxy.selectedText ?? "").isEmpty else { reset(); return }
+        for _ in context.word { textDocumentProxy.deleteBackward() }
+        textDocumentProxy.insertText(candidate)
+        reset()
     }
 
     private func delete() {
@@ -105,6 +117,8 @@ final class KeyboardViewController: UIInputViewController {
         if !change.inserted.isEmpty { textDocumentProxy.insertText(change.inserted) }
         expectedContext = textDocumentProxy.documentContextBeforeInput
         keyboard.update(mode: update.mode, automatic: session.autoSwitch)
+        keyboard.updateSuggestionContext(after.isEmpty || !(textDocumentProxy.selectedText ?? "").isEmpty ? nil :
+            WordSuggestionContext(before: expectedContext, after: textDocumentProxy.documentContextAfterInput))
         // Bound memory to the current word and its undo window.
         if after.count > 512, session.preedit.isEmpty { reset() }
     }

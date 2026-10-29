@@ -956,7 +956,10 @@ public final class Session {
             guard Self.particles.contains(tail) else { continue }
             let head = englishText(0..<end)
             guard let last = head.last, last.isLetter || last.isNumber else { continue }
-            if isEnglishCode(head), preservesComposition(at: end) { return end }
+            let establishedCode = lexicon.isCodeToken(head)
+                && segments.first.map { $0.lang == .english && $0.end >= end } == true
+            if (isEnglishCode(head) || establishedCode),
+               preservesComposition(at: end) { return end }
         }
         return nil
     }
@@ -1031,7 +1034,11 @@ public final class Session {
         guard keys.count >= 3 else { return nil }
         let headEnd = keys.count - 1
         let head = englishText(0..<headEnd)
-        guard Self.acronymHeads.contains(head.lowercased()) || lexicon.isAbbreviation(head) else { return nil }
+        let establishedCode = lexicon.isCodeToken(head)
+            && segments.allSatisfy { $0.lang == .english }
+            && segments.last?.end == headEnd
+        guard Self.acronymHeads.contains(head.lowercased()) || lexicon.isAbbreviation(head)
+            || establishedCode else { return nil }
         let spelling = englishText(0..<keys.count)
         guard !lexicon.isEnglishWord(spelling), !lexicon.isEnglishPrefix(spelling) else { return nil }
         guard Composer.compose(keys[headEnd...]).pieces == [.bareChoseong],
@@ -1133,11 +1140,15 @@ public final class Session {
         let numberEnd = keys.prefix(while: isPadDigit).count
         guard numberEnd > 0, numberEnd < keys.count else { return false }
         let spelling = englishText(0..<keys.count)
+        let tail = Composer.compose(keys[numberEnd...])
+        if wordMode == .korean, Self.particles.contains(tail.text),
+           case .clean = shape(of: tail.pieces) {
+            return true
+        }
         if spelling.allSatisfy(\.isLetter),
            lexicon.isEnglishWord(spelling) || lexicon.isEnglishPrefix(spelling) {
             return false
         }
-        let tail = Composer.compose(keys[numberEnd...])
         switch shape(of: tail.pieces) {
         case .clean(let syllables):
             return syllables >= 2 || lexicon.isKoreanWord(tail.text)
@@ -1314,6 +1325,24 @@ public final class Session {
     /// syllable is marked.
     private func clientSplit() -> (plain: String, marked: String) {
         guard !segments.isEmpty else { return ("", "") }
+        // English-mode prefixes such as p/pf/pfj may still become 파이.
+        // Keep them replaceable until English is confirmed; web editors can
+        // refuse to replace Latin characters once they leave the marked range.
+        if autoSwitch, locked == nil, wordMode == .english, plain.isEmpty,
+           let first = keys.first, first.english.isLowercase,
+           case .jamo(let initial) = first.korean, initial.kind == .choseong {
+            let spelling = englishText(0..<keys.count)
+            let confirmed = spelling.count >= 2
+                && (lexicon.isEnglishWord(spelling) || lexicon.isAbbreviation(spelling)
+                    || lexicon.isCodeToken(spelling) || isEnglishCode(spelling))
+            let composition = Composer.compose(keys)
+            let plausible: Bool
+            switch shape(of: composition.pieces) {
+            case .singleBare, .clean, .trailing: plausible = true
+            default: plausible = false
+            }
+            if !confirmed, plausible { return ("", render(segments)) }
+        }
         // Shift+H is an opening quote, but Hp can temporarily read as an
         // English prefix before Hpf becomes '파. Keep that undecided prefix
         // in one mark: terminals and web editors cannot reliably replace
@@ -1348,11 +1377,8 @@ public final class Session {
             return (head + render(tail), "")
         }
         let stable = head + peeled.stable
-        // The particle is already a finished syllable. Committing it in the
-        // same replacement as the acronym avoids a second client call.
-        if Self.particles.contains(marked), !stable.isEmpty, stable.unicodeScalars.allSatisfy(\.isASCII) {
-            return (stable + marked, "")
-        }
+        // A particle can keep growing (에 → 에서). Keep the entire Korean
+        // suffix marked until a real boundary, including after ASCII heads.
         return (stable, marked)
     }
 

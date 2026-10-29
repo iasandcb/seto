@@ -55,6 +55,15 @@ public final class Lexicon: @unchecked Sendable {
         return english[index].hasPrefix(key)
     }
 
+    /// Bounded prefix lookup; never materialize the mapped keyboard dictionary.
+    public func englishCompletions(_ prefix: String, limit: Int = 256) -> [String] {
+        let key = prefix.lowercased()
+        guard !key.isEmpty, limit > 0 else { return [] }
+        if let mappedEnglish { return mappedEnglish.completions(key, limit: limit) }
+        guard let start = lowerBound(key) else { return [] }
+        return Array(english[start...].prefix(limit).prefix(while: { $0.hasPrefix(key) }))
+    }
+
     public func isKoreanWord(_ word: String) -> Bool {
         korean.contains(word.precomposedStringWithCanonicalMapping)
     }
@@ -221,6 +230,18 @@ private final class MappedWordList: @unchecked Sendable {
         guard !key.isEmpty else { return false }
         let index = lowerBound(key)
         return index < count && word(at: index).hasPrefix(key)
+    }
+
+    func completions(_ key: String, limit: Int) -> [String] {
+        var result: [String] = []
+        var index = lowerBound(key)
+        while index < count, result.count < limit {
+            let candidate = word(at: index)
+            guard candidate.hasPrefix(key) else { break }
+            result.append(candidate)
+            index += 1
+        }
+        return result
     }
 
     func words(length: ClosedRange<Int>) -> [String] {

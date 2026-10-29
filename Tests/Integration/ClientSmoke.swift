@@ -83,6 +83,10 @@ private func backspace(controller: SebeolInputController, client: SmokeClient) {
             for (keys, expected, startsInEnglish) in [
                 ("gitjgs lfw uvdhc", "git은 잘 되네", true),
                 ("0ts'gyvw", "컨트롤", true),
+                ("pfjd'daB", "파이팅!", true),
+                ("ntwodmr2jt?", "설치했어?", true),
+                ("V3jcnt", "V3에서", true),
+                ("V3jcnt pfjd'daB", "V3에서 파이팅!", true),
                 ("'cng'g", "테스트", true),
                 (";t'gs", "버튼", true),
                 (";f;v", "바보", true),
@@ -97,6 +101,9 @@ private func backspace(controller: SebeolInputController, client: SmokeClient) {
             ] {
                 cases += 1
                 let client = SmokeClient()
+                if keys == "pfjd'daB" || keys.hasPrefix("V3") {
+                    client.ignoresReplacementOutsideMark = true
+                }
                 // The plain initializer avoids registering an input server or
                 // sending synthetic keystrokes to a real application.
                 let controller = SebeolInputController()
@@ -110,7 +117,12 @@ private func backspace(controller: SebeolInputController, client: SmokeClient) {
                 }
                 if callbacks == "insert" || callbacks == "both" { client.onInsert = commit }
                 if callbacks == "mark" || callbacks == "both" { client.onMark = commit }
-                for raw in keys { key(raw) }
+                for raw in keys {
+                    let needsShift = !(0..<128).contains {
+                        Keymap.qwertyCharacter(keyCode: UInt16($0), shift: false) == raw
+                    }
+                    key(raw, shift: needsShift)
+                }
                 if client.text != expected {
                     print("FAIL callbacks=\(callbacks): \(keys) → \(client.text), expected \(expected)")
                     failures += 1

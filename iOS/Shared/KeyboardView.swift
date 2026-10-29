@@ -7,6 +7,7 @@ final class KeyboardView: UIView {
 
     var onKey: ((Character) -> Void)?
     var onPhrase: ((String) -> Void)?
+    var onSuggestion: ((WordSuggestionContext, String) -> Void)?
     var onLiteral: ((Character) -> Void)?
     var onDelete: (() -> Void)?
     var onToggle: (() -> Void)?
@@ -24,6 +25,12 @@ final class KeyboardView: UIView {
     private var phrases = UserDefaults.standard.stringArray(forKey: "quickPhrases") ?? []
     private var phraseSession: Session?
     private var editingPhraseIndex: Int?
+    private var suggestionEngine: WordSuggestions?
+    private var suggestionContext: WordSuggestionContext?
+    private var displayedSuggestionContext: WordSuggestionContext?
+    private var suggestionTask: Task<Void, Never>?
+    private var suggestions: [String] = []
+    private var showingPhrases = false
     private var numberKeys: [(UIButton, Character, Character)] = []
     private var keys: [(UIButton, Character)] = []
     private let keyPreview = KeyPreviewView()
@@ -168,6 +175,34 @@ final class KeyboardView: UIView {
         refresh()
     }
 
+    func configureSuggestions(lexicon: Lexicon) {
+        suggestionEngine = WordSuggestions(lexicon: lexicon)
+    }
+
+    func updateSuggestionContext(_ context: WordSuggestionContext?) {
+        guard context != suggestionContext else { return }
+        suggestionTask?.cancel()
+        suggestionContext = context
+        if context == nil {
+            suggestions = []
+            displayedSuggestionContext = nil
+            showingPhrases = false
+        }
+        refreshPhrases()
+        guard let context, let engine = suggestionEngine else { return }
+        suggestionTask = Task { [weak self] in
+            // Coalesce rapid taps and keep dictionary work off the UI thread.
+            do { try await Task.sleep(for: .milliseconds(50)) } catch { return }
+            let candidates = await Task.detached(priority: .userInitiated) {
+                engine.candidates(for: context.word)
+            }.value
+            guard !Task.isCancelled, let self, self.suggestionContext == context else { return }
+            self.suggestions = candidates
+            self.displayedSuggestionContext = context
+            self.refreshPhrases()
+        }
+    }
+
     private func emitKey(_ key: Character) {
         guard let phraseSession else { onKey?(key); return }
         if key == "\n" { savePhrase(); return }
@@ -242,6 +277,41 @@ final class KeyboardView: UIView {
                 button.widthAnchor.constraint(equalToConstant: 40).isActive = true
             }
             return
+        }
+        if !suggestions.isEmpty, let context = displayedSuggestionContext {
+            let toggle = makeButton(showingPhrases ? "추천" : "문구") { [weak self] in
+                guard let self else { return }
+                self.showingPhrases.toggle()
+                self.refreshPhrases()
+            }
+            toggle.titleLabel?.font = .systemFont(ofSize: 13)
+            toggle.accessibilityIdentifier = "toggleSuggestions"
+            toggle.accessibilityLabel = showingPhrases ? "단어 제안 보기" : "자주 쓰는 문구 보기"
+            toggle.widthAnchor.constraint(equalToConstant: 40).isActive = true
+            phraseBar.addArrangedSubview(toggle)
+            if !showingPhrases {
+                let candidates = UIStackView()
+                candidates.spacing = 4
+                candidates.distribution = .fillEqually
+                for suggestion in suggestions {
+                    let button = makeButton(suggestion) { [weak self] in
+                        guard let self, self.suggestionContext == context else { return }
+                        self.onSuggestion?(context, suggestion)
+                    }
+                    button.titleLabel?.font = .systemFont(ofSize: 14)
+                    button.titleLabel?.lineBreakMode = .byTruncatingTail
+                    button.titleLabel?.adjustsFontSizeToFitWidth = true
+                    button.titleLabel?.minimumScaleFactor = 0.75
+                    button.accessibilityIdentifier = "wordSuggestion"
+                    button.accessibilityLabel = suggestion
+                    button.accessibilityHint = "현재 단어를 이 후보로 바꿉니다"
+                    button.isEnabled = context == suggestionContext
+                    button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+                    candidates.addArrangedSubview(button)
+                }
+                phraseBar.addArrangedSubview(candidates)
+                return
+            }
         }
         let scroll = UIScrollView()
         scroll.showsHorizontalScrollIndicator = false

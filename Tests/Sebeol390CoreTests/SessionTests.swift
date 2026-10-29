@@ -74,11 +74,13 @@ private let lexicon: Lexicon = {
             paper.apply(session.input(key).field)
             #expect(paper.text == typed, "\(session.debugLine)")
             #expect(session.mode == .english)
-            #expect(paper.marked.isEmpty)
+            // Ambiguous prefixes may stay marked until the reading is known.
+            #expect(paper.marked.isEmpty || paper.marked == typed)
         }
         paper.apply(session.input(" ").field)
         #expect(paper.text == word + " ")
         #expect(session.mode == .english)
+        #expect(paper.marked.isEmpty)
     }
 }
 
@@ -1123,6 +1125,31 @@ private func clientFailures(_ keys: String, _ expected: String, mode: Language) 
     assertTypes("k", "ㄱ")
     assertTypes("kf", "가")
     assertTypes("kk", "ㄲ")
+}
+
+@Test func fightingConvertsFromEnglishMode() {
+    let prefixFailures = clientFailures("pfjd", "파이", mode: .english)
+    #expect(prefixFailures.isEmpty, "\(prefixFailures.joined(separator: "\n"))")
+    for suffix in ["", "B", " "] {
+        let expected = "파이팅" + (suffix == "B" ? "!" : suffix)
+        let failures = clientFailures("pfjd'da" + suffix, expected, mode: .english)
+        #expect(failures.isEmpty, "\(failures.joined(separator: "\n"))")
+    }
+}
+
+@Test func installedQuestionConvertsFromEnglishMode() {
+    for (keys, expected) in [("ntwod", "설치"), ("ntwodmr2jt?", "설치했어?")] {
+        let failures = clientFailures(keys, expected, mode: .english)
+        #expect(failures.isEmpty, "\(failures.joined(separator: "\n"))")
+    }
+}
+
+@Test func shiftedFiveKeepsKoreanParticles() {
+    for particle in ["는", "은", "가", "를", "에", "으로", "도", "만"] {
+        let keys = "K" + SebeolKeys.keys(for: particle)!
+        let failures = clientFailures(keys, "5" + particle, mode: .korean)
+        #expect(failures.isEmpty, "\(failures.joined(separator: "\n"))")
+    }
 }
 
 @Test func koreanWordsStayKoreanBeforeParticles() {

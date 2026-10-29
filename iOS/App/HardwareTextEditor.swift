@@ -74,6 +74,7 @@ final class HardwareTextView: UITextView, UITextViewDelegate {
         delegate = self
         touchKeyboard.showsInputModeSwitch = false
         touchKeyboard.autoresizingMask = [.flexibleWidth]
+        touchKeyboard.configureSuggestions(lexicon: Self.lexicon)
         touchKeyboard.onKey = { [weak self] character in self?.apply { $0.input(LayoutDubeol.atom(for: character)) } }
         touchKeyboard.onLiteral = { [weak self] character in
             guard let self else { return }
@@ -90,6 +91,7 @@ final class HardwareTextView: UITextView, UITextViewDelegate {
             self.onText?(self.text ?? "")
         }
         touchKeyboard.onDelete = { [weak self] in self?.handleKey(usage: 42) }
+        touchKeyboard.onSuggestion = { [weak self] context, candidate in self?.accept(context, candidate: candidate) }
         touchKeyboard.onToggle = { [weak self] in self?.toggleLanguage() }
         touchKeyboard.onAutoSwitch = { [weak self] in
             guard let self else { return }
@@ -214,6 +216,29 @@ final class HardwareTextView: UITextView, UITextViewDelegate {
 
     private func refreshKeyboard() {
         touchKeyboard.update(mode: session.mode, automatic: session.autoSwitch)
+        touchKeyboard.updateSuggestionContext(session.document.isEmpty ? nil : suggestionContext())
+    }
+
+    private func suggestionContext() -> WordSuggestionContext? {
+        let source = (text ?? "") as NSString
+        let caret = selectedRange.location
+        guard selectedRange.length == 0, caret != NSNotFound, caret <= source.length else { return nil }
+        return WordSuggestionContext(before: source.substring(to: caret), after: source.substring(from: caret))
+    }
+
+    private func accept(_ context: WordSuggestionContext, candidate: String) {
+        guard suggestionContext() == context else { resetSession(); return }
+        let length = (context.word as NSString).length
+        let range = NSRange(location: selectedRange.location - length, length: length)
+        guard let start = position(from: beginningOfDocument, offset: range.location),
+              let end = position(from: start, offset: range.length),
+              let replacement = textRange(from: start, to: end) else { resetSession(); return }
+        applying = true
+        unmarkText()
+        replace(replacement, withText: candidate)
+        applying = false
+        resetSession()
+        onText?(text ?? "")
     }
 
     func resetSession() {
