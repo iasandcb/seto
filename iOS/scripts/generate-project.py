@@ -22,7 +22,7 @@ resources = ['../Resources/' + name for name in ['english-words.txt', 'english-e
 # LICENSE and NOTICE live in the repository root.
 resources = [p.replace('Resources/../', '') for p in resources]
 resources += ['App/ThirdParty/SwiftTerm-LICENSE.txt', 'App/ThirdParty/D2Coding-OFL.txt', 'App/Fonts/D2Coding-Regular.ttf', 'App/Fonts/D2Coding-Bold.ttf']
-app_sources = core + ['Shared/KeyboardView.swift', 'App/Sebeol390App.swift', 'App/HardwareTextEditor.swift', 'App/MarkVectorView.swift', 'App/MarkVectorLiveSync.swift', 'App/SSHTerminalView.swift', 'App/SSHConnection.swift', 'App/SSHRemoteEditor.swift', 'App/TerminalInput.swift']
+app_sources = core + ['Shared/KeyboardView.swift', 'App/Sebeol390App.swift', 'App/HardwareTextEditor.swift', 'App/MarkVectorView.swift', 'App/MarkVectorLiveSync.swift', 'App/SSHTerminalView.swift', 'App/SSHServerStore.swift', 'App/SSHConnection.swift', 'App/SSHRemoteEditor.swift', 'App/TerminalInput.swift']
 keyboard_sources = core + ['Shared/KeyboardView.swift', 'Keyboard/KeyboardViewController.swift']
 all_files = [file(p, 'sourcecode.swift') for p in dict.fromkeys(app_sources + keyboard_sources)]
 all_files += [file(p, 'text') for p in resources]
@@ -93,7 +93,7 @@ for name, sources, ext in [('Sebeol390Keyboard', keyboard_sources, True), ('Sebe
     config_list = obj(name + '-configs', '{isa = XCConfigurationList; buildConfigurations = ' + refs(configs) + '; defaultConfigurationName = Release;}')
     targets.append(obj(name + '-target', '{isa = PBXNativeTarget; buildConfigurationList = ' + config_list + '; buildPhases = ' + refs(phases) + '; packageProductDependencies = ' + refs(package_products if not ext else []) + '; buildRules = (); dependencies = ' + refs(dependencies) + f'; name = {name}; productName = {name}; productReference = {product}; productType = "com.apple.product-type.{"app-extension" if ext else "application"}";}}'))
 # Host-based UIKit tests exercise real UITextView replacement and selection.
-test_sources = ['Tests/HardwareTextEditorTests.swift', 'Tests/SSHRemoteEditorTests.swift']
+test_sources = ['Tests/HardwareTextEditorTests.swift', 'Tests/SSHRemoteEditorTests.swift', 'Tests/SSHServerStoreTests.swift']
 all_files += [file(source, 'sourcecode.swift') for source in test_sources]
 test_product = obj('test-product', '{isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = Sebeol390Tests.xctest; sourceTree = BUILT_PRODUCTS_DIR;}')
 products.append(test_product)

@@ -65,6 +65,7 @@ final class SSHTabs: ObservableObject {
 struct SSHTerminalView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var workspace = SSHTabs()
+    @StateObject private var servers = SSHServerStore()
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 4) {
@@ -98,7 +99,7 @@ struct SSHTerminalView: View {
             .font(.caption).padding(.horizontal, 8).frame(height: 32).background(.bar)
             ZStack {
                 ForEach(workspace.tabs) { tab in
-                    SSHSessionView(tab: tab, active: workspace.selected == tab.id,
+                    SSHSessionView(tab: tab, servers: servers, active: workspace.selected == tab.id,
                                    closeTab: { workspace.remove(tab.id) })
                         .opacity(workspace.selected == tab.id ? 1 : 0)
                         .allowsHitTesting(workspace.selected == tab.id)
@@ -131,21 +132,21 @@ private struct SSHTabLabel: View {
 
 private struct SSHSessionView: View {
     @ObservedObject var tab: SSHTab
+    @ObservedObject var servers: SSHServerStore
     let active: Bool
     let closeTab: () -> Void
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @AppStorage("app.hardwareLayout") private var hardwareLayout: KeyboardLayout = .sebeol390
-    @State private var address = UserDefaults.standard.string(forKey: "ssh.address") ?? ""
-    @State private var username = UserDefaults.standard.string(forKey: "ssh.user") ?? ""
-    @State private var password = ""
+    @StateObject private var serverForm = SSHServerForm()
+    @State private var serverNotice: String?
     @State private var info: SSHConnectionInfo?
     @State private var error: String?
     @ObservedObject private var model: TerminalModel
     @ObservedObject private var files: SSHRemoteEditor
 
-    init(tab: SSHTab, active: Bool, closeTab: @escaping () -> Void) {
-        self.tab = tab; self.active = active; self.closeTab = closeTab
+    init(tab: SSHTab, servers: SSHServerStore, active: Bool, closeTab: @escaping () -> Void) {
+        self.tab = tab; self.servers = servers; self.active = active; self.closeTab = closeTab
         self.model = tab.model; self.files = tab.files
     }
 
@@ -185,14 +186,55 @@ private struct SSHSessionView: View {
                     }
                 } else {
                     Form {
-                        Section("SSH 서버") {
-                            TextField("주소 또는 ssh://user@host:22", text: $address)
-                                .textInputAutocapitalization(.never).autocorrectionDisabled()
-                            TextField("사용자 이름", text: $username)
-                                .textInputAutocapitalization(.never).autocorrectionDisabled()
-                            SecureField("비밀번호 (저장하지 않음)", text: $password)
-                            Button("연결", action: connect)
+                        Section("저장한 서버") {
+                            ForEach(servers.servers) { server in
+                                Button { selectServer(server) } label: {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text(server.name).foregroundStyle(.primary)
+                                            Text(server.endpoint.label).font(.caption).foregroundStyle(.secondary)
+                                        }
+                                        Spacer()
+                                        if server.remembersPassword {
+                                            Image(systemName: "key.fill").accessibilityLabel("비밀번호 저장됨")
+                                        }
+                                        if serverForm.serverID == server.id {
+                                            Image(systemName: "checkmark").accessibilityLabel("선택됨")
+                                        }
+                                    }
+                                }
+                                .swipeActions {
+                                    Button("삭제", role: .destructive) { deleteServer(server) }
+                                }
+                                .contextMenu {
+                                    Button("삭제", role: .destructive) { deleteServer(server) }
+                                }
+                            }
+                            Button { serverForm.reset(); error = nil; serverNotice = nil } label: {
+                                Label("새 서버", systemImage: "plus")
+                            }
                         }
+                        Section("SSH 서버") {
+                            TextField("서버 이름 (선택)", text: $serverForm.name)
+                            TextField("주소 또는 ssh://user@host:22", text: $serverForm.address)
+                                .textInputAutocapitalization(.never).autocorrectionDisabled()
+                            TextField("사용자 이름", text: $serverForm.username)
+                                .textInputAutocapitalization(.never).autocorrectionDisabled()
+                            SecureField("비밀번호", text: $serverForm.password)
+                                // Credentials are managed by SSHServerStore. An explicit non-password
+                                // type avoids Passwords save prompts; nil still permits login heuristics.
+                                // SecureField continues to mask input and use secure text entry.
+                                .textContentType(.oneTimeCode)
+                                .textInputAutocapitalization(.never).autocorrectionDisabled()
+                            Toggle("비밀번호 저장", isOn: $serverForm.rememberPassword)
+                            Text("켜면 이 기기의 키체인에 비밀번호를 저장합니다. 끈 뒤 서버를 저장하면 저장된 비밀번호를 삭제합니다.")
+                                .font(.caption).foregroundStyle(.secondary)
+                            Button(serverForm.serverID == nil ? "서버 저장" : "서버 변경 저장", action: saveServer)
+                            Button("연결", action: connect)
+                            Text("연결하면 서버 정보와 비밀번호 저장 설정을 함께 저장합니다.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        if let serverNotice { Text(serverNotice).foregroundStyle(.secondary) }
                         Section {
                             Text("하드웨어 키보드: 두벌식·세벌식 390·세벌식 최종 선택 · Shift+Space 한영 전환. 한글은 아래 조합 영역에서 작성하고 공백·Enter·제어 키 또는 확정 버튼으로 전송합니다.")
                         }
@@ -222,7 +264,7 @@ private struct SSHSessionView: View {
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     if info != nil {
-                        Button("연결 종료") { model.decide(false); model.terminal?.disconnect(); model.retainedHost = nil; info = nil }
+                        Button("연결 종료", action: disconnect)
                     }
                 }
             }
@@ -240,6 +282,11 @@ private struct SSHSessionView: View {
             }
             .onChange(of: active) { visible in
                 if !visible { model.terminal?.cancelInput() }
+            }
+            .onChange(of: servers.servers) { values in
+                if let id = serverForm.serverID, !values.contains(where: { $0.id == id }) {
+                    serverForm.reset(); serverNotice = nil
+                }
             }
             .onChange(of: scenePhase) { phase in
                 if phase != .active { model.terminal?.cancelInput() }
@@ -286,7 +333,7 @@ private struct SSHSessionView: View {
                 Picker("외부 키보드 자판", selection: $hardwareLayout) {
                     ForEach(KeyboardLayout.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
-                Button("연결 종료") { model.decide(false); model.terminal?.disconnect(); model.retainedHost = nil; info = nil }
+                Button("연결 종료", action: disconnect)
                 Button("닫기") { closeTab() }
             } label: {
                 Image(systemName: "ellipsis.circle").font(.body)
@@ -308,24 +355,45 @@ private struct SSHSessionView: View {
         .background(.bar)
     }
 
+    private func selectServer(_ server: SSHServer) {
+        do {
+            try serverForm.load(server, from: servers)
+            error = nil; serverNotice = nil
+        } catch { self.error = error.localizedDescription }
+    }
+
+    private func saveServer() {
+        do {
+            let server = try serverForm.save(to: servers)
+            error = nil; serverNotice = "\(server.name) 저장됨"
+        } catch { self.error = error.localizedDescription }
+    }
+
+    private func deleteServer(_ server: SSHServer) {
+        do {
+            try servers.remove(server)
+            if serverForm.serverID == server.id { serverForm.reset() }
+            error = nil; serverNotice = nil
+        } catch { self.error = error.localizedDescription }
+    }
+
+    private func disconnect() {
+        model.decide(false); model.terminal?.disconnect(); model.retainedHost = nil; info = nil
+        if let server = servers.servers.first(where: { $0.id == serverForm.serverID }) { selectServer(server) }
+    }
+
     private func connect() {
-        let raw = address.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let url = URLComponents(string: raw.contains("://") ? raw : "ssh://" + raw),
-              url.scheme == "ssh", let host = url.host, !host.isEmpty,
-              url.password == nil, url.query == nil, url.fragment == nil,
-              url.path.isEmpty || url.path == "/",
-              (1...65535).contains(url.port ?? 22) else {
-            error = "SSH 서버 주소와 포트를 확인하세요."; return
+        do {
+            let server = try serverForm.save(to: servers)
+            let endpoint = server.endpoint
+            tab.title = "\(tab.number) · \(server.name)"
+            error = nil; serverNotice = nil
+            info = SSHConnectionInfo(host: endpoint.host, port: endpoint.port,
+                                     username: endpoint.username, password: serverForm.password)
+            serverForm.password = ""
+        } catch {
+            self.error = error.localizedDescription
         }
-        let user = url.user ?? username.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !user.isEmpty else { error = "사용자 이름을 입력하세요."; return }
-        username = user
-        UserDefaults.standard.set(raw, forKey: "ssh.address")
-        UserDefaults.standard.set(user, forKey: "ssh.user")
-        tab.title = "\(tab.number) · \(user)@\(host)"
-        error = nil
-        info = SSHConnectionInfo(host: host, port: url.port ?? 22, username: user, password: password)
-        password = ""
     }
 }
 
