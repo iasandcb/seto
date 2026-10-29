@@ -7,9 +7,8 @@ public enum Language: String, Equatable, Sendable {
     public var flipped: Language { self == .korean ? .english : .korean }
 }
 
-/// What the field should do with this key. English is inserted as ordinary
-/// text. Only an open Hangul composition is marked, so an address bar does
-/// not treat Latin letters as inline composition.
+/// What the field should do with this key. Confirmed English is ordinary
+/// text. Hangul and undecided shifted punctuation stay in composition.
 public enum FieldEdit: Equatable, Sendable {
     /// Do not touch the field.
     case none
@@ -65,7 +64,7 @@ public enum FieldEdit: Equatable, Sendable {
 public struct SessionUpdate: Equatable, Sendable {
     public var mode: Language
     public var didAutoConvert: Bool
-    /// Marked Hangul after this update. Empty when nothing is in composition.
+    /// Marked text after this update. Empty when nothing is in composition.
     public var preedit: String
     public var field: FieldEdit
 }
@@ -80,8 +79,8 @@ public enum InputGate {
 /// re-read as QWERTY or using the selected Korean layout. A reading changes
 /// only when the one in progress stops being plausible and another reading is.
 ///
-/// Latin text is inserted immediately. `preedit` is only the Hangul syllable
-/// still being composed, so arrow keys never confirm an English composition.
+/// Confirmed Latin text is inserted immediately. `preedit` holds open Hangul
+/// and shifted punctuation whose Korean or English reading is still undecided.
 public final class Session {
     public let layout: KeyboardLayout
     public var autoSwitch: Bool
@@ -89,7 +88,7 @@ public final class Session {
     public var correctsTypos = true
     /// Confirmed input language. Tentative readings do not change the keyboard mode.
     public private(set) var mode: Language
-    /// Hangul still open. Empty while the current token is English, digits, or finished.
+    /// Open Hangul or an undecided shifted-punctuation reading.
     public private(set) var preedit = ""
 
     public var document: String { finished + plain + preedit }
@@ -1307,7 +1306,7 @@ public final class Session {
         return emit(toPlain: nextPlain, toMarked: nextMarked, didAutoConvert: didAutoConvert)
     }
 
-    /// English, digits, and symbols are inserted once. The trailing Hangul,
+    /// Confirmed English, digits, and symbols are inserted once. Trailing Hangul,
     /// including every syllable of the open word, stays one marked range.
     /// Committing a finished syllable and then inserting the whole word again
     /// types that syllable twice (`프로에서` → `프프로프로에서`). Digits that
@@ -1315,6 +1314,19 @@ public final class Session {
     /// syllable is marked.
     private func clientSplit() -> (plain: String, marked: String) {
         guard !segments.isEmpty else { return ("", "") }
+        // Shift+H is an opening quote, but Hp can temporarily read as an
+        // English prefix before Hpf becomes '파. Keep that undecided prefix
+        // in one mark: terminals and web editors cannot reliably replace
+        // punctuation or Latin text after it has been committed.
+        if autoSwitch, locked == nil, wordMode == .korean, plain.isEmpty,
+           let first = keys.first, isShiftedLetter(first), !isPadDigit(first) {
+            let spelling = englishText(0..<keys.count)
+            let confirmedEnglish = segments.allSatisfy { $0.lang == .english }
+                && (lexicon.isEnglishWord(spelling) || lexicon.isAbbreviation(spelling)
+                    || lexicon.isCodeToken(spelling) || isEnglishCode(spelling)
+                    || (spelling.count >= 2 && spelling.allSatisfy(\.isUppercase)))
+            if !confirmedEnglish { return ("", render(segments)) }
+        }
         var splitAt = segments.count
         while splitAt > 0 {
             let segment = segments[splitAt - 1]

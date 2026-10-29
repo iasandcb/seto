@@ -9,6 +9,7 @@ struct HardwareTextEditor: UIViewRepresentable {
     @Binding var focused: Bool
     @Binding var mode: Language
     @Binding var automatic: Bool
+    var focusOnOpen = false
     @AppStorage("app.hardwareLayout") private var hardwareLayout: KeyboardLayout = .sebeol390
 
     func makeUIView(context: Context) -> HardwareTextView {
@@ -22,6 +23,7 @@ struct HardwareTextEditor: UIViewRepresentable {
         view.accessibilityLabel = "세토 연습장"
         view.configure(automatic: automatic, mode: mode, layout: hardwareLayout)
         updateCallbacks(view)
+        view.focusOnAttachment = focusOnOpen
         return view
     }
 
@@ -56,6 +58,7 @@ final class HardwareTextView: UITextView, UITextViewDelegate {
     private var expectedSelection = NSRange(location: 0, length: 0)
     private var applying = false
     private var consumed: Set<Int> = []
+    var focusOnAttachment = false
     var onText: ((String) -> Void)?
     var onFocus: ((Bool) -> Void)?
     var onMode: ((Language) -> Void)?
@@ -102,6 +105,16 @@ final class HardwareTextView: UITextView, UITextViewDelegate {
         refreshKeyboard()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        guard window != nil, focusOnAttachment else { return }
+        focusOnAttachment = false
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.window != nil else { return }
+            _ = self.becomeFirstResponder()
+        }
+    }
 
     @objc private func hardwareKeyboardChanged() {
         setHardwareKeyboardConnected(hardwareKeyboardIsConnected())

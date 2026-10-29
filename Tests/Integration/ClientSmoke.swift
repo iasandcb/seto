@@ -55,6 +55,15 @@ private func press(_ raw: Character, modifiers: NSEvent.ModifierFlags = [], cont
     return controller.handle(event, client: client)
 }
 
+@MainActor
+private func backspace(controller: SebeolInputController, client: SmokeClient) {
+    let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, characters: "\u{8}", charactersIgnoringModifiers: "\u{8}", isARepeat: false, keyCode: Keymap.delete)!
+    if !controller.handle(event, client: client), !client.text.isEmpty {
+        client.text.removeLast()
+        client.mark = NSRange(location: NSNotFound, length: 0)
+    }
+}
+
 @main struct ClientSmoke {
     @MainActor static func main() {
         NSApplication.shared.setActivationPolicy(.accessory)
@@ -142,6 +151,7 @@ private func press(_ raw: Character, modifiers: NSEvent.ModifierFlags = [], cont
                     for (raw, modifiers): (Character, NSEvent.ModifierFlags) in [
                         (".", [.option]), (",", [.option]), (">", [.control, .shift]),
                         ("<", [.control, .shift]), (".", [.command]),
+                        (" ", [.command]), (" ", [.command, .option]),
                         (".", [.control, .option]), (".", [.control, .function]),
                     ] {
                         if press(raw, modifiers: modifiers, controller: controller, client: client) {
@@ -150,6 +160,191 @@ private func press(_ raw: Character, modifiers: NSEvent.ModifierFlags = [], cont
                         }
                     }
                     if client.text != expected { failures += 1 }
+                }
+            }
+        }
+        for callbacks in [false, true] {
+            for (keys, expected) in [
+                ("pfjdw", "파일"), ("Hpfjdw", "'파일"), ("HpfjdwH", "'파일'"),
+                ("Hello", "Hello"), ("Please", "Please"), ("Git", "Git"), ("TV", "TV"),
+            ] {
+                cases += 1
+                let client = SmokeClient()
+                let controller = SebeolInputController()
+                client.ignoresReplacementOutsideMark = true
+                if callbacks {
+                    let commit = { [weak controller, weak client] in
+                        guard let client else { return }
+                        controller?.commitComposition(client)
+                    }
+                    client.onInsert = commit
+                    client.onMark = commit
+                }
+                var trace: [String] = []
+                for raw in keys {
+                    precondition(press(raw, modifiers: raw.isUppercase ? [.shift] : [], controller: controller, client: client))
+                    trace.append("\(raw): \(client.text), mark=\(client.mark)")
+                }
+                if client.text != expected {
+                    print("FAIL quoted file callbacks=\(callbacks): \(client.text), expected \(expected)")
+                    print(trace.joined(separator: "\n"))
+                    failures += 1
+                }
+            }
+        }
+        // Terminal can handle Return itself when no composition is open.
+        // Its output then moves the caret without another IMK event.
+        for receivesReturn in [false, true] {
+            cases += 1
+            let client = SmokeClient()
+            let controller = SebeolInputController()
+            for raw in "ls" {
+                precondition(press(raw, controller: controller, client: client))
+            }
+            if receivesReturn {
+                let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: Keymap.return)!
+                if controller.handle(event, client: client) {
+                    print("FAIL terminal Return was consumed")
+                    failures += 1
+                }
+            }
+            client.text += "\nfile.txt\n$ "
+            for raw in "ls" {
+                precondition(press(raw, controller: controller, client: client))
+            }
+            if client.text != "ls\nfile.txt\n$ ls" || client.mark.length != 0 {
+                print("FAIL terminal next command receivesReturn=\(receivesReturn): \(client.text)")
+                failures += 1
+            }
+        }
+        // Spotlight shortcuts must pass through even with a live Hangul mark.
+        for callbacks in [false, true] {
+            for modifiers: NSEvent.ModifierFlags in [[.command], [.command, .option]] {
+                cases += 1
+                let client = SmokeClient()
+                let controller = SebeolInputController()
+                if callbacks {
+                    let commit = { [weak controller, weak client] in
+                        guard let client else { return }
+                        controller?.commitComposition(client)
+                    }
+                    client.onInsert = commit
+                    client.onMark = commit
+                }
+                for raw in "lfw" {
+                    precondition(press(raw, controller: controller, client: client))
+                }
+                if press(" ", modifiers: modifiers, controller: controller, client: client)
+                    || client.text != "잘" || client.mark.length != 0 {
+                    print("FAIL Spotlight shortcut during composition: \(client.text)")
+                    failures += 1
+                }
+            }
+        }
+        // Delete and retype at every key boundary of 나왔습니다, including
+        // temporary Latin readings and shrinking a multi-syllable mark.
+        for callbacks in [false, true] {
+            for automatic in [false, true] {
+                UserDefaults.standard.set(automatic, forKey: "autoSwitch")
+                for (keys, expected) in [("hfjvf2ng3hduf", "나왔습니다"), ("hello", "hello"), ("apihgs", "api는")] {
+                    for count in 1...keys.count {
+                        cases += 1
+                        let client = SmokeClient()
+                        let controller = SebeolInputController()
+                        if callbacks {
+                            let commit = { [weak controller, weak client] in
+                                guard let client else { return }
+                                controller?.commitComposition(client)
+                            }
+                            client.onInsert = commit
+                            client.onMark = commit
+                        }
+                        let reference = Session(lexicon: SharedLexicon.lexicon, autoSwitch: automatic)
+                        reference.correctsTypos = Preferences.correctsTypos
+                        for raw in keys {
+                            _ = reference.input(raw)
+                            precondition(press(raw, controller: controller, client: client))
+                        }
+                        for _ in 0..<count {
+                            _ = reference.backspace()
+                            backspace(controller: controller, client: client)
+                            if client.text != reference.document {
+                                print("FAIL delete callbacks=\(callbacks) automatic=\(automatic): \(keys), count=\(count), text=\(client.text), expected=\(reference.document)")
+                                failures += 1
+                            }
+                        }
+                        for raw in keys.suffix(count) {
+                            _ = reference.input(raw)
+                            precondition(press(raw, controller: controller, client: client))
+                            if client.text != reference.document {
+                                print("FAIL retype callbacks=\(callbacks) automatic=\(automatic): \(keys), count=\(count), text=\(client.text), expected=\(reference.document)")
+                                failures += 1
+                            }
+                        }
+                        if (automatic || keys == "hfjvf2ng3hduf"), client.text != expected {
+                            print("FAIL restored word: \(client.text), expected \(expected)")
+                            failures += 1
+                        }
+                    }
+                }
+            }
+        }
+        UserDefaults.standard.set(true, forKey: "autoSwitch")
+        // After committing 나왔습니, the next consonant and vowel must
+        // still compose as one syllable rather than remain as Latin text.
+        for (keys, suffix) in [("uf", "다"), ("ud", "디")] {
+            cases += 1
+            let client = SmokeClient()
+            let controller = SebeolInputController()
+            for raw in "hfjvf2ng3hd" {
+                precondition(press(raw, controller: controller, client: client))
+            }
+            controller.commitComposition(client)
+            for raw in keys {
+                precondition(press(raw, controller: controller, client: client))
+                if client.mark.length == 0 { controller.commitComposition(client) }
+            }
+            if client.text != "나왔습니" + suffix {
+                print("FAIL final syllable: \(client.text), expected 나왔습니\(suffix)")
+                failures += 1
+            }
+        }
+        // An editor may finish the mark itself while processing a deletion,
+        // without sending commitComposition. The next key must start a new
+        // token instead of replaying the old word beside the committed text.
+        for emptyMark in [false, true] {
+            for boundary in ["input", "delete", "commit", "original"] {
+                cases += 1
+                let client = SmokeClient()
+                let controller = SebeolInputController()
+                for raw in "hfjvf2ng3hduf" {
+                    precondition(press(raw, controller: controller, client: client))
+                }
+                backspace(controller: controller, client: client)
+                let kept = client.text
+                client.mark = NSRange(location: emptyMark ? (kept as NSString).length : NSNotFound, length: 0)
+                let expected: String
+                switch boundary {
+                case "input":
+                    precondition(press("h", controller: controller, client: client))
+                    precondition(press("f", controller: controller, client: client))
+                    expected = kept + "나"
+                case "delete":
+                    backspace(controller: controller, client: client)
+                    expected = String(kept.dropLast())
+                case "original":
+                    if !controller.originalString(client).string.isEmpty {
+                        print("FAIL lost mark originalString returned stale text")
+                        failures += 1
+                    }
+                    expected = kept
+                default:
+                    controller.commitComposition(client)
+                    expected = kept
+                }
+                if client.text != expected {
+                    print("FAIL lost mark boundary=\(boundary): \(client.text), expected \(expected)")
+                    failures += 1
                 }
             }
         }
@@ -203,6 +398,26 @@ private func press(_ raw: Character, modifiers: NSEvent.ModifierFlags = [], cont
             if second.text != "ㅅㅇㅎㄷ" || second.mark.length != 0 {
                 print("FAIL activation reset manualEnglish=\(manualEnglish): \(second.text)")
                 failures += 1
+            }
+        }
+        // Terminal alone starts in English, and leaving it resets to Korean.
+        do {
+            let controller = SebeolInputController()
+            for (bundleID, expected): (String?, String) in [
+                ("com.apple.Terminal", "namu"),
+                ("com.sebeol390.SmokeClient", "ㅅㅇㅎㄷ"),
+                ("com.apple.Terminal", "namu"),
+                (nil, "ㅅㅇㅎㄷ"),
+            ] {
+                cases += 1
+                let client = SmokeClient()
+                controller.beginInputContext(bundleIdentifier: bundleID)
+                for raw in "namu" { precondition(press(raw, controller: controller, client: client)) }
+                controller.commitComposition(client)
+                if client.text != expected {
+                    print("FAIL initial mode bundle=\(bundleID ?? "nil"): \(client.text)")
+                    failures += 1
+                }
             }
         }
         // Each controller reads the persisted layout, and menu selections retain

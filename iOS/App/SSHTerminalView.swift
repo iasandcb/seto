@@ -15,20 +15,139 @@ final class TerminalModel: ObservableObject {
     @Published var hostChanged = false
     var decision: ((Bool) -> Void)?
     weak var terminal: SetoTerminal?
+    var retainedHost: TerminalKeyboardHost?
+    var navigateTab: ((Int) -> Void)?
     func decide(_ accept: Bool) { let action = decision; decision = nil; hostKey = nil; action?(accept) }
+}
+
+@MainActor
+final class SSHTab: ObservableObject, Identifiable {
+    let id = UUID()
+    let number: Int
+    @Published var title: String
+    let model = TerminalModel()
+    let files = SSHRemoteEditor()
+    init(number: Int) { self.number = number; title = "터미널 \(number)" }
+    func close() {
+        model.decide(false)
+        model.terminal?.disconnect()
+        model.retainedHost = nil
+    }
+}
+
+@MainActor
+final class SSHTabs: ObservableObject {
+    @Published private(set) var tabs: [SSHTab] = []
+    @Published var selected: UUID?
+    private var nextNumber = 1
+    init() { add() }
+    func add() {
+        let tab = SSHTab(number: nextNumber)
+        tab.model.navigateTab = { [weak self] offset in self?.move(offset) }
+        nextNumber += 1
+        tabs.append(tab)
+        selected = tab.id
+    }
+    func remove(_ id: UUID) {
+        guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+        tabs[index].close()
+        tabs.remove(at: index)
+        if tabs.isEmpty { add() }
+        else if selected == id { selected = tabs[min(index, tabs.count - 1)].id }
+    }
+    func move(_ offset: Int) {
+        guard tabs.count > 1, let index = tabs.firstIndex(where: { $0.id == selected }) else { return }
+        selected = tabs[((index + offset) % tabs.count + tabs.count) % tabs.count].id
+    }
+    func closeAll() { for tab in tabs { tab.close() } }
 }
 
 struct SSHTerminalView: View {
     @Environment(\.dismiss) private var dismiss
+    @StateObject private var workspace = SSHTabs()
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 4) {
+                Button { workspace.closeAll(); dismiss() } label: { Image(systemName: "chevron.down") }
+                    .accessibilityLabel("모든 터미널 닫기")
+                Button { workspace.move(-1) } label: { Image(systemName: "chevron.left") }
+                    .keyboardShortcut("[", modifiers: [.command, .shift])
+                    .accessibilityLabel("이전 터미널 탭")
+                    .disabled(workspace.tabs.count < 2)
+                Button { workspace.move(1) } label: { Image(systemName: "chevron.right") }
+                    .keyboardShortcut("]", modifiers: [.command, .shift])
+                    .accessibilityLabel("다음 터미널 탭")
+                    .disabled(workspace.tabs.count < 2)
+                ScrollViewReader { scroll in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 4) {
+                            ForEach(workspace.tabs) { tab in
+                                SSHTabLabel(tab: tab, selected: workspace.selected == tab.id,
+                                    select: { workspace.selected = tab.id }, close: { workspace.remove(tab.id) })
+                                    .id(tab.id)
+                            }
+                        }
+                    }
+                    .onChange(of: workspace.selected) { id in
+                        if let id { scroll.scrollTo(id, anchor: .trailing) }
+                    }
+                }
+                Button { workspace.add() } label: { Image(systemName: "plus") }
+                    .accessibilityLabel("새 터미널 탭")
+            }
+            .font(.caption).padding(.horizontal, 8).frame(height: 32).background(.bar)
+            ZStack {
+                ForEach(workspace.tabs) { tab in
+                    SSHSessionView(tab: tab, active: workspace.selected == tab.id,
+                                   closeTab: { workspace.remove(tab.id) })
+                        .opacity(workspace.selected == tab.id ? 1 : 0)
+                        .allowsHitTesting(workspace.selected == tab.id)
+                        .accessibilityHidden(workspace.selected != tab.id)
+                }
+            }
+        }
+        .onDisappear {
+            if !workspace.tabs.contains(where: { $0.files.presented }) { workspace.closeAll() }
+        }
+    }
+}
+
+private struct SSHTabLabel: View {
+    @ObservedObject var tab: SSHTab
+    let selected: Bool
+    let select: () -> Void
+    let close: () -> Void
+    var body: some View {
+        HStack(spacing: 6) {
+            Button(action: select) { Text(tab.title).lineLimit(1).frame(maxWidth: 150) }
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            Button(action: close) { Image(systemName: "xmark").font(.caption2) }
+                .accessibilityLabel(tab.title + " 탭 닫기")
+        }
+        .padding(.horizontal, 8).frame(height: 28)
+        .background(selected ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+    }
+}
+
+private struct SSHSessionView: View {
+    @ObservedObject var tab: SSHTab
+    let active: Bool
+    let closeTab: () -> Void
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @AppStorage("app.hardwareLayout") private var hardwareLayout: KeyboardLayout = .sebeol390
-    @AppStorage("ssh.address") private var address = ""
-    @AppStorage("ssh.user") private var username = ""
+    @State private var address = UserDefaults.standard.string(forKey: "ssh.address") ?? ""
+    @State private var username = UserDefaults.standard.string(forKey: "ssh.user") ?? ""
     @State private var password = ""
     @State private var info: SSHConnectionInfo?
     @State private var error: String?
-    @StateObject private var model = TerminalModel()
+    @ObservedObject private var model: TerminalModel
+    @ObservedObject private var files: SSHRemoteEditor
+
+    init(tab: SSHTab, active: Bool, closeTab: @escaping () -> Void) {
+        self.tab = tab; self.active = active; self.closeTab = closeTab
+        self.model = tab.model; self.files = tab.files
+    }
 
     private var compactTerminal: Bool { info != nil && verticalSizeClass == .compact }
 
@@ -40,12 +159,17 @@ struct SSHTerminalView: View {
                         HStack {
                             Text(model.status).font(.caption).foregroundStyle(.secondary)
                             Spacer()
+                            fileControls
                             HardwareLayoutPicker()
                             automaticToggle.font(.caption).fixedSize()
                         }.padding(.horizontal, 8)
                     }
                     // Keep a single terminal identity across rotation to preserve SSH and focus.
-                    TerminalHost(info: info, model: model, layout: hardwareLayout)
+                    Group {
+                        if active {
+                            TerminalHost(info: info, model: model, files: files, layout: hardwareLayout)
+                        } else { Color.clear }
+                    }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .layoutPriority(1)
                     if compactTerminal {
@@ -72,6 +196,18 @@ struct SSHTerminalView: View {
                         Section {
                             Text("하드웨어 키보드: 두벌식·세벌식 390·세벌식 최종 선택 · Shift+Space 한영 전환. 한글은 아래 조합 영역에서 작성하고 공백·Enter·제어 키 또는 확정 버튼으로 전송합니다.")
                         }
+                        if !files.drafts.isEmpty {
+                            Section("기기에 보관한 원격 파일 초안") {
+                                ForEach(files.drafts) { draft in
+                                    Button { files.preview(draft) } label: {
+                                        VStack(alignment: .leading) {
+                                            Text(draft.path)
+                                            Text(draft.origin).font(.caption).foregroundStyle(.secondary)
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         if let error { Text(error).foregroundStyle(.red) }
                     }
                 }
@@ -82,25 +218,47 @@ struct SSHTerminalView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("닫기") { model.decide(false); model.terminal?.disconnect(); dismiss() }
+                    Button("닫기") { closeTab() }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     if info != nil {
-                        Button("연결 종료") { model.decide(false); model.terminal?.disconnect(); info = nil }
+                        Button("연결 종료") { model.decide(false); model.terminal?.disconnect(); model.retainedHost = nil; info = nil }
                     }
                 }
             }
-            .alert(model.hostChanged ? "서버 키가 변경되었습니다" : "서버 신뢰 확인", isPresented: Binding(get: { model.hostKey != nil }, set: { if !$0 { model.decide(false) } })) {
+            .alert(model.hostChanged ? "서버 키가 변경되었습니다" : "서버 신뢰 확인", isPresented: Binding(get: { active && model.hostKey != nil }, set: { if !$0 { model.decide(false) } })) {
                 if !model.hostChanged { Button("신뢰하고 연결") { model.decide(true) } }
                 Button("취소", role: .cancel) { model.decide(false) }
             } message: {
                 Text(model.hostChanged ? "저장된 서버 키와 다르므로 연결을 차단했습니다.\n\(model.hostKey ?? "")" : "서버 관리자와 지문을 확인하세요.\n\(model.hostKey ?? "")")
             }
-            .onDisappear { model.decide(false); model.terminal?.disconnect() }
+            .fullScreenCover(isPresented: Binding(get: { active && files.presented }, set: { files.presented = $0 }), onDismiss: {
+                if active && model.status == "연결됨" { _ = model.terminal?.becomeFirstResponder() }
+            }) { SSHRemoteEditorView(files: files) }
+            .onChange(of: files.presented) { visible in
+                if visible && active { model.terminal?.suspendForEditor() }
+            }
+            .onChange(of: active) { visible in
+                if !visible { model.terminal?.cancelInput() }
+            }
             .onChange(of: scenePhase) { phase in
+                if phase != .active { model.terminal?.cancelInput() }
                 if phase == .background { model.decide(false); model.terminal?.disconnect() }
             }
         }
+    }
+
+    private var fileControls: some View {
+        Menu {
+            Text(files.status)
+            Button(files.ready ? "파일 편집 연결됨" : "파일 편집 연결") { model.terminal?.enableFileEditor() }
+                .disabled(files.ready || model.status != "연결됨")
+            Text("서버에 도우미를 설치한 뒤 연결하세요. 터미널에서 seto 파일명을 실행합니다.")
+            ForEach(files.drafts) { draft in
+                Button("초안: " + draft.path) { files.preview(draft) }
+            }
+        } label: { Image(systemName: "doc.text") }
+        .accessibilityLabel("원격 파일 편집 및 로컬 초안")
     }
 
     private var automaticToggle: some View {
@@ -128,11 +286,12 @@ struct SSHTerminalView: View {
                 Picker("외부 키보드 자판", selection: $hardwareLayout) {
                     ForEach(KeyboardLayout.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
-                Button("연결 종료") { model.decide(false); model.terminal?.disconnect(); info = nil }
-                Button("닫기") { model.decide(false); model.terminal?.disconnect(); dismiss() }
+                Button("연결 종료") { model.decide(false); model.terminal?.disconnect(); model.retainedHost = nil; info = nil }
+                Button("닫기") { closeTab() }
             } label: {
                 Image(systemName: "ellipsis.circle").font(.body)
             }.accessibilityLabel("터미널 메뉴 및 연결 상태")
+            fileControls
             keyControls
             Divider().frame(height: 20)
             Text(model.pending.isEmpty ? "조합 대기" : model.pending)
@@ -161,6 +320,9 @@ struct SSHTerminalView: View {
         let user = url.user ?? username.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !user.isEmpty else { error = "사용자 이름을 입력하세요."; return }
         username = user
+        UserDefaults.standard.set(raw, forKey: "ssh.address")
+        UserDefaults.standard.set(user, forKey: "ssh.user")
+        tab.title = "\(tab.number) · \(user)@\(host)"
         error = nil
         info = SSHConnectionInfo(host: host, port: url.port ?? 22, username: user, password: password)
         password = ""
@@ -170,24 +332,39 @@ struct SSHTerminalView: View {
 private struct TerminalHost: UIViewRepresentable {
     let info: SSHConnectionInfo
     let model: TerminalModel
+    let files: SSHRemoteEditor
     let layout: KeyboardLayout
     func makeUIView(context: Context) -> TerminalKeyboardHost {
+        if let host = model.retainedHost {
+            host.focusWhenAttached = model.status == "연결됨" && !files.presented
+            host.terminal.configureLayout(layout)
+            return host
+        }
         let view = SetoTerminal(frame: .zero)
         view.model = model
+        view.files = files
         model.terminal = view
         view.configureLayout(layout)
         view.refresh()
         let host = TerminalKeyboardHost(terminal: view)
+        model.retainedHost = host
         view.connect(info)
         return host
     }
     func updateUIView(_ uiView: TerminalKeyboardHost, context: Context) { uiView.terminal.configureLayout(layout) }
-    static func dismantleUIView(_ uiView: TerminalKeyboardHost, coordinator: ()) { uiView.stopRepeat(); uiView.terminal.disconnect() }
+    static func dismantleUIView(_ uiView: TerminalKeyboardHost, coordinator: ()) {
+        uiView.stopAllInput()
+        _ = uiView.resignFirstResponder()
+        // The tab owns the detached view. SwiftTerm pauses its display driver with window == nil.
+    }
 }
 
 final class SetoTerminal: TerminalView, TerminalViewDelegate {
     weak var model: TerminalModel?
     private var connection: SSHConnection?
+    var files: SSHRemoteEditor?
+    private var remoteOrigin = ""
+    private var rendererShutdown: Task<Void, Never>?
     private let input = TerminalInput(lexicon: TerminalInput.bundledLexicon, automatic: true)
 
     override init(frame: CGRect) {
@@ -200,11 +377,12 @@ final class SetoTerminal: TerminalView, TerminalViewDelegate {
 
     func connect(_ info: SSHConnectionInfo) {
         let model = model
+        remoteOrigin = "\(info.username)@\(info.host.lowercased()):\(info.port)"
         let identity = "\(info.host):\(info.port)"
         let c = SSHConnection(feedSender: feedSender, host: info.host, port: info.port,
             username: info.username, password: info.password, term: info.term,
-            environment: info.environment, initialWindowSize: (80, 24)) { key, promise in
-                Task { @MainActor in
+            environment: info.environment, initialWindowSize: (80, 24)) { [weak model] key, promise in
+                Task { @MainActor [weak model] in
                     guard let model else { promise.fail(CancellationError()); return }
                     let storage = "ssh.hostkey." + identity
                     let existing = UserDefaults.standard.string(forKey: storage)
@@ -225,8 +403,9 @@ final class SetoTerminal: TerminalView, TerminalViewDelegate {
             self?.model?.status = status
             if status == "연결 끊김" || status.hasPrefix("오류:") {
                 self?.input.discard(); self?.refresh()
-                (self?.superview as? TerminalKeyboardHost)?.stopRepeat()
+                (self?.superview as? TerminalKeyboardHost)?.stopAllInput()
                 self?.model?.decide(false)
+                self?.files?.disconnected()
             }
             if status == "연결됨", let self {
                 let size = self.terminalDimensions
@@ -237,8 +416,62 @@ final class SetoTerminal: TerminalView, TerminalViewDelegate {
         connection = c
         c.connect()
     }
-    func disconnect() { (superview as? TerminalKeyboardHost)?.stopRepeat(); input.discard(); refresh(); connection?.disconnect(); connection = nil; model?.status = "연결 종료" }
-    func refresh() { model?.pending = input.pending; model?.mode = input.mode; model?.automatic = input.automatic }
+    func enableFileEditor() {
+        guard let connection, let files, model?.status == "연결됨" else { return }
+        connection.stopEditor()
+        let session = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        files.bind(origin: remoteOrigin, session: session) { [weak connection] message in connection?.sendEditor(message) }
+        connection.startEditor(session: session, onFrame: { [weak files, weak connection] data in
+            guard let files, files.session == session else { return }
+            guard let message = try? JSONDecoder().decode(SSHRemoteMessage.self, from: data),
+                  message.v == 1, message.session == session else {
+                connection?.stopEditor()
+                files.disconnected("편집 도우미 응답을 검증하지 못했습니다. 설치 버전을 확인하세요.")
+                return
+            }
+            files.receive(message)
+        }, onEnd: { [weak files] reason in
+            guard files?.session == session else { return }
+            files?.disconnected(reason)
+        })
+    }
+
+    func suspendForEditor() {
+        cancelInput()
+        _ = (superview as? TerminalKeyboardHost)?.resignFirstResponder()
+    }
+
+    func cancelInput() { (superview as? TerminalKeyboardHost)?.stopAllInput() }
+
+    func disconnect() {
+        (superview as? TerminalKeyboardHost)?.stopAllInput()
+        input.discard(); refresh()
+        files?.disconnected()
+        connection?.disconnect(); connection = nil
+        model?.status = "연결 종료"
+        closeRenderer()
+    }
+
+    /// SwiftTerm's display driver must be shut down explicitly by its owner.
+    private func closeRenderer() {
+        guard rendererShutdown == nil else { return }
+        if updateUiClosed() { return }
+        // A committed Metal frame may still be finishing. Retry without keeping a timer alive.
+        rendererShutdown = Task { @MainActor [self] in
+            for _ in 0..<20 {
+                if Task.isCancelled { break }
+                do { try await Task.sleep(for: .milliseconds(50)) } catch { return }
+                if updateUiClosed() { rendererShutdown = nil; return }
+            }
+            rendererShutdown = nil
+        }
+    }
+    func refresh() {
+        guard let model else { return }
+        if model.pending != input.pending { model.pending = input.pending }
+        if model.mode != input.mode { model.mode = input.mode }
+        if model.automatic != input.automatic { model.automatic = input.automatic }
+    }
     func configureLayout(_ layout: KeyboardLayout) { guard input.layout != layout else { return }; input.configure(mode: input.mode, automatic: input.automatic, layout: layout); refresh() }
     func setAutomatic(_ enabled: Bool) { input.configure(mode: input.mode, automatic: enabled); refresh() }
     func flushInput() { input.flush(); refresh() }
@@ -255,6 +488,11 @@ final class SetoTerminal: TerminalView, TerminalViewDelegate {
     }
     @discardableResult
     func handleKey(usage: Int, flags: UIKeyModifierFlags = []) -> Bool {
+        let shortcutFlags = flags.intersection([.command, .shift, .control, .alternate])
+        if shortcutFlags == [.command, .shift], (usage == 47 || usage == 48), let navigate = model?.navigateTab {
+            navigate(usage == 47 ? -1 : 1)
+            return true
+        }
         guard model?.status == "연결됨" else { return true }
         switch HardwareKeymap.action(usage: usage, shift: flags.contains(.shift), command: flags.contains(.command), control: flags.contains(.control), option: flags.contains(.alternate)) {
         case .input(let character): input.input(character)
@@ -297,10 +535,12 @@ final class TerminalKeyboardHost: UIView, UIKeyInput, UITextInputTraits {
     var smartDashesType: UITextSmartDashesType = .no
     var spellCheckingType: UITextSpellCheckingType = .no
     let terminal: SetoTerminal
+    var focusWhenAttached = false
     private var forwarding = false
     private var timer: Timer?
     private var repeated: (Int, UIKeyModifierFlags)?
     private var consumed = Set<Int>()
+    private var nativePresses = Set<UIPress>()
     private var modifiers: UIKeyModifierFlags = []
     var hasText: Bool { true }
     override var canBecomeFirstResponder: Bool { true }
@@ -323,25 +563,51 @@ final class TerminalKeyboardHost: UIView, UIKeyInput, UITextInputTraits {
     override var keyCommands: [UIKeyCommand]? {
         let toggle = UIKeyCommand(input: " ", modifierFlags: .shift, action: #selector(toggle))
         toggle.wantsPriorityOverSystemBehavior = true
-        return [toggle]
+        let previous = UIKeyCommand(input: "[", modifierFlags: [.command, .shift], action: #selector(previousTab))
+        previous.discoverabilityTitle = "이전 터미널 탭"
+        previous.wantsPriorityOverSystemBehavior = true
+        let next = UIKeyCommand(input: "]", modifierFlags: [.command, .shift], action: #selector(nextTab))
+        next.discoverabilityTitle = "다음 터미널 탭"
+        next.wantsPriorityOverSystemBehavior = true
+        return [toggle, previous, next]
     }
-    @objc private func keyboardChanged() { stopRepeat(); reloadInputViews() }
+    @objc private func previousTab() { terminal.model?.navigateTab?(-1) }
+    @objc private func nextTab() { terminal.model?.navigateTab?(1) }
+    @objc private func keyboardChanged() { stopAllInput(); reloadInputViews() }
     @objc private func toggle() { terminal.toggleMode() }
     override func copy(_ sender: Any?) { terminal.copy(sender) }
     override func paste(_ sender: Any?) { terminal.flushInput(); terminal.paste(sender) }
     override func selectAll(_ sender: Any?) { terminal.selectAll(sender) }
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
-        action == #selector(toggle) || terminal.canPerformAction(action, withSender: sender)
+        action == #selector(toggle) || action == #selector(previousTab) || action == #selector(nextTab) || terminal.canPerformAction(action, withSender: sender)
     }
     func stopRepeat() { timer?.invalidate(); timer = nil; repeated = nil }
+    func stopAllInput() {
+        stopRepeat()
+        consumed.removeAll()
+        modifiers = []
+        let presses = nativePresses
+        nativePresses.removeAll()
+        guard !presses.isEmpty else { return }
+        forwarding = true
+        terminal.nativeCancelled(presses, event: nil)
+        forwarding = false
+    }
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil { stopAllInput() }
+        else if focusWhenAttached { focusWhenAttached = false; _ = becomeFirstResponder() }
+    }
     private func startRepeat(usage: Int, flags: UIKeyModifierFlags) {
         stopRepeat()
         repeated = (usage, flags)
-        let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                guard let self, let (usage, flags) = self.repeated else { return }
+        let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] timer in
+            let active = MainActor.assumeIsolated {
+                guard let self, let (usage, flags) = self.repeated else { return false }
                 _ = self.terminal.handleKey(usage: usage, flags: flags)
+                return true
             }
+            if !active { timer.invalidate() }
         }
         timer.fireDate = Date().addingTimeInterval(0.45)
         self.timer = timer
@@ -358,11 +624,15 @@ final class TerminalKeyboardHost: UIView, UIKeyInput, UITextInputTraits {
                 consumed.insert(usage)
                 let action = HardwareKeymap.action(usage: usage, shift: key.modifierFlags.contains(.shift))
                 switch action {
-                case .input, .backspace: startRepeat(usage: usage, flags: key.modifierFlags)
+                case .input, .backspace:
+                    if key.modifierFlags.intersection([.command, .control, .alternate]).isEmpty {
+                        startRepeat(usage: usage, flags: key.modifierFlags)
+                    }
                 default: break
                 }
             } else { rest.insert(press) }
         }
+        nativePresses.formUnion(rest)
         forwarding = true
         if !rest.isEmpty { terminal.nativeBegan(rest, event: event) }
         forwarding = false
@@ -375,14 +645,15 @@ final class TerminalKeyboardHost: UIView, UIKeyInput, UITextInputTraits {
             modifiers = key.modifierFlags
             return consumed.remove(key.keyCode.rawValue) == nil
         }
+        nativePresses.subtract(presses)
         forwarding = true
         terminal.nativeEnded(Set(rest), event: event)
         forwarding = false
     }
     override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
         if forwarding { super.pressesCancelled(presses, with: event); return }
-        stopRepeat(); consumed.removeAll()
+        stopRepeat(); consumed.removeAll(); nativePresses.subtract(presses)
         forwarding = true; terminal.nativeCancelled(presses, event: event); forwarding = false
     }
-    override func resignFirstResponder() -> Bool { stopRepeat(); consumed.removeAll(); return super.resignFirstResponder() }
+    override func resignFirstResponder() -> Bool { stopAllInput(); return super.resignFirstResponder() }
 }

@@ -172,6 +172,9 @@ final class SSHConnection {
     private var group: EventLoopGroup?
     private var channel: Channel?
     private var sessionChannel: Channel?
+    private var editorChannel: Channel?
+    private var editorStarting = false
+    private var editorGeneration = UUID()
 
     init(
         feedSender: TerminalFeedSender,
@@ -253,6 +256,63 @@ final class SSHConnection {
         }
     }
 
+    func stopEditor() {
+        editorGeneration = UUID()
+        editorStarting = false
+        let child = editorChannel
+        editorChannel = nil
+        child?.close(promise: nil)
+    }
+
+    func startEditor(session: String, onFrame: @escaping @MainActor (Data) -> Void,
+                     onEnd: @escaping @MainActor (String) -> Void) {
+        guard let channel, editorChannel == nil, !editorStarting else { return }
+        editorStarting = true
+        let generation = UUID()
+        editorGeneration = generation
+        let frame: @Sendable (Data) -> Void = { data in Task { @MainActor in onFrame(data) } }
+        let ended: @Sendable (String) -> Void = { [weak self] reason in
+            Task { @MainActor in
+                guard let self, self.editorGeneration == generation else { return }
+                self.editorChannel = nil; self.editorStarting = false
+                onEnd(reason)
+            }
+        }
+        channel.pipeline.handler(type: NIOSSHHandler.self).flatMap { handler in
+            let promise = channel.eventLoop.makePromise(of: Channel.self)
+            handler.createChannel(promise, channelType: .session) { child, type in
+                guard type == .session else { return child.eventLoop.makeFailedFuture(SSHClientError.invalidChannelType) }
+                return child.eventLoop.makeCompletedFuture {
+                    try child.pipeline.syncOperations.addHandler(SSHFileChannelHandler(session: session, onFrame: frame, onEnd: ended))
+                }
+            }
+            return promise.futureResult
+        }.whenComplete { [weak self] result in
+            Task { @MainActor in
+                guard let self, self.channel != nil, self.editorGeneration == generation else {
+                    if case .success(let child) = result { child.close(promise: nil) }
+                    return
+                }
+                self.editorStarting = false
+                switch result {
+                case .success(let child): self.editorChannel = child
+                case .failure: onEnd("편집 채널을 열 수 없습니다. SSH 서버의 동시 세션 허용 설정을 확인하세요.")
+                }
+            }
+        }
+    }
+
+    func sendEditor(_ message: SSHRemoteMessage) {
+        guard let child = editorChannel, var data = try? JSONEncoder().encode(message) else { return }
+        data.append(10)
+        let bytes = data
+        child.eventLoop.execute {
+            var buffer = child.allocator.buffer(capacity: bytes.count)
+            buffer.writeBytes(bytes)
+            child.writeAndFlush(SSHChannelData(type: .channel, data: .byteBuffer(buffer)), promise: nil)
+        }
+    }
+
     func resize(cols: Int, rows: Int) {
         guard cols > 0, rows > 0, let sessionChannel else { return }
         sessionChannel.eventLoop.execute {
@@ -271,6 +331,9 @@ final class SSHConnection {
         let group = group
         self.channel = nil
         sessionChannel = nil
+        editorChannel = nil
+        editorStarting = false
+        editorGeneration = UUID()
         password = ""
         self.group = nil
 
@@ -369,3 +432,45 @@ final class SSHConnection {
     }
 }
 
+
+/// An independent non-PTY exec channel multiplexed on the authenticated SSH transport.
+/// No path or file contents are ever included in the remote shell command.
+private final class SSHFileChannelHandler: ChannelInboundHandler {
+    typealias InboundIn = SSHChannelData
+    private var frames = SSHRemoteFrames()
+    private let session: String
+    private let onFrame: @Sendable (Data) -> Void
+    private let onEnd: @Sendable (String) -> Void
+
+    init(session: String, onFrame: @escaping @Sendable (Data) -> Void, onEnd: @escaping @Sendable (String) -> Void) {
+        self.session = session; self.onFrame = onFrame; self.onEnd = onEnd
+    }
+    func channelActive(context: ChannelHandlerContext) {
+        let channel = context.channel
+        let config = Data(("{\"session\":\"" + session + "\"}\n").utf8)
+        channel.triggerUserOutboundEvent(SSHChannelRequestEvent.ExecRequest(
+            command: "exec python3 \"$HOME/.local/bin/seto\" --bridge", wantReply: true
+        )).whenComplete { result in
+            switch result {
+            case .success:
+                var buffer = channel.allocator.buffer(capacity: config.count)
+                buffer.writeBytes(config)
+                channel.writeAndFlush(SSHChannelData(type: .channel, data: .byteBuffer(buffer)), promise: nil)
+            case .failure:
+                channel.close(promise: nil)
+            }
+        }
+    }
+    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+        let payload = unwrapInboundIn(data)
+        guard payload.type == .channel, case .byteBuffer(var buffer) = payload.data,
+              let bytes = buffer.readBytes(length: buffer.readableBytes) else { return }
+        do { for frame in try frames.receive(Data(bytes)) { onFrame(frame) } }
+        catch { context.close(promise: nil) }
+    }
+    func channelInactive(context: ChannelHandlerContext) {
+        onEnd("편집 연결 종료 · Python 3와 ~/.local/bin/seto 설치를 확인하세요. 초안은 유지됩니다.")
+        context.fireChannelInactive()
+    }
+    func errorCaught(context: ChannelHandlerContext, error: Error) { context.close(promise: nil) }
+}

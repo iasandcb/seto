@@ -20,13 +20,15 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     private var sawCapsLockDown = false
     private var active = false
     private var clientUpdateDepth = 0
+    private var unmarkedSelection: NSRange?
 
     override func activateServer(_ sender: Any!) {
         super.activateServer(sender)
-        // Each newly activated input context starts in Korean. A fresh session
+        // Terminal starts in English; other input contexts start in Korean.
+        // A fresh session
         // also drops the previous field's English context and undo history.
         if !active {
-            beginInputContext()
+            beginInputContext(bundleIdentifier: (sender as? IMKTextInput)?.bundleIdentifier())
         }
         active = true
         let owner = ObjectIdentifier(self)
@@ -43,9 +45,11 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
 
     // Kept separate from IMK activation so the reset can be exercised by a
     // mock client without an InputMethodKit server connection.
-    func beginInputContext() {
-        session = Self.makeSession()
+    func beginInputContext(bundleIdentifier: String? = nil) {
+        let mode: Language = bundleIdentifier == "com.apple.Terminal" ? .english : .korean
+        session = Self.makeSession(mode: mode)
         sawCapsLockDown = false
+        unmarkedSelection = nil
     }
 
     override func recognizedEvents(_ sender: Any!) -> Int {
@@ -55,6 +59,7 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
 
     override func handle(_ event: NSEvent!, client sender: Any!) -> Bool {
         guard let event, let client = sender as? IMKTextInput else { return false }
+        reconcileComposition(client: client)
         if event.type == .flagsChanged {
             if IsSecureEventInputEnabled() {
                 apply(session.discard(), client: client)
@@ -99,7 +104,12 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         if event.keyCode == Keymap.delete {
             let update = session.backspace()
             updateModeStatus()
-            guard update.field != .none else { return false }
+            guard update.field != .none else {
+                // The app moves the caret after handle() returns. Do not
+                // mistake that expected deletion for an external edit.
+                unmarkedSelection = nil
+                return false
+            }
             apply(update, client: client)
             return true
         }
@@ -129,6 +139,7 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         // before they can be recognized as Hangul (lfw → 잘).
         guard clientUpdateDepth == 0 else { return }
         guard let client = sender as? IMKTextInput else { return }
+        reconcileComposition(client: client)
         apply(session.commitDisplayed(), client: client)
     }
 
@@ -136,12 +147,35 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     /// keystrokes. Those keys are `mr2jt` for 했어, so return the Hangul
     /// that is actually marked.
     override func originalString(_ sender: Any!) -> NSAttributedString! {
-        NSAttributedString(string: session.preedit)
+        if let client = sender as? IMKTextInput {
+            reconcileComposition(client: client)
+        }
+        return NSAttributedString(string: session.preedit)
     }
 
     override func cancelComposition() {
+        guard clientUpdateDepth == 0 else { return }
         guard let client = client() else { return }
+        reconcileComposition(client: client)
         apply(session.commitDisplayed(), client: client)
+    }
+
+    /// Editors can end a mark or move the caret without an IMK event. Terminal
+    /// can handle Return itself while English is unmarked, leaving the previous
+    /// command in our token (ls + ls → ㅈㄴㅈㄴ). Start fresh without editing
+    /// text or recording a retype from a token we no longer own.
+    private func reconcileComposition(client: IMKTextInput) {
+        guard clientUpdateDepth == 0 else { return }
+        if session.preedit.isEmpty {
+            guard let expected = unmarkedSelection else { return }
+            let selection = client.selectedRange()
+            guard selection.location != NSNotFound, selection != expected else { return }
+        } else {
+            let mark = client.markedRange()
+            guard mark.location == NSNotFound || mark.length == 0 else { return }
+        }
+        session = Self.makeSession(mode: session.mode)
+        unmarkedSelection = nil
     }
 
     override func deactivateServer(_ sender: Any!) {
@@ -347,7 +381,16 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
 
     private func apply(_ update: SessionUpdate, client: IMKTextInput) {
         clientUpdateDepth += 1
-        defer { clientUpdateDepth -= 1 }
+        defer {
+            if clientUpdateDepth == 1 {
+                unmarkedSelection = nil
+                if session.preedit.isEmpty {
+                    let selection = client.selectedRange()
+                    if selection.location != NSNotFound { unmarkedSelection = selection }
+                }
+            }
+            clientUpdateDepth -= 1
+        }
         updateModeStatus()
         let notFound = NSRange(location: NSNotFound, length: NSNotFound)
         switch update.field {

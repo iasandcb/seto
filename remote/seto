@@ -1,0 +1,357 @@
+#!/usr/bin/env python3
+"""Seto v1: one UTF-8 document over an existing SSH exec channel (POSIX/Python 3.8+)."""
+import errno
+import fcntl
+import hashlib
+import json
+import os
+import re
+import select
+import socket
+import stat
+import sys
+import time
+
+LIMIT = 1024 * 1024
+WIRE_LIMIT = LIMIT * 6 + 16384  # worst-case JSON escaping
+TOKEN = re.compile(r"^[a-f0-9]{32}$")
+
+
+class FileError(Exception):
+    def __init__(self, code, message):
+        self.code, self.message = code, message
+        super().__init__(message)
+
+
+def encode(value):
+    return (json.dumps(value, ensure_ascii=True, separators=(",", ":")) + "\n").encode("ascii")
+
+
+def socket_path(token):
+    if not isinstance(token, str) or not TOKEN.fullmatch(token):
+        raise FileError("session", "세토 터미널에서 ‘파일 편집 연결’을 먼저 누르세요.")
+    base = "/tmp/seto-" + str(os.getuid())
+    try:
+        os.mkdir(base, 0o700)
+    except FileExistsError:
+        pass
+    info = os.lstat(base)
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700:
+        raise FileError("session", "세토 소켓 폴더의 소유자·권한이 안전하지 않습니다.")
+    return base + "/" + token + ".sock"
+
+
+def connection_record():
+    connection = os.environ.get("SSH_CONNECTION", "")
+    if not connection:
+        raise FileError("session", "SSH 연결 정보를 찾을 수 없습니다. 세토의 SSH 터미널에서 실행하세요.")
+    # Both child channels inherit the same server-provided transport identity.
+    # The secret session token is never obtained from terminal output.
+    key = hashlib.sha256(connection.encode()).hexdigest()[:32]
+    return socket_path(key) + ".json"
+
+
+def checked_text(raw):
+    if len(raw) > LIMIT:
+        raise FileError("size", "첫 버전은 1 MiB 이하의 UTF-8 텍스트만 지원합니다.")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeError:
+        raise FileError("encoding", "UTF-8 텍스트 파일이 아닙니다.")
+    if "\0" in text:
+        raise FileError("encoding", "NUL 문자가 있는 바이너리 파일은 지원하지 않습니다.")
+    return text
+
+
+class Document:
+    def __init__(self, path):
+        if not isinstance(path, str) or not os.path.isabs(path) or "\0" in path:
+            raise FileError("path", "절대 파일 경로가 필요합니다.")
+        # Resolve parent symlinks once; never follow a final-component symlink.
+        parent, self.name = os.path.split(path)
+        if self.name in ("", ".", ".."):
+            raise FileError("type", "폴더가 아닌 파일 이름을 지정하세요.")
+        self.parent = os.path.realpath(parent)
+        self.path = os.path.join(self.parent, self.name)
+        self.dirfd = os.open(self.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            self.content, self.version, _ = self.snapshot()
+        except BaseException:
+            self.close()
+            raise
+
+    def close(self):
+        if self.dirfd is not None:
+            os.close(self.dirfd)
+            self.dirfd = None
+
+    def snapshot(self):
+        try:
+            fd = os.open(self.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=self.dirfd)
+        except FileNotFoundError:
+            return "", "missing", None
+        except OSError as error:
+            if error.errno == errno.ELOOP:
+                raise FileError("type", "심볼릭 링크는 지원하지 않습니다. 실제 파일 경로를 여세요.")
+            raise
+        try:
+            before = os.fstat(fd)
+            if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+                raise FileError("type", "일반 파일 하나만 지원합니다. 폴더·장치·하드 링크는 열 수 없습니다.")
+            if before.st_uid != os.getuid() or before.st_mode & 0o7000:
+                raise FileError("permission", "현재 사용자 소유의 일반 파일만 편집할 수 있습니다.")
+            raw = bytearray()
+            while len(raw) <= LIMIT:
+                chunk = os.read(fd, min(65536, LIMIT + 1 - len(raw)))
+                if not chunk:
+                    break
+                raw.extend(chunk)
+            text = checked_text(raw)
+            after = os.fstat(fd)
+            if self.signature(before) != self.signature(after):
+                raise FileError("conflict", "읽는 중 원격 파일이 변경되었습니다. 다시 여세요.")
+            metadata = self.signature(after)
+            version = hashlib.sha256(repr(metadata).encode() + bytes(raw)).hexdigest()
+            return text, version, after
+        finally:
+            os.close(fd)
+
+    @staticmethod
+    def signature(s):
+        return (s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, s.st_ctime_ns,
+                s.st_mode, s.st_uid, s.st_gid, s.st_nlink)
+
+    def save(self, expected, text):
+        # Serialize cooperating seto writers even when the target inode is replaced.
+        try:
+            fcntl.flock(self.dirfd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise FileError("busy", "다른 세토 편집기가 저장 중입니다. 잠시 후 다시 저장하세요.")
+        try:
+            return self._save(expected, text)
+        finally:
+            fcntl.flock(self.dirfd, fcntl.LOCK_UN)
+
+    def _save(self, expected, text):
+        if not isinstance(text, str):
+            raise FileError("protocol", "텍스트 형식이 올바르지 않습니다.")
+        raw = text.encode("utf-8")
+        checked_text(raw)
+        _, version, info = self.snapshot()
+        if expected != self.version or version != expected:
+            raise FileError("conflict", "원격 파일이 변경되었거나 새로 생겼습니다. 초안을 복사하고 다시 여세요.")
+        if info:
+            if not info.st_mode & stat.S_IWUSR:
+                raise PermissionError("파일이 읽기 전용입니다.")
+            # Directory write permission alone would allow rename over a read-only
+            # target. Check actual write access too (including server ACLs).
+            writable = os.open(self.name, os.O_WRONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=self.dirfd)
+            os.close(writable)
+        parent = os.stat(self.parent)
+        pinned = os.fstat(self.dirfd)
+        if (parent.st_dev, parent.st_ino) != (pinned.st_dev, pinned.st_ino):
+            raise FileError("conflict", "상위 폴더가 변경되었습니다. 다시 여세요.")
+        # All temporary I/O uses the pinned directory, including when its pathname moves.
+        temp = ".seto-" + os.urandom(16).hex()
+        fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666, dir_fd=self.dirfd)
+        try:
+            if info:
+                os.fchown(fd, -1, info.st_gid)
+                os.fchmod(fd, stat.S_IMODE(info.st_mode))
+                # Preserve ACL/xattr metadata when supported, or fail before replacement.
+                source = os.open(self.name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=self.dirfd)
+                try:
+                    if hasattr(os, "listxattr"):
+                        for key in os.listxattr(source):
+                            os.setxattr(fd, key, os.getxattr(source, key))
+                finally:
+                    os.close(source)
+            with os.fdopen(fd, "wb", closefd=False) as output:
+                output.write(raw)
+                output.flush()
+                os.fsync(fd)
+            if self.snapshot()[1] != expected:
+                raise FileError("conflict", "저장 직전 원격 파일이 변경되었습니다. 초안은 유지됩니다.")
+            if info is None:
+                # Atomic create-if-absent: never overwrite a concurrently created file.
+                try:
+                    os.link(temp, self.name, src_dir_fd=self.dirfd, dst_dir_fd=self.dirfd, follow_symlinks=False)
+                except FileExistsError:
+                    raise FileError("conflict", "같은 이름의 파일이 생겼습니다. 덮어쓰지 않았습니다.")
+                os.unlink(temp, dir_fd=self.dirfd)
+            else:
+                os.replace(temp, self.name, src_dir_fd=self.dirfd, dst_dir_fd=self.dirfd)
+            os.fsync(self.dirfd)
+            actual, version, _ = self.snapshot()
+            if actual != text:
+                raise FileError("conflict", "저장 직후 파일이 변경되었습니다. 서버 내용을 확인하세요.")
+            self.content, self.version = text, version
+            return version
+        finally:
+            os.close(fd)
+            try:
+                os.unlink(temp, dir_fd=self.dirfd)
+            except FileNotFoundError:
+                pass
+
+
+def error_value(error):
+    if isinstance(error, FileError):
+        return {"code": error.code, "message": error.message}
+    if isinstance(error, PermissionError):
+        return {"code": "permission", "message": "파일 또는 상위 폴더에 읽기·쓰기 권한이 없습니다."}
+    if isinstance(error, FileNotFoundError):
+        return {"code": "missing_parent", "message": "상위 폴더가 없습니다. 폴더를 먼저 만드세요."}
+    return {"code": "io", "message": "파일 처리 실패: " + str(error)}
+
+
+def bridge():
+    config = json.loads(sys.stdin.buffer.readline(4096))
+    token = config.get("session")
+    path = socket_path(token)
+    record = connection_record()
+    listener = socket.socket(socket.AF_UNIX)
+    bound = False
+    document = None
+    clients = {}
+    buffer = bytearray()
+    def emit(value):
+        value.update(v=1, session=token)
+        sys.stdout.buffer.write(encode(value))
+        sys.stdout.buffer.flush()
+    try:
+        listener.bind(path)
+        bound = True
+        os.chmod(path, 0o600)
+        listener.listen(4)
+        # Replace a stale record after an interrupted connection. The socket itself
+        # has a fresh random name, so it cannot attach to a previous transport.
+        record_temp = record + "." + token
+        record_fd = os.open(record_temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(record_fd, "wb") as output:
+            output.write(encode({"session": token}))
+        os.replace(record_temp, record)
+        emit({"type": "ready"})
+        while True:
+            ready, _, _ = select.select([sys.stdin.buffer, listener] + list(clients), [], [], 1)
+            for stream in ready:
+                if stream is listener:
+                    client, _ = listener.accept()
+                    client.setblocking(False)
+                    if len(clients) >= 4:
+                        client.close()
+                    else:
+                        clients[client] = (bytearray(), time.monotonic())
+                elif stream is sys.stdin.buffer:
+                    chunk = os.read(sys.stdin.fileno(), 65536)
+                    if not chunk:
+                        return
+                    buffer.extend(chunk)
+                    if len(buffer) > WIRE_LIMIT:
+                        raise FileError("protocol", "메시지가 너무 큽니다.")
+                    while b"\n" in buffer:
+                        line, _, remainder = buffer.partition(b"\n")
+                        buffer = bytearray(remainder)
+                        request = json.loads(line)
+                        if request.get("session") != token or request.get("v") != 1:
+                            raise FileError("protocol", "다른 연결의 메시지입니다.")
+                        request_id = request.get("id")
+                        try:
+                            if request.get("type") == "close":
+                                if document:
+                                    document.close()
+                                    document = None
+                                emit({"type": "closed", "id": request_id})
+                            elif request.get("type") == "save" and document and request.get("path") == document.path:
+                                version = document.save(request.get("version"), request.get("content"))
+                                emit({"type": "saved", "id": request_id, "path": document.path, "version": version})
+                            else:
+                                raise FileError("protocol", "열린 문서의 요청이 아닙니다.")
+                        except (OSError, FileError, UnicodeError) as error:
+                            emit(dict(type="error", id=request_id, **error_value(error)))
+                else:
+                    data, started = clients[stream]
+                    chunk = stream.recv(8192)
+                    data.extend(chunk)
+                    if not chunk or len(data) > 16384 or b"\n" in data:
+                        try:
+                            if not chunk or len(data) > 16384:
+                                raise FileError("protocol", "잘못된 편집 요청입니다.")
+                            request = json.loads(data)
+                            if request.get("session") != token:
+                                raise FileError("session", "다른 터미널의 요청입니다.")
+                            if document:
+                                raise FileError("busy", "앱에서 열린 편집기를 먼저 닫으세요.")
+                            document = Document(request.get("path"))
+                            emit({"type": "open", "path": document.path, "content": document.content, "version": document.version})
+                            stream.sendall(encode({"ok": True}))
+                        except (OSError, FileError, ValueError, TypeError) as error:
+                            stream.sendall(encode(dict(ok=False, **error_value(error))))
+                        finally:
+                            stream.close()
+                            del clients[stream]
+            for stream, (_, started) in list(clients.items()):
+                if time.monotonic() - started > 5:
+                    stream.close()
+                    del clients[stream]
+    finally:
+        if document:
+            document.close()
+        for stream in clients:
+            stream.close()
+        listener.close()
+        if bound:
+            # A replacement bridge can publish a new record before this one exits.
+            try:
+                with open(record, "rb") as current:
+                    owns_record = json.loads(current.read(4096)).get("session") == token
+            except (OSError, ValueError):
+                owns_record = False
+            for owned_path in ((path, record) if owns_record else (path,)):
+                try:
+                    os.unlink(owned_path)
+                except FileNotFoundError:
+                    pass
+
+
+def main():
+    if sys.argv[1:] == ["--bridge"]:
+        bridge()
+        return
+    args = sys.argv[1:]
+    literal = args[:1] == ["--"]
+    if literal:
+        args = args[1:]
+    if len(args) != 1 or (not literal and args[0] in ("-h", "--help", "--wait")):
+        print("사용법: seto [--] 파일명 (UTF-8, 최대 1 MiB; --wait 미지원)", file=sys.stderr)
+        sys.exit(2)
+    try:
+        fd = os.open(connection_record(), os.O_RDONLY | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        raise FileError("session", "앱에서 ‘파일 편집 연결’을 먼저 누르세요.")
+    with os.fdopen(fd, "rb") as record:
+        info = os.fstat(record.fileno())
+        if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600:
+            raise FileError("session", "편집 연결 정보의 권한을 확인하세요.")
+        token = json.loads(record.read(4096)).get("session")
+    path = socket_path(token)
+    with socket.socket(socket.AF_UNIX) as client:
+        client.settimeout(15)
+        try:
+            client.connect(path)
+        except OSError:
+            raise FileError("session", "편집 연결이 끊겼습니다. 앱에서 ‘파일 편집 연결’을 다시 누르세요.")
+        client.sendall(encode({"session": token, "path": os.path.join(os.getcwd(), args[0])}))
+        with client.makefile("rb") as reply:
+            result = json.loads(reply.readline(16384))
+        if not result.get("ok"):
+            raise FileError(result.get("code"), result.get("message"))
+    print("세토 앱에서 편집하세요. 저장은 앱의 저장 버튼 또는 ⌘S로 확인하세요.")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, ValueError, FileError) as error:
+        print("seto: " + error_value(error)["message"], file=sys.stderr)
+        sys.exit(1)

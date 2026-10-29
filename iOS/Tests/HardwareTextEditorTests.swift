@@ -619,3 +619,131 @@ final class IOSHardwareLayoutTests: XCTestCase {
         XCTAssertEqual(input.layout, .dubeol)
     }
 }
+
+@MainActor
+final class TerminalLifecycleTests: XCTestCase {
+    func testClosedTerminalReleasesUIResources() {
+        weak var releasedTerminal: SetoTerminal?
+        weak var releasedHost: TerminalKeyboardHost?
+        autoreleasepool {
+            let terminal = SetoTerminal(frame: CGRect(x: 0, y: 0, width: 390, height: 600))
+            let host = TerminalKeyboardHost(terminal: terminal)
+            releasedTerminal = terminal
+            releasedHost = host
+            terminal.disconnect()
+            host.stopAllInput()
+        }
+        XCTAssertNil(releasedHost)
+        XCTAssertNil(releasedTerminal)
+    }
+}
+
+@MainActor
+final class SSHTabTests: XCTestCase {
+    func testSwitchKeepsIndependentModelsAndPendingText() throws {
+        let workspace = SSHTabs()
+        let first = try XCTUnwrap(workspace.tabs.first)
+        first.model.pending = "첫 작업"
+        workspace.add()
+        let second = try XCTUnwrap(workspace.tabs.last)
+        second.model.pending = "둘째 작업"
+        XCTAssertFalse(first.model === second.model)
+        XCTAssertFalse(first.files === second.files)
+        workspace.selected = first.id
+        XCTAssertEqual(first.model.pending, "첫 작업")
+        XCTAssertEqual(second.model.pending, "둘째 작업")
+        workspace.remove(second.id)
+        XCTAssertEqual(workspace.selected, first.id)
+        XCTAssertEqual(first.model.pending, "첫 작업")
+    }
+    func testClosingTabReleasesItsRetainedTerminalAndKeepsNeighbor() throws {
+        let workspace = SSHTabs()
+        let first = try XCTUnwrap(workspace.tabs.first)
+        weak var releasedHost: TerminalKeyboardHost?
+        autoreleasepool {
+            let terminal = SetoTerminal(frame: .zero)
+            terminal.model = first.model
+            first.model.terminal = terminal
+            let host = TerminalKeyboardHost(terminal: terminal)
+            first.model.retainedHost = host
+            releasedHost = host
+        }
+        XCTAssertNotNil(releasedHost)
+        workspace.add()
+        let neighbor = workspace.selected
+        workspace.remove(first.id)
+        XCTAssertNil(releasedHost)
+        XCTAssertEqual(workspace.selected, neighbor)
+        XCTAssertEqual(workspace.tabs.count, 1)
+    }
+    func testClosingLastTabCreatesAnEmptyConnectionTab() throws {
+        let workspace = SSHTabs()
+        let old = try XCTUnwrap(workspace.selected)
+        workspace.remove(old)
+        XCTAssertEqual(workspace.tabs.count, 1)
+        XCTAssertNotEqual(workspace.selected, old)
+        XCTAssertEqual(workspace.tabs[0].model.status, "연결 전")
+    }
+}
+
+@MainActor
+final class SSHTabDraftTests: XCTestCase {
+    func testTwoTabsDoNotOverwriteEachOthersLocalDrafts() throws {
+        let suite = "SSHTabDraftTests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let first = SSHRemoteEditor(defaults: defaults)
+        let second = SSHRemoteEditor(defaults: defaults)
+        for (editor, path) in [(first, "/first.md"), (second, "/second.md")] {
+            editor.bind(origin: "user@server:22", session: path, send: { _ in })
+            editor.receive(.init(session: path, type: "ready"))
+            editor.receive(.init(session: path, type: "open", path: path, content: "original", version: "v1"))
+            editor.update("changed")
+        }
+        first.disconnected()
+        second.disconnected()
+        XCTAssertEqual(Set(SSHRemoteEditor(defaults: defaults).drafts.map(\.path)), ["/first.md", "/second.md"])
+        first.close(discardDraft: true)
+        XCTAssertEqual(SSHRemoteEditor(defaults: defaults).drafts.map(\.path), ["/second.md"])
+    }
+}
+
+@MainActor
+final class SSHTabShortcutTests: XCTestCase {
+    func testCommandShiftBracketsSwitchWithoutCommittingPendingInput() throws {
+        let workspace = SSHTabs()
+        let first = try XCTUnwrap(workspace.tabs.first)
+        workspace.add()
+        let second = try XCTUnwrap(workspace.tabs.last)
+        workspace.selected = first.id
+        let terminal = SetoTerminal(frame: .zero)
+        terminal.model = first.model
+        first.model.status = "연결됨"
+        terminal.handleKey(usage: 14)
+        terminal.handleKey(usage: 9)
+        let pending = first.model.pending
+        XCTAssertTrue(terminal.handleKey(usage: 48, flags: [.command, .shift]))
+        XCTAssertEqual(workspace.selected, second.id)
+        XCTAssertEqual(first.model.pending, pending)
+        XCTAssertTrue(terminal.handleKey(usage: 47, flags: [.command, .shift]))
+        XCTAssertEqual(workspace.selected, first.id)
+        workspace.move(-1)
+        XCTAssertEqual(workspace.selected, second.id)
+        workspace.move(1)
+        XCTAssertEqual(workspace.selected, first.id)
+    }
+    func testSingleTabAndPrioritizedKeyCommands() throws {
+        let workspace = SSHTabs()
+        let selected = workspace.selected
+        workspace.move(-1)
+        workspace.move(1)
+        XCTAssertEqual(workspace.selected, selected)
+        let host = TerminalKeyboardHost(terminal: SetoTerminal(frame: .zero))
+        let commands = try XCTUnwrap(host.keyCommands)
+        for input in ["[", "]"] {
+            let command = try XCTUnwrap(commands.first { $0.input == input })
+            XCTAssertEqual(command.modifierFlags, [.command, .shift])
+            XCTAssertTrue(command.wantsPriorityOverSystemBehavior)
+        }
+    }
+}

@@ -936,6 +936,23 @@ private func drive(_ paper: inout Paper, _ session: Session, _ keys: String) {
     #expect(failures.isEmpty, "\(failures.count) failures\n\(report)")
 }
 
+@Test func openingQuoteBeforeKoreanWord() {
+    for (keys, expected) in [("pfjdw", "파일"), ("Hpfjdw", "'파일"), ("HpfjdwH", "'파일'")] {
+        assertTypes(keys, expected, mode: .korean)
+        #expect(clientFailures(keys, expected, mode: .korean).isEmpty)
+    }
+    let session = Session(lexicon: lexicon, mode: .korean)
+    for key in "Hpfjdw" {
+        let update = session.input(key)
+        #expect(!update.preedit.isEmpty)
+        #expect(!update.field.sendsMoreThanOneEdit)
+        if case .insertReplacing = update.field {
+            Issue.record("Quoted Hangul must not rewrite committed text: \(update.field)")
+        }
+    }
+    #expect(session.commitDisplayed().field == .unmark("'파일"))
+}
+
 @Test func shiftedSeparatorsStayDigits() {
     let korean = [
         "N.M": "0.1",
