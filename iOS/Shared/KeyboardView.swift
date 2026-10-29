@@ -196,7 +196,7 @@ final class KeyboardView: UIView {
 
     private func beginPhrase(at index: Int? = nil) {
         editingPhraseIndex = index
-        let editor = Session(lexicon: Lexicon(english: [], korean: []), autoSwitch: false, mode: english ? .english : .korean)
+        let editor = Session(lexicon: Lexicon(english: [], korean: []), autoSwitch: false, mode: english ? .english : .korean, layout: .dubeol)
         editor.correctsTypos = false
         if let index {
             for character in phrases[index] { _ = editor.input(KeyAtom(english: character, korean: .character(character))) }

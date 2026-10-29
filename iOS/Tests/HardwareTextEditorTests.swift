@@ -181,18 +181,16 @@ final class InputSettingsTests: XCTestCase {
 
     @MainActor func testTouchUsesCurrentMacCoreAndReportsConfirmedMode() async throws {
         for (keys, expected, mode) in [
-            ("cd ../src", "cd ../src", Language.korean),
-            ("ls ", "ls ", .korean),
-            ("of;", "of;", .english),
-            ("don't", "don't", .english),
-            ("->", "-3", .korean),
-            ("kfx", "각", .korean)
+            ("hello ", "hello ", Language.english),
+            ("gksrmf ", "한글 ", .korean),
+            ("rkr", "각", .korean)
         ] {
             let view = HardwareTextView()
             view.configure(automatic: true, mode: mode)
             var displayedMode = mode
             view.onMode = { displayedMode = $0 }
-            let keyboard = try XCTUnwrap(view.inputView as? KeyboardView)
+            view.setHardwareKeyboardConnected(false)
+            let keyboard = try XCTUnwrap(view.inputView as? TouchKeyboardInputView).keyboard
             for key in keys { keyboard.onKey?(key) }
             XCTAssertEqual(view.text, expected, keys)
             XCTAssertEqual(displayedMode, view.session.mode)
@@ -207,13 +205,14 @@ final class InputSettingsTests: XCTestCase {
         view.configure(automatic: true, mode: .korean)
         var setting = true
         view.onAutomatic = { setting = $0 }
-        let keyboard = try XCTUnwrap(view.inputView as? KeyboardView)
+        view.setHardwareKeyboardConnected(false)
+        let keyboard = try XCTUnwrap(view.inputView as? TouchKeyboardInputView).keyboard
+        keyboard.onKey?("r")
         keyboard.onKey?("k")
-        keyboard.onKey?("f")
         keyboard.onAutoSwitch?()
         XCTAssertFalse(setting)
         XCTAssertFalse(view.session.autoSwitch)
-        keyboard.onKey?("x")
+        keyboard.onKey?("r")
         XCTAssertEqual(view.text, "각")
         view.resetSession()
         XCTAssertFalse(view.session.autoSwitch)
@@ -457,5 +456,166 @@ final class PresentedKeyboardTests: XCTestCase {
         let keyFrame = space.convert(space.bounds, to: keyboardWindow)
         XCTAssertEqual(space.bounds.height, 42, accuracy: 0.1)
         XCTAssertLessThanOrEqual(keyFrame.maxY, keyboardWindow.bounds.height - keyboardWindow.safeAreaInsets.bottom)
+    }
+}
+
+final class TerminalInputTests: XCTestCase {
+    func testKoreanStaysLocalUntilCommitAndDeletesJamo() {
+        let input = TerminalInput()
+        var output = ""
+        input.send = { output += $0 }
+        for character in "kfx" { input.input(character) }
+        XCTAssertEqual(input.pending, "각")
+        XCTAssertEqual(output, "")
+        input.backspace()
+        XCTAssertEqual(input.pending, "가")
+        input.flush()
+        XCTAssertEqual(output, "가")
+        XCTAssertEqual(input.pending, "")
+        input.backspace()
+        XCTAssertEqual(output, "가\u{7f}")
+    }
+    func testEnglishIsImmediateAndBoundaryNeverRewritesRemote() {
+        let input = TerminalInput(mode: .english)
+        var output = ""
+        input.send = { output += $0 }
+        for character in "ls -la" { input.input(character) }
+        XCTAssertEqual(output, "ls -la")
+        XCTAssertEqual(input.pending, "")
+        input.configure(mode: .korean, automatic: false)
+        for character in "kf " { input.input(character) }
+        XCTAssertEqual(output, "ls -la가 ")
+        input.flush()
+        XCTAssertEqual(output, "ls -la가 ")
+    }
+    func testToggleChangesOnlyUnsentWord() {
+        let input = TerminalInput()
+        var output = ""
+        input.send = { output += $0 }
+        for character in "kf" { input.input(character) }
+        input.toggle()
+        XCTAssertEqual(input.pending, "kf")
+        XCTAssertEqual(output, "")
+        input.flush()
+        XCTAssertEqual(output, "kf")
+    }
+}
+
+@MainActor
+final class TerminalKeyboardTests: XCTestCase {
+    func testPhysical390MappingAndControlBoundary() {
+        let model = TerminalModel()
+        model.status = "연결됨"
+        let terminal = SetoTerminal(frame: CGRect(x: 0, y: 0, width: 390, height: 600))
+        terminal.model = model
+        for usage in [14, 9, 27] { XCTAssertTrue(terminal.handleKey(usage: usage)) }
+        XCTAssertEqual(model.pending, "각")
+        XCTAssertTrue(terminal.handleKey(usage: 42))
+        XCTAssertEqual(model.pending, "가")
+        XCTAssertFalse(terminal.handleKey(usage: 224, flags: .control))
+        XCTAssertEqual(model.pending, "가")
+        XCTAssertFalse(terminal.handleKey(usage: 6, flags: .control))
+        XCTAssertEqual(model.pending, "")
+    }
+    func testShiftSpaceAndFocusStayInKeyboardHost() {
+        let model = TerminalModel()
+        model.status = "연결됨"
+        let terminal = SetoTerminal(frame: .zero)
+        terminal.model = model
+        let host = TerminalKeyboardHost(terminal: terminal)
+        let controller = UIViewController()
+        controller.view = host
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 600))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { host.resignFirstResponder(); window.isHidden = true }
+        XCTAssertTrue(terminal.becomeFirstResponder())
+        XCTAssertTrue(host.isFirstResponder)
+        XCTAssertFalse(terminal.isFirstResponder)
+        for usage in [14, 9] { terminal.handleKey(usage: usage) }
+        XCTAssertTrue(terminal.handleKey(usage: 44, flags: .shift))
+        XCTAssertEqual(model.pending, "kf")
+        XCTAssertEqual(model.mode, .english)
+    }
+    func testDisconnectDiscardsUnsentInput() {
+        let model = TerminalModel()
+        model.status = "연결됨"
+        let terminal = SetoTerminal(frame: .zero)
+        terminal.model = model
+        for usage in [14, 9, 27, 14, 9] { terminal.handleKey(usage: usage) }
+        XCTAssertFalse(model.pending.isEmpty)
+        terminal.disconnect()
+        XCTAssertEqual(model.pending, "")
+        XCTAssertEqual(model.status, "연결 종료")
+    }
+}
+
+final class TerminalAutomaticInputTests: XCTestCase {
+    func testAutomaticEnglishIsBufferedAndCommittedOnSpace() {
+        let input = TerminalInput(lexicon: TerminalInput.bundledLexicon, automatic: true)
+        var output = ""
+        input.send = { output += $0 }
+        for key in "hello" { input.input(key) }
+        XCTAssertEqual(output, "")
+        input.input(" ")
+        XCTAssertEqual(output, "hello ")
+        XCTAssertEqual(input.mode, .english)
+        XCTAssertTrue(input.automatic)
+    }
+    func testExplicitCommitResolvesAutomaticWordWithoutExtraSpace() {
+        let input = TerminalInput(lexicon: TerminalInput.bundledLexicon, automatic: true)
+        var output = ""
+        input.send = { output += $0 }
+        for key in "hello" { input.input(key) }
+        input.flush()
+        XCTAssertEqual(output, "hello")
+        XCTAssertEqual(input.pending, "")
+        input.flush()
+        XCTAssertEqual(output, "hello")
+        XCTAssertFalse(output.contains("\u{7f}"))
+    }
+    @MainActor func testBundledD2CodingAndKoreanCellWidths() throws {
+        let font = try XCTUnwrap(UIFont(name: "D2Coding", size: 18))
+        XCTAssertNotNil(UIFont(name: "D2CodingBold", size: 18))
+        let latin = ("M" as NSString).size(withAttributes: [.font: font]).width
+        let korean = ("한" as NSString).size(withAttributes: [.font: font]).width
+        XCTAssertEqual(korean, latin * 2, accuracy: 0.1)
+        let terminal = SetoTerminal(frame: .zero)
+        XCTAssertEqual(terminal.font.fontName, font.fontName)
+        XCTAssertEqual(terminal.font.pointSize, 18)
+    }
+}
+
+final class IOSHardwareLayoutTests: XCTestCase {
+    @MainActor func testEditorSupportsAllLayoutsAndPreservesSelectionOnReset() {
+        for (layout, usages, expected) in [
+            (KeyboardLayout.dubeol, [21, 14, 21], "각"),
+            (.sebeol390, [14, 9], "가"),
+            (.sebeolFinal, [14, 9], "가")
+        ] {
+            let editor = HardwareTextView()
+            editor.configure(automatic: false, mode: .korean, layout: layout)
+            for usage in usages { editor.handleKey(usage: usage) }
+            if layout != .dubeol { editor.handleKey(usage: 30, flags: .shift) }
+            XCTAssertEqual(editor.text, layout == .sebeolFinal ? "갂" : layout == .sebeol390 ? "갖" : expected)
+            editor.resetSession()
+            XCTAssertEqual(editor.session.layout, layout)
+        }
+    }
+    func testTerminalFinalLayoutSurvivesCommitAndSwitch() {
+        let input = TerminalInput(layout: .sebeolFinal)
+        var output = ""
+        input.send = { output += $0 }
+        for key in "kf!" { input.input(key) }
+        XCTAssertEqual(input.pending, "갂")
+        input.flush()
+        XCTAssertEqual(output, "갂")
+        XCTAssertEqual(input.layout, .sebeolFinal)
+        input.configure(mode: .korean, automatic: false, layout: .dubeol)
+        for key in "rkr" { input.input(key) }
+        XCTAssertEqual(input.pending, "각")
+        XCTAssertEqual(output, "갂")
+        input.discard()
+        XCTAssertEqual(input.layout, .dubeol)
     }
 }

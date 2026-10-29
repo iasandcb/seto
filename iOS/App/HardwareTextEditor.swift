@@ -9,6 +9,7 @@ struct HardwareTextEditor: UIViewRepresentable {
     @Binding var focused: Bool
     @Binding var mode: Language
     @Binding var automatic: Bool
+    @AppStorage("app.hardwareLayout") private var hardwareLayout: KeyboardLayout = .sebeol390
 
     func makeUIView(context: Context) -> HardwareTextView {
         let view = HardwareTextView()
@@ -19,14 +20,14 @@ struct HardwareTextEditor: UIViewRepresentable {
         view.smartQuotesType = .no
         view.smartDashesType = .no
         view.accessibilityLabel = "세토 연습장"
-        view.configure(automatic: automatic, mode: mode)
+        view.configure(automatic: automatic, mode: mode, layout: hardwareLayout)
         updateCallbacks(view)
         return view
     }
 
     func updateUIView(_ view: HardwareTextView, context: Context) {
         updateCallbacks(view)
-        view.configure(automatic: automatic, mode: mode)
+        view.configure(automatic: automatic, mode: mode, layout: hardwareLayout)
         if view.text != text {
             view.text = text
             view.resetSession()
@@ -184,7 +185,13 @@ final class HardwareTextView: UITextView, UITextViewDelegate {
         super.pressesCancelled(presses, with: event)
     }
 
-    func configure(automatic: Bool, mode: Language) {
+    func configure(automatic: Bool, mode: Language, layout: KeyboardLayout = .sebeol390) {
+        if session.layout != layout {
+            _ = session.commitDisplayed(endingRun: true)
+            session = Session(lexicon: Self.lexicon, autoSwitch: automatic, mode: mode, layout: layout)
+            expectedText = text ?? ""
+            expectedSelection = selectedRange
+        }
         session.autoSwitch = automatic
         if session.mode != mode { _ = session.forceMode(mode) }
         refreshKeyboard()
@@ -198,7 +205,7 @@ final class HardwareTextView: UITextView, UITextViewDelegate {
 
     func resetSession() {
         let correctsTypos = session.correctsTypos
-        session = Session(lexicon: Self.lexicon, autoSwitch: session.autoSwitch, mode: session.mode)
+        session = Session(lexicon: Self.lexicon, autoSwitch: session.autoSwitch, mode: session.mode, layout: session.layout)
         session.correctsTypos = correctsTypos
         refreshKeyboard()
         expectedText = text ?? ""

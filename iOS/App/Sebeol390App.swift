@@ -15,6 +15,8 @@ private struct ContentView: View {
     @AppStorage("app.autoSwitch") private var automatic = true
     @State private var expanded = false
     @State private var markVectorOpen = false
+    @State private var sshOpen = false
+    @AppStorage("app.hardwareLayout") private var hardwareLayout: KeyboardLayout = .sebeol390
 
     var body: some View {
         NavigationStack {
@@ -27,6 +29,9 @@ private struct ContentView: View {
                     }
                     Button { markVectorOpen = true } label: {
                         Label("mark-vector 문서 열기", systemImage: "doc.text")
+                    }.buttonStyle(.borderedProminent)
+                    Button { sshOpen = true } label: {
+                        Label("SSH 터미널", systemImage: "terminal")
                     }.buttonStyle(.borderedProminent)
                     GroupBox("키보드 시작하기") {
                         VStack(alignment: .leading, spacing: 12) {
@@ -66,12 +71,12 @@ private struct ContentView: View {
                             Button("지우기", role: .destructive) { text = "" }
                         }.font(.subheadline)
                     }
-                    GroupBox("하드웨어 키보드 · " + inputMode.displayName) {
+                    GroupBox(hardwareLayout.title + " · " + inputMode.displayName) {
                         Text("연습장을 누른 뒤 입력하세요. Shift+Space로 한/영을 전환하거나 직전 자동 변환을 되돌립니다. 연결된 키보드의 물리 QWERTY 위치를 사용하며, 방향키와 ⌘ 복사·붙여넣기를 지원합니다. 다른 앱의 하드웨어 입력에는 적용되지 않습니다.")
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     GroupBox("세토 사용법") {
-                        Text("터치는 기본 한글 두벌식 배열이며, 외부 키보드는 세벌식 390으로 입력합니다. 맨 위 숫자 키는 ⇧와 함께 누르면 기호가 입력됩니다. 한/영 ↶로 언어를 바꾸거나 방금 자동 변환한 단어를 되돌리고, 상단 ＋로 자주 쓰는 문구를 등록하고 눌러 바로 입력합니다.")
+                        Text("터치는 기본 한글 두벌식 배열이며, 외부 키보드는 자판 메뉴에서 두벌식·세벌식 390·세벌식 최종을 선택합니다. 맨 위 숫자 키는 ⇧와 함께 누르면 기호가 입력됩니다. 한/영 ↶로 언어를 바꾸거나 방금 자동 변환한 단어를 되돌리고, 상단 ＋로 자주 쓰는 문구를 등록하고 눌러 바로 입력합니다.")
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     Text("입력은 기기 안에서 처리합니다. 전체 접근 권한이 필요하지 않습니다. 암호 입력란 등에서는 iOS 기본 키보드가 표시됩니다.")
@@ -80,6 +85,7 @@ private struct ContentView: View {
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("세토")
+            .fullScreenCover(isPresented: $sshOpen) { SSHTerminalView() }
             .fullScreenCover(isPresented: $markVectorOpen) { MarkVectorView() }
             .fullScreenCover(isPresented: $expanded) {
                 ExpandedPracticeView(text: $text)
@@ -160,7 +166,8 @@ struct InputControls: View {
     @Binding var automatic: Bool
 
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 10) {
+            HardwareLayoutPicker()
             Button { mode = mode.flipped } label: {
                 Label(mode.displayName, systemImage: "keyboard")
                     .font(.subheadline.weight(.semibold))
@@ -171,5 +178,22 @@ struct InputControls: View {
                 .font(.subheadline)
                 .accessibilityLabel("한영 자동 변환")
         }
+    }
+}
+
+/// Shared by practice, document editing and SSH; independent of the touch keyboard.
+struct HardwareLayoutPicker: View {
+    @AppStorage("app.hardwareLayout") private var layout: KeyboardLayout = .sebeol390
+    var body: some View {
+        Menu {
+            Picker("외부 키보드 자판", selection: $layout) {
+                ForEach(KeyboardLayout.allCases, id: \.self) { value in
+                    Text(value.title).tag(value)
+                }
+            }
+        } label: {
+            Image(systemName: "keyboard.badge.ellipsis")
+        }
+        .accessibilityLabel("외부 키보드 자판: " + layout.title)
     }
 }

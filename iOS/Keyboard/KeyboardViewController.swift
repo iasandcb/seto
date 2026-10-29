@@ -8,7 +8,7 @@ final class KeyboardViewController: UIInputViewController {
         }
         return lexicon
     }()
-    private var session = Session(lexicon: KeyboardViewController.lexicon)
+    private var session = Session(lexicon: KeyboardViewController.lexicon, layout: .dubeol)
     private var expectedContext: String?
     private let keyboard = KeyboardView()
 
@@ -71,7 +71,7 @@ final class KeyboardViewController: UIInputViewController {
 
     private func reset() {
         let automatic = UserDefaults.standard.object(forKey: "autoSwitch") as? Bool ?? true
-        session = Session(lexicon: Self.lexicon, autoSwitch: automatic, mode: session.mode)
+        session = Session(lexicon: Self.lexicon, autoSwitch: automatic, mode: session.mode, layout: .dubeol)
         expectedContext = textDocumentProxy.documentContextBeforeInput
         keyboard.update(mode: session.mode, automatic: automatic)
     }
