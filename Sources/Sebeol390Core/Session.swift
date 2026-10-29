@@ -409,7 +409,7 @@ public final class Session {
 
         // Keep the filename intact when a Korean particle follows its
         // extension: a.md + 를 must not reinterpret md as 히.
-        if let headEnd = codeParticleSplit() {
+        if let headEnd = singleKRoSplit() ?? codeParticleSplit() {
             let parts = [
                 Segment(start: 0, end: headEnd, lang: .english),
                 Segment(start: headEnd, end: keys.count, lang: .korean),
@@ -1039,6 +1039,16 @@ public final class Session {
               preservesComposition(at: headEnd) else { return nil }
         guard !lexicon.isKoreanWord(Composer.compose(keys).text) else { return nil }
         return headEnd
+    }
+
+    private func singleKRoSplit() -> Int? {
+        // Prefer k로/K로 over ㄱ로/5로, before shifted-number handling.
+        if keys.count == 3, !keys.contains(where: \.isDubeol),
+           englishText(0..<1).lowercased() == "k",
+           Composer.compose(keys[1...]).text == "로" {
+            return 1
+        }
+        return nil
     }
 
     /// Index where an English acronym ends and a Hangul particle begins.

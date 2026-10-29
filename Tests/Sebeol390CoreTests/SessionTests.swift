@@ -1093,6 +1093,21 @@ private func clientFailures(_ keys: String, _ expected: String, mode: Language) 
     #expect(failures.isEmpty, "\(failures.count) failures\n\(report)")
 }
 
+@Test func singleKWithRoParticle() {
+    for head in ["k", "K"] {
+        for suffix in ["", " ", "."] {
+            let failures = clientFailures(head + "yv" + suffix, head + "로" + suffix, mode: .korean)
+            #expect(failures.isEmpty, "\(failures.joined(separator: "\n"))")
+        }
+    }
+    assertTypes("Kyv", "K로")
+    assertTypes("K", "5")
+    assertTypes("5yv", "5로")
+    assertTypes("k", "ㄱ")
+    assertTypes("kf", "가")
+    assertTypes("kk", "ㄲ")
+}
+
 @Test func koreanWordsStayKoreanBeforeParticles() {
     let particles = [
         "는", "은", "이", "가", "를", "을", "에", "에서", "로", "으로",
