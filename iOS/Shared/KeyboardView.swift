@@ -302,6 +302,10 @@ final class KeyboardView: UIView {
     }
 
     private func refresh() {
+        UIView.performWithoutAnimation { refreshKeyLabels() }
+    }
+
+    private func refreshKeyLabels() {
         for (button, digit, symbol) in numberKeys {
             let label = NSMutableAttributedString(string: String(digit), attributes: [
                 .font: UIFont.systemFont(ofSize: shifted ? 16 : 21, weight: shifted ? .regular : .semibold),
@@ -394,11 +398,19 @@ final class KeyboardView: UIView {
     }
 
     private func makeButton(_ title: String, event: UIControl.Event = .touchUpInside, action: @escaping () -> Void) -> UIButton {
-        let button = UIButton(type: .system)
+        let button = ImmediateKeyboardButton(type: .custom)
         style(button)
         button.setTitle(title, for: .normal)
         button.addAction(UIAction { _ in action() }, for: event)
         return button
+    }
+}
+
+/// Keyboard feedback must follow touch-down without UIButton.system's title fades.
+@MainActor
+private final class ImmediateKeyboardButton: UIButton {
+    override var isHighlighted: Bool {
+        didSet { backgroundColor = isHighlighted ? .secondarySystemFill : .tertiarySystemBackground }
     }
 }
 
