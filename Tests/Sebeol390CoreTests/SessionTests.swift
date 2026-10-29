@@ -1145,10 +1145,15 @@ private func clientFailures(_ keys: String, _ expected: String, mode: Language) 
 }
 
 @Test func shiftedFiveKeepsKoreanParticles() {
-    for particle in ["는", "은", "가", "를", "에", "으로", "도", "만"] {
-        let keys = "K" + SebeolKeys.keys(for: particle)!
-        let failures = clientFailures(keys, "5" + particle, mode: .korean)
-        #expect(failures.isEmpty, "\(failures.joined(separator: "\n"))")
+    for number in ["M", "N", "U", "I", "O", "J", "K", "L", "<", ">", "MN"] {
+        let digits = Composer.compose(number.map(Layout390.atom(for:))).text
+        for particle in ["는", "은", "이", "가", "를", "을", "에", "에서", "으로", "와", "과", "도", "만", "의", "하고"] {
+            let tail = SebeolKeys.keys(for: particle)!
+            for variant in Set([tail, tail.replacingOccurrences(of: "/", with: "v")]) {
+                let failures = clientFailures(number + variant, digits + particle, mode: .korean)
+                #expect(failures.isEmpty, "\(failures.joined(separator: "\n"))")
+            }
+        }
     }
 }
 

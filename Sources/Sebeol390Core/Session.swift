@@ -1141,6 +1141,19 @@ public final class Session {
         guard numberEnd > 0, numberEnd < keys.count else { return false }
         let spelling = englishText(0..<keys.count)
         let tail = Composer.compose(keys[numberEnd...])
+        if wordMode == .korean, !lexicon.isEnglishWord(spelling.lowercased()),
+           !(lexicon.isEnglishPrefix(spelling.lowercased())
+                && spelling.lowercased().contains(where: { "aeiou".contains($0) })) {
+            // The initial in 5ㅇ → 5오 → 5와 is still Korean input.
+            // Reinterpreting Kj as English here commits text that a web
+            // editor may be unable to replace when the vowel arrives.
+            switch shape(of: tail.pieces) {
+            case .singleBare, .trailing:
+                return true
+            default:
+                break
+            }
+        }
         if wordMode == .korean, Self.particles.contains(tail.text),
            case .clean = shape(of: tail.pieces) {
             return true

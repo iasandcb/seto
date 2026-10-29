@@ -87,6 +87,8 @@ private func backspace(controller: SebeolInputController, client: SmokeClient) {
                 ("ntwodmr2jt?", "설치했어?", true),
                 ("V3jcnt", "V3에서", true),
                 ("V3jcnt pfjd'daB", "V3에서 파이팅!", true),
+                ("Kjvf", "5와", false),
+                ("Kjvf pfjd'daB", "5와 파이팅!", false),
                 ("'cng'g", "테스트", true),
                 (";t'gs", "버튼", true),
                 (";f;v", "바보", true),
@@ -101,7 +103,7 @@ private func backspace(controller: SebeolInputController, client: SmokeClient) {
             ] {
                 cases += 1
                 let client = SmokeClient()
-                if keys == "pfjd'daB" || keys.hasPrefix("V3") {
+                if keys == "pfjd'daB" || keys.hasPrefix("V3") || keys.hasPrefix("Kjvf") {
                     client.ignoresReplacementOutsideMark = true
                 }
                 // The plain initializer avoids registering an input server or
