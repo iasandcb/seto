@@ -21,6 +21,9 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     private var active = false
     private var clientUpdateDepth = 0
     private var unmarkedSelection: NSRange?
+    /// Terminal starts with automatic conversion off for this input context.
+    /// A manual toggle can override that until the next context activation.
+    private var contextAutoSwitchOverride: Bool?
 
     override func activateServer(_ sender: Any!) {
         super.activateServer(sender)
@@ -34,20 +37,25 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         let owner = ObjectIdentifier(self)
         let mode = session.mode
         let layout = session.layout
+        let autoSwitch = session.autoSwitch
         // IMK's Objective-C callbacks run on the main thread but do not carry
         // Swift actor annotations. Bridge this menu into the main actor below.
         nonisolated(unsafe) let statusMenu = NSMenu(title: "세토")
         statusMenu.delegate = self
         MainActor.assumeIsolated {
-            ModeStatusItem.shared.activate(owner: owner, mode: mode, layout: layout, menu: statusMenu)
+            ModeStatusItem.shared.activate(owner: owner, mode: mode, layout: layout,
+                                           autoSwitch: autoSwitch, menu: statusMenu)
         }
     }
 
     // Kept separate from IMK activation so the reset can be exercised by a
     // mock client without an InputMethodKit server connection.
     func beginInputContext(bundleIdentifier: String? = nil) {
-        let mode: Language = bundleIdentifier == "com.apple.Terminal" ? .english : .korean
+        let isTerminal = bundleIdentifier == "com.apple.Terminal"
+        let mode: Language = isTerminal ? .english : .korean
+        contextAutoSwitchOverride = isTerminal ? false : nil
         session = Self.makeSession(mode: mode)
+        session.autoSwitch = contextAutoSwitchOverride ?? Preferences.autoSwitch
         sawCapsLockDown = false
         unmarkedSelection = nil
     }
@@ -84,6 +92,10 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         }
         syncPreferences(client: client)
         let shortcutFlags = flags.intersection([.command, .control, .option, .shift, .function])
+        if shortcutFlags == [.control, .shift], event.keyCode == Keymap.space {
+            toggleAutoSwitch()
+            return true
+        }
         if shortcutFlags == .control {
             let arrow: Character?
             switch Keymap.qwertyCharacter(keyCode: event.keyCode, shift: false) {
@@ -193,8 +205,10 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         let owner = ObjectIdentifier(self)
         let mode = session.mode
         let layout = session.layout
+        let autoSwitch = session.autoSwitch
         MainActor.assumeIsolated {
-            ModeStatusItem.shared.update(owner: owner, mode: mode, layout: layout)
+            ModeStatusItem.shared.update(owner: owner, mode: mode, layout: layout,
+                                         autoSwitch: autoSwitch)
         }
     }
 
@@ -316,8 +330,17 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     }
 
     @objc private func toggleAutoSwitch(_ sender: Any?) {
-        session.autoSwitch.toggle()
-        Preferences.autoSwitch = session.autoSwitch
+        toggleAutoSwitch()
+    }
+
+    private func toggleAutoSwitch() {
+        if let override = contextAutoSwitchOverride {
+            contextAutoSwitchOverride = !override
+        } else {
+            Preferences.autoSwitch = !Preferences.autoSwitch
+        }
+        session.autoSwitch = contextAutoSwitchOverride ?? Preferences.autoSwitch
+        updateModeStatus()
     }
 
     @objc private func toggleTypoCorrection(_ sender: Any?) {
@@ -342,8 +365,9 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
             session = Self.makeSession(mode: session.mode)
             updateModeStatus()
         }
-        session.autoSwitch = Preferences.autoSwitch
+        session.autoSwitch = contextAutoSwitchOverride ?? Preferences.autoSwitch
         session.correctsTypos = Preferences.correctsTypos
+        updateModeStatus()
     }
 
     @objc private func selectKorean(_ sender: Any?) {
