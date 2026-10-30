@@ -91,8 +91,11 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
             return false
         }
         syncPreferences(client: client)
-        let shortcutFlags = flags.intersection([.command, .control, .option, .shift, .function])
-        if shortcutFlags == [.control, .shift], event.keyCode == Keymap.space {
+        let shortcutFlags = flags.intersection([.command, .control, .option, .shift])
+        let isAutoSwitchHotkey = flags.contains(.control) && flags.contains(.shift)
+            && !flags.contains(.command) && !flags.contains(.option)
+        let isAutoSwitchHotkeyKey = event.keyCode == 0x28 // Physical K
+        if isAutoSwitchHotkey, isAutoSwitchHotkeyKey {
             toggleAutoSwitch()
             return true
         }
@@ -224,7 +227,7 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     override func menu() -> NSMenu! {
         syncPreferences()
         let menu = NSMenu(title: "세토")
-        let auto = menu.addItem(withTitle: "자동 한/영 전환", action: #selector(toggleAutoSwitch(_:)), keyEquivalent: "")
+        let auto = menu.addItem(withTitle: "자동 한/영 전환 (⌃⇧K)", action: #selector(toggleAutoSwitch(_:)), keyEquivalent: "")
         auto.state = session.autoSwitch ? .on : .off
         auto.target = self
         let typos = menu.addItem(withTitle: "오타 자동 교정", action: #selector(toggleTypoCorrection(_:)), keyEquivalent: "")

@@ -34,7 +34,7 @@ final class ModeStatusItem {
         let automatic = autoSwitch ? "자동전환 켜짐" : "자동전환 꺼짐"
         let description = "세토 · \(language) · \(automatic)"
         let modeTitle = mode == .korean ? "한" : "A"
-        let switchMark = autoSwitch ? "●" : "○"
+        let switchMark = autoSwitch ? "○" : "–"
         // Match the optical baseline of neighboring menu-bar icons.
         let title = NSMutableAttributedString(
             string: modeTitle + switchMark,
@@ -46,7 +46,7 @@ final class ModeStatusItem {
         ], range: NSRange(location: 0, length: (modeTitle as NSString).length))
         title.addAttributes([
             .font: NSFont.systemFont(ofSize: 8, weight: .bold),
-            .foregroundColor: autoSwitch ? NSColor.controlAccentColor : NSColor.secondaryLabelColor,
+            .foregroundColor: autoSwitch ? NSColor.white : NSColor.secondaryLabelColor,
         ], range: NSRange(location: (modeTitle as NSString).length, length: (switchMark as NSString).length))
         item.button?.attributedTitle = title
         item.button?.toolTip = description
