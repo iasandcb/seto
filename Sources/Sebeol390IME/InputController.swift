@@ -30,7 +30,8 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
 
     override func activateServer(_ sender: Any!) {
         super.activateServer(sender)
-        // Terminal starts in English; other input contexts start in Korean.
+        // Terminal and browser address bars start in English; other input
+        // contexts start in Korean.
         // A fresh session
         // also drops the previous field's English context and undo history.
         if !active {
@@ -59,7 +60,7 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     // mock client without an InputMethodKit server connection.
     func beginInputContext(bundleIdentifier: String? = nil, addressBar: Bool = false) {
         let isTerminal = bundleIdentifier == "com.apple.Terminal"
-        let mode: Language = isTerminal ? .english : .korean
+        let mode: Language = isTerminal || addressBar ? .english : .korean
         contextAutoSwitchOverride = isTerminal || addressBar ? false : nil
         contextCorrectsTyposOverride = addressBar ? false : nil
         session = Self.makeSession(mode: mode)

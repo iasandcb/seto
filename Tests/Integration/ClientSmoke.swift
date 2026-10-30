@@ -434,8 +434,9 @@ private func backspace(controller: SebeolInputController, client: SmokeClient) {
                 }
             }
         }
-        // A browser address bar turns automatic conversion and typo
-        // correction off; the next context restores the preferences.
+        // A browser address bar starts in English with automatic conversion
+        // and typo correction off; the next context restores Korean and the
+        // preferences.
         do {
             let savedAutoSwitch = Preferences.autoSwitch
             let savedTypos = Preferences.correctsTypos
@@ -446,9 +447,11 @@ private func backspace(controller: SebeolInputController, client: SmokeClient) {
                 cases += 1
                 let client = SmokeClient()
                 controller.beginInputContext(bundleIdentifier: "com.apple.Safari", addressBar: addressBar)
-                for raw in "hello" { precondition(press(raw, controller: controller, client: client)) }
+                // Like Terminal: English and no conversion in the address bar,
+                // Korean in the next ordinary context.
+                for raw in "namu" { precondition(press(raw, controller: controller, client: client)) }
                 controller.commitComposition(client)
-                if (client.text == "hello") == addressBar {
+                if client.text != (addressBar ? "namu" : "ㅅㅇㅎㄷ") {
                     print("FAIL address bar=\(addressBar): \(client.text)")
                     failures += 1
                 }
