@@ -496,6 +496,19 @@ private let lexicon: Lexicon = {
     #expect(session.mode == .english)
 }
 
+@Test func shiftSpaceFlipsMixedKoreanAndLatinWordFromItsStartingMode() {
+    let keys = SebeolKeys.keys(for: "누")! + "b"
+    let session = Session(lexicon: lexicon, mode: .korean)
+    var client = FieldClient()
+    for key in keys {
+        client.apply(session.input(key).field)
+    }
+    #expect(session.document == "누b", "\(session.debugLine)")
+    client.apply(session.toggle().field)
+    #expect(session.document == keys, "\(session.debugLine)")
+    #expect(client.text == session.document)
+}
+
 @Test func manualModeDoesNotConvert() {
     let session = Session(lexicon: lexicon, autoSwitch: false, mode: .korean)
     _ = session.type("hello")

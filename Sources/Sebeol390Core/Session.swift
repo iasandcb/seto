@@ -208,6 +208,20 @@ public final class Session {
     /// or typo correction, this restores what was typed and holds it.
     /// Otherwise it flips the reading of the current word, or the mode for the next word.
     public func toggle() -> SessionUpdate {
+        // A mixed token such as `누b` can also have an automatic-conversion
+        // undo snapshot. Resolve the explicit whole-word toggle first; using
+        // that snapshot would restore the Korean reading `누ㅜ` instead.
+        if !keys.isEmpty,
+           let first = segments.first,
+           segments.dropFirst().contains(where: { $0.lang != first.lang }) {
+            pendingUndo = nil
+            let flipped = wordMode.flipped
+            locked = flipped
+            mode = flipped
+            segments = [Segment(start: 0, end: keys.count, lang: flipped)]
+            return syncClient(didAutoConvert: false)
+        }
+
         if let undo = pendingUndo {
             pendingUndo = nil
             if let suffix = undo.committedSuffix {
