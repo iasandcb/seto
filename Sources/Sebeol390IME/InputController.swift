@@ -21,9 +21,12 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     private var active = false
     private var clientUpdateDepth = 0
     private var unmarkedSelection: NSRange?
-    /// Terminal starts with automatic conversion off for this input context.
-    /// A manual toggle can override that until the next context activation.
+    /// Terminal and a browser address bar start with automatic conversion off
+    /// for this input context. A manual toggle can override that until the
+    /// next context activation.
     private var contextAutoSwitchOverride: Bool?
+    /// A browser address bar also turns typo correction off, the same way.
+    private var contextCorrectsTyposOverride: Bool?
 
     override func activateServer(_ sender: Any!) {
         super.activateServer(sender)
@@ -31,7 +34,11 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         // A fresh session
         // also drops the previous field's English context and undo history.
         if !active {
-            beginInputContext(bundleIdentifier: (sender as? IMKTextInput)?.bundleIdentifier())
+            let bundleIdentifier = (sender as? IMKTextInput)?.bundleIdentifier()
+            beginInputContext(
+                bundleIdentifier: bundleIdentifier,
+                addressBar: FocusedElementReader.addressBarFocused(bundleIdentifier: bundleIdentifier)
+            )
         }
         active = true
         let owner = ObjectIdentifier(self)
@@ -50,12 +57,14 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
 
     // Kept separate from IMK activation so the reset can be exercised by a
     // mock client without an InputMethodKit server connection.
-    func beginInputContext(bundleIdentifier: String? = nil) {
+    func beginInputContext(bundleIdentifier: String? = nil, addressBar: Bool = false) {
         let isTerminal = bundleIdentifier == "com.apple.Terminal"
         let mode: Language = isTerminal ? .english : .korean
-        contextAutoSwitchOverride = isTerminal ? false : nil
+        contextAutoSwitchOverride = isTerminal || addressBar ? false : nil
+        contextCorrectsTyposOverride = addressBar ? false : nil
         session = Self.makeSession(mode: mode)
         session.autoSwitch = contextAutoSwitchOverride ?? Preferences.autoSwitch
+        session.correctsTypos = contextCorrectsTyposOverride ?? Preferences.correctsTypos
         sawCapsLockDown = false
         unmarkedSelection = nil
     }
@@ -348,7 +357,11 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
 
     @objc private func toggleTypoCorrection(_ sender: Any?) {
         session.correctsTypos.toggle()
-        Preferences.correctsTypos = session.correctsTypos
+        if contextCorrectsTyposOverride != nil {
+            contextCorrectsTyposOverride = session.correctsTypos
+        } else {
+            Preferences.correctsTypos = session.correctsTypos
+        }
     }
 
     @objc private func selectLayout(_ sender: NSMenuItem) {
@@ -369,7 +382,7 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
             updateModeStatus()
         }
         session.autoSwitch = contextAutoSwitchOverride ?? Preferences.autoSwitch
-        session.correctsTypos = Preferences.correctsTypos
+        session.correctsTypos = contextCorrectsTyposOverride ?? Preferences.correctsTypos
         updateModeStatus()
     }
 

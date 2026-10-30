@@ -434,6 +434,32 @@ private func backspace(controller: SebeolInputController, client: SmokeClient) {
                 }
             }
         }
+        // A browser address bar turns automatic conversion and typo
+        // correction off; the next context restores the preferences.
+        do {
+            let savedAutoSwitch = Preferences.autoSwitch
+            let savedTypos = Preferences.correctsTypos
+            Preferences.autoSwitch = true
+            Preferences.correctsTypos = true
+            let controller = SebeolInputController()
+            for addressBar in [true, false, true] {
+                cases += 1
+                let client = SmokeClient()
+                controller.beginInputContext(bundleIdentifier: "com.apple.Safari", addressBar: addressBar)
+                for raw in "hello" { precondition(press(raw, controller: controller, client: client)) }
+                controller.commitComposition(client)
+                if (client.text == "hello") == addressBar {
+                    print("FAIL address bar=\(addressBar): \(client.text)")
+                    failures += 1
+                }
+            }
+            if !Preferences.autoSwitch || !Preferences.correctsTypos {
+                print("FAIL address bar changed saved preferences")
+                failures += 1
+            }
+            Preferences.autoSwitch = savedAutoSwitch
+            Preferences.correctsTypos = savedTypos
+        }
         // Each controller reads the persisted layout, and menu selections retain
         // the current language. Reentrant editor callbacks also apply here.
         for layout in KeyboardLayout.allCases {

@@ -19,6 +19,7 @@ fi
 swiftc -swift-version 6 -module-cache-path "${CLANG_MODULE_CACHE_PATH}" \
     -I "${SEBEOL_BIN_DIR}" -I "${SEBEOL_BIN_DIR}/Modules" \
     Sources/Sebeol390IME/InputController.swift \
+    Sources/Sebeol390IME/FocusedElementReader.swift \
     Sources/Sebeol390IME/ModeStatusItem.swift \
     Sources/Sebeol390IME/CapsLock.swift \
     Sources/Sebeol390IME/StatisticsSync.swift \
