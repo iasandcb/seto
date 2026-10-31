@@ -2055,6 +2055,38 @@ private extension Session {
     }
 }
 
+@Test func digitsBeforeCountersStayKorean() throws {
+    // 8시 is the keys of "Ind", 9대 "Our", 9장 "Olfa". In Korean mode a
+    // number and a counter must not flip to English, even for a moment's
+    // English word, and the next word keeps Korean.
+    let digits: [(key: Character, digit: String)] = [
+        ("M", "1"), ("<", "2"), (">", "3"), ("J", "4"), ("K", "5"),
+        ("L", "6"), ("U", "7"), ("I", "8"), ("O", "9"), ("N", "0"),
+    ]
+    var failures: [String] = []
+    for counter in ["시", "월", "개", "대", "명", "등", "차", "단", "편", "번째"] {
+        for tail in [counter, counter + "에", counter + "부터"] {
+            let keys = try #require(SebeolKeys.keys(for: tail))
+            for (key, digit) in digits {
+                failures += clientFailures(String(key) + keys + " ", digit + tail + " ", mode: .korean)
+            }
+        }
+    }
+    failures += clientFailures("MNkr ", "10개 ", mode: .korean)
+    let report = failures.prefix(20).joined(separator: "\n")
+    #expect(failures.isEmpty, "\(failures.count) failures\n\(report)")
+
+    let session = Session(lexicon: lexicon, mode: .korean)
+    for key in "Ind " { _ = session.input(key) }
+    #expect(session.document == "8시 ")
+    #expect(session.mode == .korean)
+    // English mode reads the same keys as English, and other shapes such as
+    // "Int" (8서) and "Open" (9펴) stay capitalized English.
+    #expect(clientFailures("Ind ", "Ind ", mode: .english).isEmpty)
+    #expect(clientFailures("Int ", "Int ", mode: .korean).isEmpty)
+    #expect(clientFailures("Open ", "Open ", mode: .korean).isEmpty)
+}
+
 @Test func punctuationDigitBeforeKoreanSubject() throws {
     let subject = try #require(SebeolKeys.keys(for: "과목"))
     for mode in [Language.korean, .english] {
