@@ -679,6 +679,14 @@ public final class Session {
                 mode = .english
             }
         case .korean:
+            // 8시 started in Korean but read as "In" for a moment, which
+            // confirmed English. The counter puts Korean back.
+            let numberEnd = atoms.prefix(while: isPadDigit).count
+            if wordMode == .korean, numberEnd > 0, numberEnd < atoms.count,
+               Self.startsWithCounter(Composer.compose(atoms.dropFirst(numberEnd)).text) {
+                mode = .korean
+                return
+            }
             let composition = Composer.compose(atoms)
             switch shape(of: composition.pieces) {
             case .clean(let syllables), .trailing(let syllables):
@@ -1148,7 +1156,18 @@ public final class Session {
     private static let numberCounters: Set<String> = [
         "개", "대", "명", "분", "번", "회", "권", "장", "잔", "병", "마리",
         "살", "세", "년", "월", "일", "시", "초", "원", "층", "곳", "쪽", "줄",
+        "주", "달", "점", "등", "차", "위", "배", "평", "건", "통", "벌", "편", "판", "호", "부", "단", "곡", "번째", "가지", "켤레",
     ]
+
+    /// 8시, 3월에, 10개는: a counter, optionally followed by a particle.
+    private static func startsWithCounter(_ text: String) -> Bool {
+        numberCounters.contains { counter in
+            text.hasPrefix(counter) && {
+                let rest = String(text.dropFirst(counter.count))
+                return rest.isEmpty || particles.contains(rest)
+            }()
+        }
+    }
 
     private func prefersNumberWithKoreanTail() -> Bool {
         let numberEnd = keys.prefix(while: isPadDigit).count
@@ -1169,6 +1188,12 @@ public final class Session {
             }
         }
         if wordMode == .korean, Self.particles.contains(tail.text),
+           case .clean = shape(of: tail.pieces) {
+            return true
+        }
+        // 8시 is also "Ind", 9대 "Our" and 9장 "Olfa". In Korean mode a counter
+        // after the number outranks a capitalized English word or prefix.
+        if wordMode == .korean, Self.startsWithCounter(tail.text),
            case .clean = shape(of: tail.pieces) {
             return true
         }

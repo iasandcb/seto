@@ -414,6 +414,23 @@ private func backspace(controller: SebeolInputController, client: SmokeClient) {
                 failures += 1
             }
         }
+        // A number and a counter stay Korean even when their keys spell an
+        // English word: Ind → 8시, Our → 9대, Olfa → 9장.
+        for (keys, expected) in [("Ind ", "8시 "), ("Our ", "9대 "), ("Olfa ", "9장 "), ("MNkr ", "10개 "), ("Ind;b't ", "8시부터 ")] {
+            cases += 1
+            let controller = SebeolInputController()
+            let client = SmokeClient()
+            controller.beginInputContext()
+            for raw in keys {
+                let modifiers: NSEvent.ModifierFlags = raw.isUppercase ? [.shift] : []
+                precondition(press(raw, modifiers: modifiers, controller: controller, client: client))
+            }
+            controller.commitComposition(client)
+            if client.text != expected || client.mark.length != 0 {
+                print("FAIL number counter \(keys): \(client.text), expected \(expected)")
+                failures += 1
+            }
+        }
         // Terminal alone starts in English, and leaving it resets to Korean.
         do {
             let controller = SebeolInputController()
