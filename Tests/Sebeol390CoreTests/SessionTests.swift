@@ -2076,6 +2076,12 @@ private extension Session {
     let report = failures.prefix(20).joined(separator: "\n")
     #expect(failures.isEmpty, "\(failures.count) failures\n\(report)")
 
+    // Nothing is committed while "In" may still become 8시: web editors
+    // cannot replace a committed 8 or "In".
+    let open = Session(lexicon: lexicon, mode: .korean)
+    for key in "In" { _ = open.input(key) }
+    #expect(open.document == open.preedit, "\(open.debugLine)")
+
     let session = Session(lexicon: lexicon, mode: .korean)
     for key in "Ind " { _ = session.input(key) }
     #expect(session.document == "8시 ")

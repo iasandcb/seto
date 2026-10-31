@@ -156,6 +156,8 @@ private func backspace(controller: SebeolInputController, client: SmokeClient) {
                     precondition(press(",", modifiers: [.control], controller: controller, client: client))
                     precondition(press(".", modifiers: [.control], controller: controller, client: client))
                     precondition(press("M", modifiers: [.shift], controller: controller, client: client))
+                    // A shifted digit stays in composition until its word settles (8시 vs "Int").
+                    controller.commitComposition(client)
                     let expected = english ? "of←→M" : "잘←→1"
                     if client.text != expected || client.mark.length != 0 {
                         print("FAIL arrow shortcuts callbacks=\(callbacks) automatic=\(automatic) english=\(english): \(client.text)")
@@ -416,10 +418,14 @@ private func backspace(controller: SebeolInputController, client: SmokeClient) {
         }
         // A number and a counter stay Korean even when their keys spell an
         // English word: Ind → 8시, Our → 9대, Olfa → 9장.
-        for (keys, expected) in [("Ind ", "8시 "), ("Our ", "9대 "), ("Olfa ", "9장 "), ("MNkr ", "10개 "), ("Ind;b't ", "8시부터 ")] {
+        // Web editors cannot replace committed Latin text, so "In" must not
+        // be committed before d turns it into 8시.
+        for web in [false, true] {
+        for (keys, expected) in [("Ind ", "8시 "), ("Our ", "9대 "), ("Olfa ", "9장 "), ("MNkr ", "10개 "), ("Ind;b't ", "8시부터 "), ("Murj8 ", "1대의 "), ("Int ", "Int "), ("Open ", "Open "), ("My ", "My ")] {
             cases += 1
             let controller = SebeolInputController()
             let client = SmokeClient()
+            client.ignoresReplacementOutsideMark = web
             controller.beginInputContext()
             for raw in keys {
                 let modifiers: NSEvent.ModifierFlags = raw.isUppercase ? [.shift] : []
@@ -427,9 +433,10 @@ private func backspace(controller: SebeolInputController, client: SmokeClient) {
             }
             controller.commitComposition(client)
             if client.text != expected || client.mark.length != 0 {
-                print("FAIL number counter \(keys): \(client.text), expected \(expected)")
+                print("FAIL number counter web=\(web) \(keys): \(client.text), expected \(expected)")
                 failures += 1
             }
+        }
         }
         // Terminal alone starts in English, and leaving it resets to Korean.
         do {

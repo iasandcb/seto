@@ -1159,6 +1159,13 @@ public final class Session {
         "주", "달", "점", "등", "차", "위", "배", "평", "건", "통", "벌", "편", "판", "호", "부", "단", "곡", "번째", "가지", "켤레",
     ]
 
+    /// ㅅ for 시·살·세: the bare initial of a counter's first syllable.
+    private static let counterInitials: Set<String> = Set(numberCounters.compactMap { counter in
+        guard let scalar = counter.unicodeScalars.first?.value, (0xAC00...0xD7A3).contains(scalar) else { return nil }
+        let initials = Array("ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ")
+        return String(initials[Int(scalar - 0xAC00) / 588])
+    })
+
     /// 8시, 3월에, 10개는: a counter, optionally followed by a particle.
     private static func startsWithCounter(_ text: String) -> Bool {
         numberCounters.contains { counter in
@@ -1406,6 +1413,22 @@ public final class Session {
                 && (lexicon.isEnglishWord(spelling) || lexicon.isAbbreviation(spelling)
                     || lexicon.isCodeToken(spelling) || isEnglishCode(spelling)
                     || (spelling.count >= 2 && spelling.allSatisfy(\.isUppercase)))
+            if !confirmedEnglish { return ("", render(segments)) }
+        }
+        // Shift+I is 8, but I-n-d is also "Ind" and I-n-t is "Int". Keep the
+        // number and any undecided English reading in one mark until the word
+        // settles: web editors cannot replace an 8 or "In" already committed,
+        // which left 8시 as "Ind" or "8In8시".
+        if autoSwitch, locked == nil, wordMode == .korean, plain.isEmpty,
+           let first = keys.first, isPadDigit(first), isShiftedLetter(first) {
+            let spelling = englishText(0..<keys.count)
+            // "My" is settled; "In" can still become 8시 (ㅅ starts a counter).
+            let undecidedLength = spelling.count == 2
+                && Self.counterInitials.contains(Composer.compose(keys.dropFirst()).text)
+            let confirmedEnglish = segments.allSatisfy { $0.lang == .english }
+                && spelling.count >= 2 && !undecidedLength
+                && (lexicon.isEnglishWord(spelling) || lexicon.isAbbreviation(spelling)
+                    || lexicon.isCodeToken(spelling) || isEnglishCode(spelling))
             if !confirmedEnglish { return ("", render(segments)) }
         }
         var splitAt = segments.count
