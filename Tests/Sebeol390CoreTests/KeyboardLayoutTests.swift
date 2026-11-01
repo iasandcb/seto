@@ -66,3 +66,25 @@ import Foundation
     _ = session.backspace()
     #expect(session.document == "마")
 }
+
+/// iPhone keyboard (두벌식): 오고 became 보고 because inflected verbs are
+/// missing from the validity list. Stem + verb ending must stay as typed.
+@Test func inflectedVerbsStayUncorrectedOnDubeol() {
+    let root = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("Resources")
+    let lexicon = try! Lexicon.load(from: root)
+    let words: [(String, String)] = [
+        ("오고", "dhrh"), ("오면", "dhaus"), ("와서", "dhktj"), ("왔다", "dhkTek"),
+        ("가고", "rkrh"), ("주고", "wnrh"), ("주면", "wnaus"), ("하면", "gkaus"),
+        ("먹고", "ajrrh"), ("먹었다", "ajrdjTek"), ("쓰고", "Tmrh"), ("두고", "enrh"),
+    ]
+    for (word, keys) in words {
+        let session = Session(lexicon: lexicon, autoSwitch: false, layout: .dubeol)
+        for key in keys + " " { _ = session.input(key) }
+        #expect(session.document == word + " ", "\(word)")
+    }
+    let session = Session(lexicon: lexicon, autoSwitch: false, layout: .dubeol)
+    for key in "gksrnf " { _ = session.input(key) }
+    #expect(session.document == "한글 ")
+}

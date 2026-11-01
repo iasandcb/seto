@@ -21,6 +21,34 @@ enum KoreanEndings {
     }
 }
 
+/// Verb and adjective endings. The validity list holds mostly dictionary
+/// forms, so 오고, 와서, 주면, 먹었다 are missing from it. A word made of an
+/// attested stem plus one of these endings is a correctly formed word, not a typo.
+enum KoreanVerbEndings {
+    static let longestFirst = [
+        "습니다", "었는데", "았는데", "니까", "는데", "면서", "지만", "도록", "려고", "어서", "아서",
+        "어요", "아요", "세요", "는지", "었다", "았다", "었어", "았어", "겠다",
+        "고", "면", "서", "지", "게", "는", "며", "니", "다", "요", "자", "네", "던", "도", "나", "냐", "죠", "어", "아",
+    ]
+
+    /// True when `word` is stem + ending and the stem is a known word, is seen
+    /// with another verb ending, or ends in the past marker ㅆ (왔, 먹었).
+    static func isInflected(_ word: String, isKnown: (String) -> Bool) -> Bool {
+        for ending in longestFirst where word.count > ending.count && word.hasSuffix(ending) {
+            let stem = String(word.dropLast(ending.count))
+            guard stem.count <= 3 else { continue }
+            if isKnown(stem) || endsInPastMarker(stem) { return true }
+            if longestFirst.contains(where: { $0 != ending && isKnown(stem + $0) }) { return true }
+        }
+        return false
+    }
+
+    private static func endsInPastMarker(_ stem: String) -> Bool {
+        guard let scalar = stem.unicodeScalars.last, (0xAC00...0xD7A3).contains(scalar.value) else { return false }
+        return (scalar.value - 0xAC00) % 28 == 20
+    }
+}
+
 /// One confident dictionary replacement for a finished word, or nil.
 /// Costs are millicosts so the margin does not depend on binary fractions.
 /// A short word allows a single cheap edit. A long one allows two.
@@ -114,7 +142,7 @@ public enum TypoCorrector {
         if let (stem, _) = KoreanEndings.split(word) {
             if lexicon.isKoreanWord(stem) || lexicon.isValidKorean(stem) { return true }
         }
-        return false
+        return KoreanVerbEndings.isInflected(word) { lexicon.isKoreanWord($0) || lexicon.isValidKorean($0) }
     }
 
     private static func isModernSyllable(_ character: Character) -> Bool {
