@@ -33,6 +33,38 @@ import Testing
         #expect(WordSuggestionContext(before: text, after: "") == nil)
     }
     #expect(WordSuggestionContext(before: "one hel", after: "") != WordSuggestionContext(before: "two hel", after: ""))
+    let next = WordSuggestionContext.nextWord(before: "안녕 ", after: "")
+    #expect(next?.predictsNextWord == true)
+    #expect(next?.word == "")
+    #expect(WordSuggestionContext.nextWord(before: "안녕", after: "") == nil)
+    #expect(WordSuggestionContext.forComposition(before: "안녕 ", after: "", allowNextWord: true)?.predictsNextWord == true)
+    #expect(WordSuggestionContext.forComposition(before: "안녕", after: "", allowNextWord: true)?.word == "안녕")
+    #expect(WordSuggestionContext.forComposition(before: "안녕 ", after: "", allowNextWord: false) == nil)
+}
+
+@Test func learnedPrefixesOutrankDictionaryAndTyposStay() throws {
+    let now = Date(timeIntervalSince1970: 1_700_000_000)
+    let suite = "Sebeol390.WordSuggestions.\(UUID())"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let learned = LearnedWords(defaults: defaults)
+    learned.learn("가방", at: now)
+    learned.learn("가방", at: now)
+    learned.learn("가수", at: now.addingTimeInterval(-10))
+    let engine = WordSuggestions(lexicon: Lexicon(english: ["world", "hello"], korean: ["가방", "가수", "가위", "안녕"]))
+    let personal = learned.prefixMatches(for: "가", at: now)
+    let ranked = engine.candidates(for: "가", promoting: personal)
+    #expect(ranked.first == "가방")
+    #expect(ranked.contains("가위"))
+    #expect(engine.candidates(for: "안뇽", promoting: []) == engine.candidates(for: "안뇽"))
+    #expect(engine.candidates(for: "안뇽", promoting: []).contains("안녕"))
+    let corrected = engine.candidates(for: "wrold", promoting: ["typed"])
+    #expect(corrected.first == "typed")
+    #expect(corrected.contains("world"))
+    #expect(engine.candidates(for: "h", promoting: ["hello"]).first == "hello")
+    #expect(engine.candidates(for: "Hell", promoting: ["hello"]).first == "Hello")
+    #expect(engine.candidates(for: "H", promoting: ["hello"]).first == "HELLO")
+    #expect(engine.candidates(for: "HELO", promoting: ["hello"]).contains("HELLO"))
 }
 
 @Test func mappedSuggestionsMatchInMemoryPrefixLookup() throws {

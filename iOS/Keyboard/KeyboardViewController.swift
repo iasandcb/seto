@@ -10,11 +10,12 @@ final class KeyboardViewController: UIInputViewController {
     }()
     private var session = Session(lexicon: KeyboardViewController.lexicon, layout: .dubeol)
     private var expectedContext: String?
+    private let learnedWords = LearnedWords(defaults: LearnedWords.resolvedDefaults())
     private let keyboard = KeyboardView()
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        keyboard.configureSuggestions(lexicon: Self.lexicon)
+        keyboard.configureSuggestions(lexicon: Self.lexicon, learned: learnedWords)
         keyboard.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(keyboard)
         NSLayoutConstraint.activate([
@@ -27,6 +28,15 @@ final class KeyboardViewController: UIInputViewController {
         keyboard.onKey = { [weak self] key in self?.edit { $0.input(LayoutDubeol.atom(for: key)) } }
         keyboard.onLiteral = { [weak self] key in
             guard let self else { return }
+            let selected = self.textDocumentProxy.selectedText ?? ""
+            if selected.isEmpty {
+                let old = self.textDocumentProxy.documentContextBeforeInput
+                self.learnedWords.observe(
+                    from: old,
+                    to: old.map { $0 + String(key) },
+                    secure: !self.learnsVocabulary
+                )
+            }
             self.textDocumentProxy.insertText(String(key))
             self.reset()
         }
@@ -54,6 +64,7 @@ final class KeyboardViewController: UIInputViewController {
 
     override func textDidChange(_ textInput: (any UITextInput)?) {
         super.textDidChange(textInput)
+        keyboard.setLearnedWords(learnsVocabulary ? learnedWords : nil)
         synchronize()
     }
 
@@ -76,7 +87,16 @@ final class KeyboardViewController: UIInputViewController {
         session = Session(lexicon: Self.lexicon, autoSwitch: automatic, mode: session.mode, layout: .dubeol)
         expectedContext = textDocumentProxy.documentContextBeforeInput
         keyboard.update(mode: session.mode, automatic: automatic)
+        keyboard.setLearnedWords(learnsVocabulary ? learnedWords : nil)
         keyboard.updateSuggestionContext(nil)
+    }
+
+    private var learnsVocabulary: Bool {
+        // Nil means the host has not published the trait yet, so do not learn.
+        SuggestionLearning.allows(
+            secureTextEntry: textDocumentProxy.isSecureTextEntry != false,
+            contentType: textDocumentProxy.textContentType
+        )
     }
 
     private func accept(_ context: WordSuggestionContext, candidate: String) {
@@ -101,12 +121,13 @@ final class KeyboardViewController: UIInputViewController {
     private func edit(_ operation: (Session) -> SessionUpdate) {
         synchronize()
         let before = session.document
+        let oldContext = textDocumentProxy.documentContextBeforeInput
         let update = operation(session)
         let after = session.document
         // UIKit has no marked-text API for keyboard extensions. Replace only
         // the changed grapheme suffix owned by this session.
         let change = KeyboardReplacement.between(before, after)
-        let context = textDocumentProxy.documentContextBeforeInput
+        let context = oldContext
         if change.deleteCount > 0 {
             guard let context, context.hasSuffix(change.removed) else {
                 reset()
@@ -115,10 +136,24 @@ final class KeyboardViewController: UIInputViewController {
             for _ in 0..<change.deleteCount { textDocumentProxy.deleteBackward() }
         }
         if !change.inserted.isEmpty { textDocumentProxy.insertText(change.inserted) }
-        expectedContext = textDocumentProxy.documentContextBeforeInput
+        let synthesized = LearnedWords.applyingEdit(to: oldContext, removing: change.removed, inserting: change.inserted)
+        learnedWords.observe(from: oldContext, to: synthesized, secure: !learnsVocabulary)
+        let proxyAfter = textDocumentProxy.documentContextBeforeInput
+        if let proxyAfter, proxyAfter != oldContext {
+            expectedContext = proxyAfter
+        } else {
+            expectedContext = synthesized ?? proxyAfter
+        }
         keyboard.update(mode: update.mode, automatic: session.autoSwitch)
-        keyboard.updateSuggestionContext(after.isEmpty || !(textDocumentProxy.selectedText ?? "").isEmpty ? nil :
-            WordSuggestionContext(before: expectedContext, after: textDocumentProxy.documentContextAfterInput))
+        keyboard.setLearnedWords(learnsVocabulary ? learnedWords : nil)
+        let allowNextWord = !after.isEmpty && (textDocumentProxy.selectedText ?? "").isEmpty
+        keyboard.updateSuggestionContext(allowNextWord
+            ? WordSuggestionContext.forComposition(
+                before: expectedContext,
+                after: textDocumentProxy.documentContextAfterInput,
+                allowNextWord: true
+            )
+            : nil)
         // Bound memory to the current word and its undo window.
         if after.count > 512, session.preedit.isEmpty { reset() }
     }

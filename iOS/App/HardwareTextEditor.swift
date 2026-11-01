@@ -67,6 +67,7 @@ final class HardwareTextView: UITextView, UITextViewDelegate {
     private let hardwareInputView = UIView(frame: .zero)
     private var hardwareKeyboardConnected = false
     var hardwareKeyboardIsConnected: () -> Bool = { GCKeyboard.coalesced != nil }
+    private let learnedWords = LearnedWords(defaults: LearnedWords.resolvedDefaults())
     private let touchKeyboard = KeyboardView(frame: CGRect(x: 0, y: 0, width: 0, height: KeyboardView.preferredHeight))
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {
@@ -74,12 +75,17 @@ final class HardwareTextView: UITextView, UITextViewDelegate {
         delegate = self
         touchKeyboard.showsInputModeSwitch = false
         touchKeyboard.autoresizingMask = [.flexibleWidth]
-        touchKeyboard.configureSuggestions(lexicon: Self.lexicon)
+        touchKeyboard.configureSuggestions(lexicon: Self.lexicon, learned: learnedWords)
         touchKeyboard.onKey = { [weak self] character in self?.apply { $0.input(LayoutDubeol.atom(for: character)) } }
         touchKeyboard.onLiteral = { [weak self] character in
             guard let self else { return }
+            let allows = SuggestionLearning.allows(secureTextEntry: self.isSecureTextEntry, contentType: self.textContentType)
+            let prefix = self.caretPrefix()
             self.resetSession()
             self.insertText(String(character))
+            if allows, let prefix {
+                self.learnedWords.observe(from: prefix, to: prefix + String(character))
+            }
             self.resetSession()
             self.onText?(self.text ?? "")
         }
@@ -216,6 +222,8 @@ final class HardwareTextView: UITextView, UITextViewDelegate {
 
     private func refreshKeyboard() {
         touchKeyboard.update(mode: session.mode, automatic: session.autoSwitch)
+        let allows = SuggestionLearning.allows(secureTextEntry: isSecureTextEntry, contentType: textContentType)
+        touchKeyboard.setLearnedWords(allows ? learnedWords : nil)
         touchKeyboard.updateSuggestionContext(session.document.isEmpty ? nil : suggestionContext())
     }
 
@@ -223,7 +231,18 @@ final class HardwareTextView: UITextView, UITextViewDelegate {
         let source = (text ?? "") as NSString
         let caret = selectedRange.location
         guard selectedRange.length == 0, caret != NSNotFound, caret <= source.length else { return nil }
-        return WordSuggestionContext(before: source.substring(to: caret), after: source.substring(from: caret))
+        return WordSuggestionContext.forComposition(
+            before: source.substring(to: caret),
+            after: source.substring(from: caret),
+            allowNextWord: true
+        )
+    }
+
+    private func caretPrefix() -> String? {
+        let source = (text ?? "") as NSString
+        let range = selectedRange
+        guard range.length == 0, range.location != NSNotFound, range.location <= source.length else { return nil }
+        return source.substring(to: range.location)
     }
 
     private func accept(_ context: WordSuggestionContext, candidate: String) {
@@ -272,10 +291,16 @@ final class HardwareTextView: UITextView, UITextViewDelegate {
               let start = position(from: beginningOfDocument, offset: range.location),
               let end = position(from: start, offset: range.length),
               let replacement = textRange(from: start, to: end) else { resetSession(); return }
+        let oldPrefix = source.substring(to: selection.location)
+        let newPrefix = source.substring(to: selection.location - removedLength) + change.inserted
         applying = true
         // A mode toggle alone must preserve a user's selection.
         if before != session.document { replace(replacement, withText: change.inserted) }
         applying = false
+        if before != session.document,
+           SuggestionLearning.allows(secureTextEntry: isSecureTextEntry, contentType: textContentType) {
+            learnedWords.observe(from: oldPrefix, to: newPrefix)
+        }
         expectedText = text ?? ""
         expectedSelection = selectedRange
         onText?(expectedText)

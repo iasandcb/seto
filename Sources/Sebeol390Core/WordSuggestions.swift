@@ -5,6 +5,8 @@ public struct WordSuggestionContext: Equatable, Sendable {
     public let before: String
     public let after: String?
     public let word: String
+    /// The caret is after whitespace, so `word` is empty and a candidate is inserted.
+    public let predictsNextWord: Bool
 
     public init?(before: String?, after: String?) {
         guard let before, let last = before.last, Self.isWordCharacter(last),
@@ -17,6 +19,27 @@ public struct WordSuggestionContext: Equatable, Sendable {
         self.before = before
         self.after = after
         self.word = word
+        self.predictsNextWord = false
+    }
+
+    /// Caret after whitespace. Used to offer a frequent next word.
+    public static func nextWord(before: String?, after: String?) -> WordSuggestionContext? {
+        guard let before, let last = before.last, last.isWhitespace else { return nil }
+        if let first = after?.first, Self.isWordCharacter(first) { return nil }
+        return WordSuggestionContext(before: before, after: after, word: "", predictsNextWord: true)
+    }
+
+    public static func forComposition(before: String?, after: String?, allowNextWord: Bool) -> WordSuggestionContext? {
+        if let current = WordSuggestionContext(before: before, after: after) { return current }
+        guard allowNextWord else { return nil }
+        return nextWord(before: before, after: after)
+    }
+
+    private init(before: String, after: String?, word: String, predictsNextWord: Bool) {
+        self.before = before
+        self.after = after
+        self.word = word
+        self.predictsNextWord = predictsNextWord
     }
 
     private static func isWordCharacter(_ character: Character) -> Bool {
@@ -86,6 +109,29 @@ public final class WordSuggestions: Sendable {
             }
         }
         return ranked(matches, limit: limit)
+    }
+
+    /// Learned prefix matches stay ahead of dictionary completions and typo fixes.
+    public func candidates(for word: String, promoting personal: [String], limit: Int = 3) -> [String] {
+        let dictionary = candidates(for: word, limit: limit)
+        guard !personal.isEmpty else { return dictionary }
+        var seen = Set<String>()
+        var result: [String] = []
+        for candidate in personal.map({ Self.matchingCase($0, like: word) }) + dictionary {
+            let identity = candidate.precomposedStringWithCanonicalMapping.lowercased()
+            guard seen.insert(identity).inserted else { continue }
+            result.append(candidate)
+            if result.count == limit { break }
+        }
+        return result
+    }
+
+    private static func matchingCase(_ candidate: String, like typed: String) -> String {
+        guard candidate.allSatisfy({ $0.isASCII && $0.isLetter }) else { return candidate }
+        let base = candidate.lowercased()
+        if typed.allSatisfy(\.isUppercase) { return base.uppercased() }
+        if typed.first?.isUppercase == true { return base.prefix(1).uppercased() + base.dropFirst() }
+        return base
     }
 
     private func ranked(_ matches: [String: Int], limit: Int) -> [String] {

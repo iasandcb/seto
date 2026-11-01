@@ -1,5 +1,13 @@
 import UIKit
 
+enum SuggestionLearning {
+    static func allows(secureTextEntry: Bool, contentType: UITextContentType?) -> Bool {
+        guard !secureTextEntry else { return false }
+        guard contentType != .password, contentType != .newPassword else { return false }
+        return true
+    }
+}
+
 /// Touch keyboard uses standard Korean two-set and English QWERTY positions.
 @MainActor
 final class KeyboardView: UIView {
@@ -26,6 +34,7 @@ final class KeyboardView: UIView {
     private var phraseSession: Session?
     private var editingPhraseIndex: Int?
     private var suggestionEngine: WordSuggestions?
+    private var learnedWords: LearnedWords?
     private var suggestionContext: WordSuggestionContext?
     private var displayedSuggestionContext: WordSuggestionContext?
     private var suggestionTask: Task<Void, Never>?
@@ -180,8 +189,21 @@ final class KeyboardView: UIView {
         refresh()
     }
 
-    func configureSuggestions(lexicon: Lexicon) {
+    func configureSuggestions(lexicon: Lexicon, learned: LearnedWords? = nil) {
         suggestionEngine = WordSuggestions(lexicon: lexicon)
+        learnedWords = learned
+    }
+
+    /// Personal suggestions are omitted when the focused field must not be learned.
+    func setLearnedWords(_ learned: LearnedWords?) {
+        guard learned !== learnedWords else { return }
+        learnedWords = learned
+        suggestionTask?.cancel()
+        suggestionContext = nil
+        displayedSuggestionContext = nil
+        suggestions = []
+        showingPhrases = false
+        refreshPhrases()
     }
 
     func updateSuggestionContext(_ context: WordSuggestionContext?) {
@@ -195,11 +217,16 @@ final class KeyboardView: UIView {
         }
         refreshPhrases()
         guard let context, let engine = suggestionEngine else { return }
+        let learned = learnedWords
         suggestionTask = Task { [weak self] in
             // Coalesce rapid taps and keep dictionary work off the UI thread.
             do { try await Task.sleep(for: .milliseconds(50)) } catch { return }
             let candidates = await Task.detached(priority: .userInitiated) {
-                engine.candidates(for: context.word)
+                if context.predictsNextWord {
+                    return learned?.nextWords(after: context.before) ?? []
+                }
+                let personal = learned?.prefixMatches(for: context.word) ?? []
+                return engine.candidates(for: context.word, promoting: personal)
             }.value
             guard !Task.isCancelled, let self, self.suggestionContext == context else { return }
             self.suggestions = candidates
@@ -309,7 +336,7 @@ final class KeyboardView: UIView {
                     button.titleLabel?.minimumScaleFactor = 0.75
                     button.accessibilityIdentifier = "wordSuggestion"
                     button.accessibilityLabel = suggestion
-                    button.accessibilityHint = "현재 단어를 이 후보로 바꿉니다"
+                    button.accessibilityHint = context.predictsNextWord ? "이 단어를 이어서 입력합니다" : "현재 단어를 이 후보로 바꿉니다"
                     button.isEnabled = context == suggestionContext
                     button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
                     candidates.addArrangedSubview(button)
