@@ -1271,6 +1271,12 @@ public final class Session {
     /// already Latin ("th") are left alone. ㄲ·ㄸ·ㅃ are one choseong, not
     /// this case.
     private func prefersBareJamoRun(_ previous: [Segment]?) -> Bool {
+        // Repeated m is laughter even when the token starts in English.
+        // Check the active layout so two-set m (ㅡ) keeps its usual reading.
+        if keys.count >= 2, keys.allSatisfy({ $0.english == "m" }),
+           Composer.compose(keys).text == String(repeating: "ㅎ", count: keys.count) {
+            return true
+        }
         guard wordMode == .korean else { return false }
         let composition = Composer.compose(keys)
         guard composition.pieces.count >= 2, composition.pieces.allSatisfy(isBarePiece) else { return false }

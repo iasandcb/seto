@@ -857,6 +857,13 @@ private func drive(_ paper: inout Paper, _ session: Session, _ keys: String) {
     #expect(paper.marked.isEmpty)
 }
 
+@Test func repeatedMConvertsFromEnglish() {
+    for (keys, expected) in ["m": "m", "mm": "ㅎㅎ", "mmm": "ㅎㅎㅎ", "mmmm ": "ㅎㅎㅎㅎ ", "summer": "summer", "MM": "MM"] {
+        assertTypes(keys, expected, mode: .english)
+        #expect(clientFailures(keys, expected, mode: .english).isEmpty)
+    }
+}
+
 @Test func repeatedBareJamoStaysKorean() {
     let jinjja = SebeolKeys.keys(for: "진짜")!
     let joha = SebeolKeys.keys(for: "좋아")!
