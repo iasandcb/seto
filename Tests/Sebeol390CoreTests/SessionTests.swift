@@ -2202,3 +2202,17 @@ private extension Session {
         }
     }
 }
+
+@Test func koreanWordsWithApostropheKeySwitchFromEnglish() {
+    // ' is ㅌ on 390: nc'v is 세토.
+    for word in ["세토", "토마토", "테스트"] {
+        let keys = SebeolKeys.keys(for: word)!
+        for suffix in ["", " "] {
+            assertTypes(keys + suffix, word + suffix, mode: .english)
+            #expect(clientFailures(keys + suffix, word + suffix, mode: .english).isEmpty)
+        }
+    }
+    for text in ["don't ", "it's ", "I'm ", "we're ", "o'clock ", "can't ", "you'll ", "he's ", "he'll ", "she's ", "ma'am ", "it'll ", "kid's "] {
+        assertTypes(text, text, mode: .english)
+    }
+}

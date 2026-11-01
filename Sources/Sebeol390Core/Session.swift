@@ -736,7 +736,13 @@ public final class Session {
         // A prefix alone (jd in jdb/jdeps) must leave the next initial
         // available: jd;ts is 이번. Complete English words still own it.
         let spelling = englishText(0..<keys.count)
-        if lexicon.isEnglishWord(spelling) || prefersWholeEnglishCode()
+        // ' is ㅌ. After a short English word that is also clean Hangul
+        // (nc → 세), keep the apostrophe in the buffer: the contraction
+        // scorer still makes don't English, and nc'v can become 세토.
+        let apostropheJoins = atom.english == "'" && lexicon.isEnglishWord(spelling)
+            && !prefersWholeEnglishCode() && !lexicon.isCodeToken(spelling)
+            && prefersWholeKorean()
+        if !apostropheJoins, lexicon.isEnglishWord(spelling) || prefersWholeEnglishCode()
             || lexicon.isCodeToken(spelling) { return false }
         switch shape(of: Composer.compose(keys + [atom]).pieces) {
         case .clean(let syllables), .trailing(let syllables):
