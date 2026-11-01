@@ -1280,7 +1280,7 @@ public final class Session {
            Composer.compose(keys).text == String(repeating: "ㅎ", count: keys.count) {
             return true
         }
-        guard wordMode == .korean else { return false }
+        if wordMode == .english { return isEnglishModeChatReaction() }
         let composition = Composer.compose(keys)
         guard composition.pieces.count >= 2, composition.pieces.allSatisfy(isBarePiece) else { return false }
         let spelling = englishText(0..<keys.count)
@@ -1295,6 +1295,29 @@ public final class Session {
             return false
         }
         return true
+    }
+
+    /// Common chat jamo typed from English mode: j0 → ㅇㅋ, kn → ㄱㅅ.
+    /// A run with no letter key ("00", "55") stays a number, and real English
+    /// words, prefixes, abbreviations, and code tokens stay English.
+    private static let chatReactions: Set<String> = [
+        "ㅇㅋ", "ㄱㅅ", "ㅇㅇ", "ㄴㄴ", "ㅊㅋ", "ㅈㅅ", "ㅎㅇ",
+    ]
+
+    private func isEnglishModeChatReaction() -> Bool {
+        guard keys.count >= 2 else { return false }
+        let composition = Composer.compose(keys)
+        guard composition.pieces.allSatisfy(isBarePiece) else { return false }
+        let text = composition.text
+        let repeated = text.allSatisfy { $0 == text.first }
+            && text.first.map { "ㅋㅎㅠㅜ".contains($0) } == true
+        let okk = text.hasPrefix("ㅇㅋ") && text.dropFirst(2).allSatisfy { $0 == "ㅋ" }
+        guard repeated || okk || Self.chatReactions.contains(text) else { return false }
+        let spelling = englishText(0..<keys.count)
+        let lower = spelling.lowercased()
+        guard spelling.contains(where: \.isLetter), spelling.allSatisfy({ $0.isLetter || $0.isNumber }) else { return false }
+        return !lexicon.isEnglishWord(lower) && !lexicon.isEnglishPrefix(lower)
+            && !lexicon.isCodeToken(spelling) && !lexicon.isAbbreviation(spelling)
     }
 
     private func isBarePiece(_ piece: CompositionPiece) -> Bool {

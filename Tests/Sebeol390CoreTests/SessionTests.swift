@@ -2170,3 +2170,19 @@ private extension Session {
         assertTypes(text + " ", text + " ", mode: .english)
     }
 }
+
+@Test func chatJamoReactionsFromEnglishMode() {
+    // 390 keys: j ㅇ, 0 ㅋ, k ㄱ, n ㅅ, h ㄴ, o ㅊ, l ㅈ, m ㅎ.
+    let cases = ["j0": "ㅇㅋ", "hh": "ㄴㄴ",
+                 "o0": "ㅊㅋ", "mj": "ㅎㅇ", "mm": "ㅎㅎ", "j00": "ㅇㅋㅋ"]
+    for (keys, reaction) in cases {
+        for suffix in ["", " "] {
+            assertTypes(keys + suffix, reaction + suffix, mode: .english)
+            #expect(clientFailures(keys + suffix, reaction + suffix, mode: .english).isEmpty)
+        }
+    }
+    // Numbers, versions, and English stay English.
+    for text in ["00 ", "55 ", "v2 ", "ok ", "OK ", "to ", "j ", "jo ", "no "] {
+        assertTypes(text, text, mode: .english)
+    }
+}
