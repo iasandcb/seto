@@ -1558,3 +1558,10 @@ zypper
 
 # Common headwords absent from the base dictionary.
 box
+icloud
+ipad
+imac
+ipados
+airpods
+watchos
+itunes

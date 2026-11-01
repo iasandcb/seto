@@ -2186,3 +2186,19 @@ private extension Session {
         assertTypes(text, text, mode: .english)
     }
 }
+
+@Test func brandWordsStartingWithASyllableBecomeEnglish() {
+    // i c is 메 on 390. The finished English word takes the syllable back.
+    for mode in [Language.korean, .english] {
+        for word in ["icloud", "iphone", "ipad", "imac", "github", "macos"] {
+            for suffix in ["", " "] {
+                assertTypes(word + suffix, word + suffix, mode: mode)
+                #expect(clientFailures(word + suffix, word + suffix, mode: mode).isEmpty)
+            }
+        }
+        for word in ["메일", "메모", "메시지"] {
+            let keys = SebeolKeys.keys(for: word)!
+            assertTypes(keys + " ", word + " ", mode: mode)
+        }
+    }
+}

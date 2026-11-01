@@ -8823,6 +8823,8 @@ airplane
 airplanes
 airplanist
 airplanists
+airpods
+airpodses
 airport
 airports
 airproof
@@ -180144,6 +180146,8 @@ iciness
 icinesses
 icing
 icings
+icloud
+iclouds
 icon
 iconian
 iconians
@@ -181509,6 +181513,8 @@ ilysiidaes
 ilysioid
 ilysioids
 ima
+imac
+imacs
 image
 imageable
 imageables
@@ -194524,6 +194530,10 @@ iowas
 ip
 ip2cc
 ip2cc5.34
+ipad
+ipados
+ipadoses
+ipads
 ipalnemohuani
 ipalnemohuanis
 ipconfig
@@ -197169,6 +197179,8 @@ its
 itself
 itselfs
 itses
+itunes
+ituneses
 ituraean
 ituraeans
 iturite
@@ -458938,6 +458950,8 @@ watchmate
 watchmates
 watchment
 watchments
+watchos
+watchoses
 watchout
 watchouts
 watchtower
