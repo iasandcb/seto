@@ -6,6 +6,8 @@
 	<string>ko</string>
 	<key>CFBundleExecutable</key>
 	<string>Sebeol390</string>
+	<key>CFBundleIconFile</key>
+	<string>Seto</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.ias.inputmethod.seto</string>
 	<key>CFBundleInfoDictionaryVersion</key>
