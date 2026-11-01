@@ -4,3 +4,5 @@
 xcuserdata/
 *.iconset/
 SetoMacIcon.png
+signing/*
+!signing/README.md

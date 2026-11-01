@@ -92,13 +92,15 @@ CloudKit을 활성화하려면 Apple Developer에서 다음 설정을 먼저 준
 1. macOS App ID `com.ias.inputmethod.seto`에 iCloud/CloudKit을 활성화하고 `iCloud.com.ias.seto` 컨테이너를 연결합니다.
 2. 해당 App ID·컨테이너를 포함한 macOS 프로비저닝 프로파일과 유효한 서명 인증서를 준비합니다.
 3. CloudKit Console에 `MacTypingStatistics` 레코드 타입, `history`(Bytes) 필드를 만들고 `recordName`의 QUERYABLE 인덱스를 설정합니다. 스키마를 Production에 배포합니다.
-4. 아래 방식으로 빌드합니다. TEAM_ID·인증서·프로파일 경로는 자신의 값으로 바꿉니다. 앱 ID와 컨테이너는 아래 값으로 통일합니다.
+4. 프로파일(`*.provisionprofile`)을 저장소의 `signing/` 폴더에 넣고 `./build.sh`를 실행합니다. 이 폴더는 `README.md`만 커밋되고 나머지는 git에서 제외됩니다. 빌드는 프로파일에서 팀 ID를 읽어 `.build/cloudkit.entitlements`를 만들고, 프로파일에 들어 있는 인증서와 맞는 키체인 서명 ID를 골라 서명합니다. 프로파일이 없으면 임시 서명으로 빌드하고 ‘iCloud 동기화 꺼짐’ 안내를 한 줄 출력합니다. `~/Downloads`에 맞는 프로파일이 있으면 그 경로도 알려 줍니다(자동 복사는 하지 않습니다).
+
+환경 변수를 주면 자동 값 대신 씁니다.
 
 ```sh
-python3 scripts/cloudkit-entitlements.py TEAM_ID iCloud.com.ias.seto .build/cloudkit.entitlements
 SIGNING_IDENTITY='Apple Development: YOUR_NAME (TEAM_ID)' \
 ICLOUD_PROFILE='/absolute/path/to/profile.provisionprofile' \
 ICLOUD_ENTITLEMENTS='.build/cloudkit.entitlements' \
+TEAM_ID='TEAM_ID' \
 ./build.sh
 ```
 

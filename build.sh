@@ -11,6 +11,47 @@ case "${BUNDLE_ID}" in
     *) echo "입력기 Bundle ID에는 소문자 .inputmethod. 구간이 필요합니다: ${BUNDLE_ID}" >&2; exit 1 ;;
 esac
 
+# CloudKit signing. A profile in signing/ turns it on; env vars still override.
+shopt -s nullglob
+SIGNING_PROFILES=(signing/*.provisionprofile)
+shopt -u nullglob
+if [[ -z "${ICLOUD_PROFILE:-}" && ${#SIGNING_PROFILES[@]} -gt 0 ]]; then
+    ICLOUD_PROFILE="$(pwd)/${SIGNING_PROFILES[0]}"
+fi
+if [[ -n "${ICLOUD_PROFILE:-}" ]]; then
+    mkdir -p .build
+    PROFILE_PLIST=".build/profile.plist"
+    security cms -D -i "${ICLOUD_PROFILE}" > "${PROFILE_PLIST}"
+    TEAM_ID="${TEAM_ID:-$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "${PROFILE_PLIST}" 2>/dev/null || echo RZUH4T3FCB)}"
+    if [[ -z "${ICLOUD_ENTITLEMENTS:-}" ]]; then
+        python3 scripts/cloudkit-entitlements.py "${TEAM_ID}" iCloud.com.ias.seto .build/cloudkit.entitlements
+        ICLOUD_ENTITLEMENTS=".build/cloudkit.entitlements"
+    fi
+    if [[ -z "${SIGNING_IDENTITY:-}" ]]; then
+        # The keychain identity whose certificate the profile lists (SHA-1).
+        SIGNING_IDENTITY="$(security find-identity -v -p codesigning | python3 -c '
+import hashlib, plistlib, sys
+certs = plistlib.load(open(sys.argv[1], "rb")).get("DeveloperCertificates", [])
+wanted = {hashlib.sha1(c).hexdigest().upper() for c in certs}
+for line in sys.stdin:
+    parts = line.split()
+    if len(parts) > 1 and parts[1] in wanted:
+        print(parts[1]); break
+' "${PROFILE_PLIST}")"
+        : "${SIGNING_IDENTITY:?키체인에 프로파일 인증서와 맞는 서명 ID가 없습니다}"
+    fi
+    echo "iCloud 동기화 켜짐: $(basename "${ICLOUD_PROFILE}") (팀 ${TEAM_ID})"
+else
+    NOTE="iCloud 동기화 꺼짐: signing/에 .provisionprofile이 없습니다."
+    for candidate in "${HOME}"/Downloads/*.provisionprofile; do
+        if [[ -f "${candidate}" ]] && grep -aq com.ias.inputmethod.seto "${candidate}"; then
+            NOTE+=" ${candidate}을 signing/에 복사하면 켜집니다."
+            break
+        fi
+    done
+    echo "${NOTE}"
+fi
+
 echo "== test =="
 swift test
 
