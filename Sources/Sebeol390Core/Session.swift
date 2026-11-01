@@ -714,7 +714,10 @@ public final class Session {
         case .clean(let syllables):
             // A recognized Korean word is stronger evidence than its length.
             // English words/prefixes were checked first, so of stays English.
+            // A lone syllable whose keys spell no English word or prefix is
+            // Korean when the large validity list knows it (hga → 능).
             return syllables < 2 && !lexicon.isKoreanWord(composition.text)
+                && !lexicon.isValidKorean(composition.text)
         case .trailing(let syllables):
             return syllables < 2
         default:

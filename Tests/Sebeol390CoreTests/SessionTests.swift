@@ -2153,3 +2153,20 @@ private extension Session {
     let uppercase = Session(lexicon: lexicon, mode: .english)
     #expect(uppercase.type("YV ") == "YV ")
 }
+
+@Test func validSingleSyllableSwitchesFromEnglishMode() {
+    // 능 is h g a. Not a frequent-list word, but valid Hangul, and "hga" is
+    // neither an English word nor a prefix.
+    for word in ["능", "늪", "닭"] {
+        let keys = SebeolKeys.keys(for: word)!
+        for suffix in ["", " "] {
+            assertTypes(keys + suffix, word + suffix, mode: .english)
+            #expect(clientFailures(keys + suffix, word + suffix, mode: .english).isEmpty)
+        }
+    }
+    // Real English words that are also syllable-shaped stay English.
+    for text in ["the", "of", "hi", "go", "kid", "fox"] {
+        assertTypes(text, text, mode: .english)
+        assertTypes(text + " ", text + " ", mode: .english)
+    }
+}
