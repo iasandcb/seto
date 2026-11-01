@@ -74,6 +74,7 @@ final class KeyboardView: UIView {
                 if self.shifted { self.shifted = false; self.refresh() }
             }
             addPreview(to: button) { [weak self] in String(self?.shifted == true ? symbol : digit) }
+            addAlternate(to: button, primary: digit, alternate: symbol)
             numberKeys.append((button, digit, symbol))
             numbers.addArrangedSubview(button)
         }
