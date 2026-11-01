@@ -27,6 +27,10 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     private var contextAutoSwitchOverride: Bool?
     /// A browser address bar also turns typo correction off, the same way.
     private var contextCorrectsTyposOverride: Bool?
+    /// A browser context that was not an address bar at activation. The
+    /// browser may move accessibility focus after IMK activates, so the first
+    /// typed key checks once more.
+    private var pendingAddressBarCheck: String?
 
     override func activateServer(_ sender: Any!) {
         super.activateServer(sender)
@@ -63,6 +67,7 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         let mode: Language = isTerminal || addressBar ? .english : .korean
         contextAutoSwitchOverride = isTerminal || addressBar ? false : nil
         contextCorrectsTyposOverride = addressBar ? false : nil
+        pendingAddressBarCheck = !addressBar && AddressBar.isBrowser(bundleIdentifier) ? bundleIdentifier : nil
         session = Self.makeSession(mode: mode)
         session.autoSwitch = contextAutoSwitchOverride ?? Preferences.autoSwitch
         session.correctsTypos = contextCorrectsTyposOverride ?? Preferences.correctsTypos
@@ -99,6 +104,14 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         if secure {
             apply(session.discard(), client: client)
             return false
+        }
+        if let browser = pendingAddressBarCheck,
+           flags.intersection([.command, .control, .option]).isEmpty {
+            pendingAddressBarCheck = nil
+            if FocusedElementReader.addressBarFocused(bundleIdentifier: browser) {
+                beginInputContext(bundleIdentifier: browser, addressBar: true)
+                updateModeStatus()
+            }
         }
         syncPreferences(client: client)
         let shortcutFlags = flags.intersection([.command, .control, .option, .shift])

@@ -6,6 +6,7 @@ import Sebeol390Core
 /// Accessibility permission this returns nil and nothing changes.
 enum FocusedElementReader {
     nonisolated(unsafe) private static var prompted = false
+    nonisolated(unsafe) private static var enabledPID: pid_t = 0
 
     static func addressBarFocused(bundleIdentifier: String?) -> Bool {
         guard AddressBar.isBrowser(bundleIdentifier) else { return false }
@@ -24,15 +25,22 @@ enum FocusedElementReader {
     }
 
     private static func focused(bundleIdentifier: String?) -> FocusedElement? {
-        let system = AXUIElementCreateSystemWide()
-        AXUIElementSetMessagingTimeout(system, 0.1)
-        guard let value = attribute(system, kAXFocusedUIElementAttribute) else { return nil }
+        // Ask the browser itself. The system-wide focused element fails with
+        // kAXErrorCannotComplete for Chrome, while its application element
+        // answers.
+        guard let pid = processIdentifier(bundleIdentifier) else { return nil }
+        let app = AXUIElementCreateApplication(pid)
+        // Chrome builds its native accessibility tree only for assistive
+        // clients; this asks it to keep the tree. Other apps ignore it.
+        if bundleIdentifier == "com.google.Chrome", enabledPID != pid {
+            enabledPID = pid
+            AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        }
+        // A cold tree can take longer than 0.1s on the first query.
+        AXUIElementSetMessagingTimeout(app, 0.25)
+        guard let value = attribute(app, kAXFocusedUIElementAttribute) else { return nil }
         let element = value as! AXUIElement
-        AXUIElementSetMessagingTimeout(element, 0.1)
-        var pid: pid_t = 0
-        guard AXUIElementGetPid(element, &pid) == .success,
-              NSRunningApplication(processIdentifier: pid)?.bundleIdentifier == bundleIdentifier
-        else { return nil }
+        AXUIElementSetMessagingTimeout(element, 0.25)
         let role = attribute(element, kAXRoleAttribute) as? String
         return FocusedElement(
             role: role,
@@ -40,6 +48,15 @@ enum FocusedElementReader {
             identifier: attribute(element, kAXIdentifierAttribute) as? String,
             insideWebArea: role == "AXWebArea" || hasWebAreaAncestor(element)
         )
+    }
+
+    /// The frontmost app when it is the client, otherwise its first instance.
+    private static func processIdentifier(_ bundleIdentifier: String?) -> pid_t? {
+        guard let bundleIdentifier else { return nil }
+        if let front = NSWorkspace.shared.frontmostApplication, front.bundleIdentifier == bundleIdentifier {
+            return front.processIdentifier
+        }
+        return NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).first?.processIdentifier
     }
 
     private static func hasWebAreaAncestor(_ element: AXUIElement) -> Bool {
