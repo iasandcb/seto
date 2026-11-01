@@ -34,6 +34,8 @@ final class KeyboardView: UIView {
     private var numberKeys: [(UIButton, Character, Character)] = []
     private var keys: [(UIButton, Character)] = []
     private let keyPreview = KeyPreviewView()
+    private let alternatesView = KeyAlternatesView()
+    private var alternates: [ObjectIdentifier: [Character]] = [:]
     private weak var previewedButton: UIButton?
     private var previewText: [ObjectIdentifier: () -> String] = [:]
 
@@ -146,6 +148,7 @@ final class KeyboardView: UIView {
                 if self.shifted { self.shifted = false; self.refresh() }
             }
             addPreview(to: punctuationKey) { String(punctuation) }
+            addAlternate(to: punctuationKey, primary: punctuation, alternate: punctuation == "." ? "," : "!")
             controls.addArrangedSubview(punctuationKey)
         }
         controls.addArrangedSubview(makeButton("↵") { [weak self] in self?.emitKey("\n") })
@@ -161,6 +164,8 @@ final class KeyboardView: UIView {
         }
         keyPreview.isHidden = true
         addSubview(keyPreview)
+        alternatesView.isHidden = true
+        addSubview(alternatesView)
         refresh()
     }
 
@@ -443,6 +448,47 @@ final class KeyboardView: UIView {
         } else { keyPreview.alpha = 1 }
     }
 
+    /// Holding the key opens a callout like the system keyboard's: the
+    /// alternate is chosen, sliding moves the choice, and release types it.
+    private func addAlternate(to button: UIButton, primary: Character, alternate: Character) {
+        alternates[ObjectIdentifier(button)] = [primary, alternate]
+        button.accessibilityHint = "길게 눌러 \(alternate) 입력"
+        let hold = UILongPressGestureRecognizer(target: self, action: #selector(holdAlternate(_:)))
+        hold.minimumPressDuration = 0.4
+        hold.cancelsTouchesInView = true
+        button.addGestureRecognizer(hold)
+    }
+
+    @objc private func holdAlternate(_ hold: UILongPressGestureRecognizer) {
+        guard let button = hold.view as? UIButton, let options = alternates[ObjectIdentifier(button)] else { return }
+        switch hold.state {
+        case .began:
+            dismissPreview()
+            layoutIfNeeded()
+            let key = button.convert(button.bounds, to: self)
+            let cell = max(44, key.width)
+            let width = cell * CGFloat(options.count)
+            let top = max(0, key.minY - 54)
+            // Open toward the keyboard's centre so the callout stays on screen.
+            let x = max(0, min(bounds.width - width, key.minX))
+            alternatesView.frame = CGRect(x: x, y: top, width: width, height: key.maxY - top)
+            alternatesView.configure(options: options, keyFrame: key.offsetBy(dx: -x, dy: -top))
+            alternatesView.selectedIndex = options.count - 1
+            bringSubviewToFront(alternatesView)
+            alternatesView.isHidden = false
+        case .changed:
+            alternatesView.select(atX: hold.location(in: alternatesView).x)
+        case .ended:
+            alternatesView.isHidden = true
+            let index = alternatesView.selectedIndex
+            guard options.indices.contains(index) else { return }
+            emitLiteral(options[index])
+            if shifted { shifted = false; refresh() }
+        default:
+            alternatesView.isHidden = true
+        }
+    }
+
     @objc private func hidePreview(_ button: UIButton) {
         guard previewedButton === button else { return }
         dismissPreview()
@@ -457,7 +503,7 @@ final class KeyboardView: UIView {
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        if window == nil { dismissPreview() }
+        if window == nil { dismissPreview(); alternatesView.isHidden = true }
     }
 
     private func style(_ button: UIButton) {
@@ -520,5 +566,66 @@ private final class KeyPreviewView: UIView {
         shape.fillColor = UIColor.tertiarySystemBackground.resolvedColor(with: traitCollection).cgColor
         label.frame = CGRect(x: 0, y: 0, width: bounds.width, height: headHeight)
         label.text = text
+    }
+}
+
+/// The long-press callout listing a key's characters, one highlighted.
+@MainActor
+private final class KeyAlternatesView: UIView {
+    private let shape = CAShapeLayer()
+    private var labels: [UILabel] = []
+    private var cellWidth: CGFloat = 0
+    var selectedIndex = 0 { didSet { refreshSelection() } }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        accessibilityElementsHidden = true
+        accessibilityIdentifier = "keyAlternates"
+        layer.addSublayer(shape)
+        shape.shadowColor = UIColor.black.cgColor
+        shape.shadowOpacity = 0.25
+        shape.shadowRadius = 3
+        shape.shadowOffset = CGSize(width: 0, height: 2)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func configure(options: [Character], keyFrame: CGRect) {
+        labels.forEach { $0.removeFromSuperview() }
+        let headHeight = min(54, bounds.height)
+        let path = UIBezierPath(roundedRect: CGRect(x: 0, y: 0, width: bounds.width, height: headHeight), cornerRadius: 10)
+        let stem = CGRect(x: keyFrame.minX, y: max(0, headHeight - 14), width: keyFrame.width, height: bounds.height - max(0, headHeight - 14))
+        path.append(UIBezierPath(roundedRect: stem, cornerRadius: 5))
+        shape.frame = bounds
+        shape.path = path.cgPath
+        shape.shadowPath = path.cgPath
+        shape.fillColor = UIColor.tertiarySystemBackground.resolvedColor(with: traitCollection).cgColor
+        cellWidth = bounds.width / CGFloat(max(1, options.count))
+        labels = options.enumerated().map { index, option in
+            let label = UILabel(frame: CGRect(x: CGFloat(index) * cellWidth + 3, y: 4, width: cellWidth - 6, height: headHeight - 8))
+            label.text = String(option)
+            label.font = .systemFont(ofSize: 28, weight: .medium)
+            label.textAlignment = .center
+            label.layer.cornerRadius = 7
+            label.layer.masksToBounds = true
+            label.accessibilityIdentifier = "keyAlternate\(index)"
+            addSubview(label)
+            return label
+        }
+        refreshSelection()
+    }
+
+    func select(atX x: CGFloat) {
+        guard cellWidth > 0, !labels.isEmpty else { return }
+        selectedIndex = min(labels.count - 1, max(0, Int(x / cellWidth)))
+    }
+
+    private func refreshSelection() {
+        for (index, label) in labels.enumerated() {
+            let selected = index == selectedIndex
+            label.backgroundColor = selected ? .systemBlue : .clear
+            label.textColor = selected ? .white : .label
+        }
     }
 }
