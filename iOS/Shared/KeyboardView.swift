@@ -21,6 +21,7 @@ final class KeyboardView: UIView {
     var onToggle: (() -> Void)?
     var onNext: ((UIButton, UIEvent) -> Void)?
     var onAutoSwitch: (() -> Void)?
+    var onCancelPendingDoubleSpace: (() -> Void)?
     var showsInputModeSwitch = true { didSet { globe.isHidden = !showsInputModeSwitch; refreshPhrases() } }
     private let globe = UIButton(type: .system)
     private var languageButton: UIButton?
@@ -134,7 +135,9 @@ final class KeyboardView: UIView {
         globe.addTarget(self, action: #selector(nextKeyboard(_:event:)), for: .allTouchEvents)
         globe.widthAnchor.constraint(equalToConstant: 32).isActive = true
         let symbolKey = makeButton("#") { [weak self] in
-            self?.symbols.toggle(); self?.refresh()
+            guard let self else { return }
+            self.onCancelPendingDoubleSpace?()
+            self.symbols.toggle(); self.refresh()
         }
         symbolKey.accessibilityLabel = "기호 자판 전환"
         controls.addArrangedSubview(symbolKey)
@@ -260,6 +263,7 @@ final class KeyboardView: UIView {
     }
 
     private func beginPhrase(at index: Int? = nil) {
+        onCancelPendingDoubleSpace?()
         editingPhraseIndex = index
         let editor = Session(lexicon: Lexicon(english: [], korean: []), autoSwitch: false, mode: english ? .english : .korean, layout: .dubeol)
         editor.correctsTypos = false
@@ -311,6 +315,7 @@ final class KeyboardView: UIView {
         if !suggestions.isEmpty, let context = displayedSuggestionContext {
             let toggle = makeButton(showingPhrases ? "추천" : "문구") { [weak self] in
                 guard let self else { return }
+                self.onCancelPendingDoubleSpace?()
                 self.showingPhrases.toggle()
                 self.refreshPhrases()
             }

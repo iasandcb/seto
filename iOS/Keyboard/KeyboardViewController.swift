@@ -25,7 +25,8 @@ final class KeyboardViewController: UIInputViewController {
             keyboard.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             view.heightAnchor.constraint(equalToConstant: KeyboardView.preferredHeight)
         ])
-        keyboard.onKey = { [weak self] key in self?.edit { $0.input(LayoutDubeol.atom(for: key)) } }
+        keyboard.onKey = { [weak self] key in self?.handleKey(key) }
+        keyboard.onCancelPendingDoubleSpace = { [weak self] in self?.doubleSpacePeriod.clear() }
         keyboard.onLiteral = { [weak self] key in
             guard let self else { return }
             let selected = self.textDocumentProxy.selectedText ?? ""
@@ -48,8 +49,12 @@ final class KeyboardViewController: UIInputViewController {
         }
         keyboard.onDelete = { [weak self] in self?.delete() }
         keyboard.onSuggestion = { [weak self] context, candidate in self?.accept(context, candidate: candidate) }
-        keyboard.onToggle = { [weak self] in self?.edit { $0.toggle() } }
+        keyboard.onToggle = { [weak self] in
+            self?.doubleSpacePeriod.clear()
+            self?.edit { $0.toggle() }
+        }
         keyboard.onNext = { [weak self] button, event in
+            self?.doubleSpacePeriod.clear()
             self?.handleInputModeList(from: button, with: event)
         }
         keyboard.onAutoSwitch = { [weak self] in
@@ -83,6 +88,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func reset() {
+        doubleSpacePeriod.clear()
         let automatic = UserDefaults.standard.object(forKey: "autoSwitch") as? Bool ?? true
         session = Session(lexicon: Self.lexicon, autoSwitch: automatic, mode: session.mode, layout: .dubeol)
         expectedContext = textDocumentProxy.documentContextBeforeInput
@@ -99,7 +105,44 @@ final class KeyboardViewController: UIInputViewController {
         )
     }
 
+    private var doubleSpacePeriod = DoubleSpacePeriod()
+
+    private func handleKey(_ key: Character) {
+        let tapTime = Date()
+        synchronize()
+        guard key == " " else {
+            doubleSpacePeriod.clear()
+            edit { $0.input(LayoutDubeol.atom(for: key)) }
+            return
+        }
+
+        let context = textDocumentProxy.documentContextBeforeInput
+        guard learnsVocabulary else {
+            doubleSpacePeriod.clear()
+            edit { $0.input(LayoutDubeol.atom(for: key)) }
+            return
+        }
+        if doubleSpacePeriod.shouldConvert(contextBefore: context, now: tapTime) {
+            textDocumentProxy.deleteBackward()
+            textDocumentProxy.insertText(". ")
+            reset()
+            return
+        }
+
+        edit { $0.input(LayoutDubeol.atom(for: key)) }
+        // Session.input(space) commits any pending Korean composition. Arm the
+        // detector only after that committed space is visible to the host.
+        let committedContext = textDocumentProxy.documentContextBeforeInput
+        guard learnsVocabulary, committedContext?.hasSuffix(" ") == true,
+              committedContext == expectedContext else {
+            doubleSpacePeriod.clear()
+            return
+        }
+        doubleSpacePeriod.recordFirstSpace(contextBefore: committedContext, now: tapTime)
+    }
+
     private func accept(_ context: WordSuggestionContext, candidate: String) {
+        doubleSpacePeriod.clear()
         guard textDocumentProxy.documentContextBeforeInput == context.before,
               textDocumentProxy.documentContextAfterInput == context.after,
               (textDocumentProxy.selectedText ?? "").isEmpty else { reset(); return }
@@ -109,6 +152,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func delete() {
+        doubleSpacePeriod.clear()
         synchronize()
         if session.document.isEmpty {
             textDocumentProxy.deleteBackward()
