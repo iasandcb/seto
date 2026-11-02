@@ -148,6 +148,7 @@ final class KeyboardView: UIView {
         controls.addArrangedSubview(languageKey)
         let arrowKey = makeButton("→") { [weak self] in self?.emitLiteral("→") }
         addPreview(to: arrowKey) { "→" }
+        addAlternate(to: arrowKey, primary: "→", alternate: "←")
         arrowKey.accessibilityLabel = "오른쪽 화살표 입력"
         controls.addArrangedSubview(arrowKey)
         let space = makeButton("간격") { [weak self] in self?.emitKey(" ") }
