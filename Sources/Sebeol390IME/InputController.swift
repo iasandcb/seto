@@ -21,6 +21,7 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     private var active = false
     private var clientUpdateDepth = 0
     private var unmarkedSelection: NSRange?
+    private var unmarkedSelectionAdvance = 0
     /// Terminal and a browser address bar start with automatic conversion off
     /// for this input context. A manual toggle can override that until the
     /// next context activation.
@@ -31,10 +32,6 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     /// browser may move accessibility focus after IMK activates, so the first
     /// typed key checks once more.
     private var pendingAddressBarCheck: String?
-    /// Chrome commits a one-character uppercase Latin mark before the next
-    /// key. Hold that first shifted letter in the session until it can be sent
-    /// together with the following character as a real composition.
-    private var deferredChromeCapital = false
 
     override func activateServer(_ sender: Any!) {
         super.activateServer(sender)
@@ -77,7 +74,7 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         session.correctsTypos = contextCorrectsTyposOverride ?? Preferences.correctsTypos
         sawCapsLockDown = false
         unmarkedSelection = nil
-        deferredChromeCapital = false
+        unmarkedSelectionAdvance = 0
     }
 
     override func recognizedEvents(_ sender: Any!) -> Int {
@@ -151,6 +148,7 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
                 // The app moves the caret after handle() returns. Do not
                 // mistake that expected deletion for an external edit.
                 unmarkedSelection = nil
+                unmarkedSelectionAdvance = 0
                 return false
             }
             apply(update, client: client)
@@ -209,25 +207,22 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     /// text or recording a retype from a token we no longer own.
     private func reconcileComposition(client: IMKTextInput) {
         guard clientUpdateDepth == 0 else { return }
-        if deferredChromeCapital {
-            let mark = client.markedRange()
-            if mark.location == NSNotFound || mark.length == 0 {
-                // The first capital was deliberately not sent to Chrome.
-                // Its empty marked range is expected until another key arrives.
-                return
-            }
-            deferredChromeCapital = false
-        }
         if session.preedit.isEmpty {
             guard let expected = unmarkedSelection else { return }
             let selection = client.selectedRange()
-            guard selection.location != NSNotFound, selection != expected else { return }
+            // Chrome may report the previous caret from selectedRange() during
+            // insertText, and defer a single-character insertText from keyDown
+            // until after the event; it catches up before the next key event.
+            let selectionCaughtUp = expected.length == 0 && selection.length == 0
+                && selection.location == expected.location + unmarkedSelectionAdvance
+            guard selection.location != NSNotFound, selection != expected, !selectionCaughtUp else { return }
         } else {
             let mark = client.markedRange()
             guard mark.location == NSNotFound || mark.length == 0 else { return }
         }
         session = Self.makeSession(mode: session.mode)
         unmarkedSelection = nil
+        unmarkedSelectionAdvance = 0
     }
 
     override func deactivateServer(_ sender: Any!) {
@@ -448,26 +443,34 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     }
 
     private func apply(_ update: SessionUpdate, client: IMKTextInput) {
-        if client.bundleIdentifier() == "com.google.Chrome",
-           update.mode == .korean,
-           case .mark(let text) = update.field,
-           text.count == 1,
-           let character = text.first,
-           character.isASCII, character.isUppercase {
-            deferredChromeCapital = true
-            updateModeStatus()
-            return
+        let initialDocumentLength = client.length()
+        let initialMarkedLength = markedLength(client)
+        let intendedAdvance: Int
+        switch update.field {
+        case .unmark(let text), .insert(let text):
+            intendedAdvance = (text as NSString).length - initialMarkedLength
+        case .insertReplacing(let utf16, let text):
+            intendedAdvance = (text as NSString).length - utf16
+        case .clearMarkThenInsert(let utf16, let text):
+            intendedAdvance = (text as NSString).length - (utf16 + initialMarkedLength)
+        case .rewrite(let utf16, let text, let thenMark) where thenMark.isEmpty:
+            intendedAdvance = (text as NSString).length - utf16
+        case .none, .mark, .replaceBeforeCaret, .insertThenMark, .insertReplacingThenMark,
+             .clearMarkThenMark, .rewrite:
+            intendedAdvance = 0
         }
-        // Any subsequent edit includes the buffered capital. A boundary edit
-        // also flushes it through the ordinary insert/unmark path.
-        if deferredChromeCapital { deferredChromeCapital = false }
         clientUpdateDepth += 1
         defer {
             if clientUpdateDepth == 1 {
                 unmarkedSelection = nil
+                unmarkedSelectionAdvance = 0
                 if session.preedit.isEmpty {
                     let selection = client.selectedRange()
-                    if selection.location != NSNotFound { unmarkedSelection = selection }
+                    if selection.location != NSNotFound {
+                        unmarkedSelection = selection
+                        let observedAdvance = client.length() - initialDocumentLength
+                        unmarkedSelectionAdvance = max(0, intendedAdvance, observedAdvance)
+                    }
                 }
             }
             clientUpdateDepth -= 1

@@ -8,7 +8,8 @@ final class SmokeClient: NSObject, IMKTextInput {
     var mark = NSRange(location: NSNotFound, length: 0)
     var ignoresReplacementOutsideMark = false
     var clientBundleIdentifier = "com.sebeol390.SmokeClient"
-    var commitsSingleUppercaseMark = false
+    var lagsSelection = false
+    private var cachedSelection = NSRange(location: 0, length: 0)
     var onInsert: (() -> Void)?
     var onMark: (() -> Void)?
     private func value(_ input: Any?) -> String {
@@ -28,16 +29,13 @@ final class SmokeClient: NSObject, IMKTextInput {
         let replacement = target(replacementRange)
         let string = value(input)
         text = (text as NSString).replacingCharacters(in: replacement, with: string)
-        if commitsSingleUppercaseMark, string.count == 1,
-           let character = string.first, character.isASCII, character.isUppercase {
-            mark = NSRange(location: NSNotFound, length: 0)
-            onMark?()
-            return
-        }
         mark = NSRange(location: replacement.location, length: (string as NSString).length)
         onMark?()
     }
-    func selectedRange() -> NSRange { NSRange(location: (text as NSString).length, length: 0) }
+    func syncSelection() { cachedSelection = NSRange(location: (text as NSString).length, length: 0) }
+    func selectedRange() -> NSRange {
+        lagsSelection ? cachedSelection : NSRange(location: (text as NSString).length, length: 0)
+    }
     func markedRange() -> NSRange { mark }
     func attributedSubstring(from range: NSRange) -> NSAttributedString? { nil }
     func length() -> Int { (text as NSString).length }
@@ -57,6 +55,7 @@ final class SmokeClient: NSObject, IMKTextInput {
 
 @MainActor
 private func press(_ raw: Character, modifiers: NSEvent.ModifierFlags = [], controller: SebeolInputController, client: SmokeClient) -> Bool {
+    client.syncSelection()
     let shift = modifiers.contains(.shift)
     let code = (0..<128).first { Keymap.qwertyCharacter(keyCode: UInt16($0), shift: shift) == raw }!
     let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: 0, windowNumber: 0, context: nil, characters: String(raw), charactersIgnoringModifiers: String(raw), isARepeat: false, keyCode: UInt16(code))!
@@ -65,6 +64,7 @@ private func press(_ raw: Character, modifiers: NSEvent.ModifierFlags = [], cont
 
 @MainActor
 private func backspace(controller: SebeolInputController, client: SmokeClient) {
+    client.syncSelection()
     let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, characters: "\u{8}", charactersIgnoringModifiers: "\u{8}", isARepeat: false, keyCode: Keymap.delete)!
     if !controller.handle(event, client: client), !client.text.isEmpty {
         client.text.removeLast()
@@ -216,24 +216,22 @@ private func backspace(controller: SebeolInputController, client: SmokeClient) {
                 }
             }
         }
-        // Chrome commits a one-character uppercase Latin mark immediately.
-        // The controller must hold the first shifted letter until the whole
-        // capitalized word can be marked, so later keys are not reinterpreted
-        // after Chrome ends the first mark.
-        do {
+        // Chrome catches up its selectedRange between key events, after
+        // insertText initially reports the previous caret.
+        for (keys, expected) in [("Sophia", "Sophia"), ("Sophia ", "Sophia "), ("Hello ", "Hello ")] {
             cases += 1
             let client = SmokeClient()
             client.clientBundleIdentifier = "com.google.Chrome"
-            client.commitsSingleUppercaseMark = true
+            client.lagsSelection = true
             let controller = SebeolInputController()
             controller.beginInputContext(bundleIdentifier: client.clientBundleIdentifier)
-            for raw in "Sophia" {
+            for raw in keys {
                 let modifiers: NSEvent.ModifierFlags = raw.isUppercase ? [.shift] : []
                 precondition(press(raw, modifiers: modifiers, controller: controller, client: client))
             }
             controller.commitComposition(client)
-            if client.text != "Sophia" || client.mark.length != 0 {
-                print("FAIL Chrome capitalized word: \(client.text), expected Sophia")
+            if client.text != expected || client.mark.length != 0 {
+                print("FAIL Chrome lagging selection \(keys): \(client.text), expected \(expected)")
                 failures += 1
             }
         }
