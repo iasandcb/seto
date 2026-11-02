@@ -295,7 +295,7 @@ for ext in [False, True]:
     if ext:
         data['NSExtension'] = {'NSExtensionPointIdentifier': 'com.apple.keyboard-service', 'NSExtensionPrincipalClass': '$(PRODUCT_MODULE_NAME).KeyboardViewController', 'NSExtensionAttributes': {'IsASCIICapable': True, 'PrimaryLanguage': 'ko-KR', 'RequestsOpenAccess': False, 'PrefersRightToLeft': False}}
     else:
-        data.update(UIAppFonts=['D2Coding-Regular.ttf', 'D2Coding-Bold.ttf'], NSLocalNetworkUsageDescription="입력한 SSH 서버에 접속하기 위해 로컬 네트워크를 사용합니다.", LSRequiresIPhoneOS=True, UILaunchScreen={}, UIApplicationSceneManifest={'UIApplicationSupportsMultipleScenes': False}, UISupportedInterfaceOrientations=['UIInterfaceOrientationPortrait', 'UIInterfaceOrientationPortraitUpsideDown', 'UIInterfaceOrientationLandscapeLeft', 'UIInterfaceOrientationLandscapeRight'])
+        data.update(ITSAppUsesNonExemptEncryption=False, UIAppFonts=['D2Coding-Regular.ttf', 'D2Coding-Bold.ttf'], NSLocalNetworkUsageDescription="입력한 SSH 서버에 접속하기 위해 로컬 네트워크를 사용합니다.", LSRequiresIPhoneOS=True, UILaunchScreen={}, UIApplicationSceneManifest={'UIApplicationSupportsMultipleScenes': False}, UISupportedInterfaceOrientations=['UIInterfaceOrientationPortrait', 'UIInterfaceOrientationPortraitUpsideDown', 'UIInterfaceOrientationLandscapeLeft', 'UIInterfaceOrientationLandscapeRight'])
     with (root / ('Keyboard' if ext else 'App') / 'Info.plist').open('wb') as f: plistlib.dump(data, f)
 scheme = f'''<?xml version="1.0" encoding="UTF-8"?>
 <Scheme
