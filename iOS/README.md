@@ -57,6 +57,11 @@ iOS 16 이상을 위한 SwiftUI 안내·연습 앱과 UIKit 키보드 확장입�
 키보드 확장에 전달하거나 시스템 하드웨어 입력기로 등록하는 기능이 없습니다.
 앱의 자동 한/영 전환은 기본으로 켜지며, 앱 화면의 스위치 설정을 사용합니다. 확장 설정과는 별도로 동작합니다.
 
+## Xcode Cloud
+
+`ci_scripts/ci_post_clone.sh`는 SwiftTerm 빌드 플러그인을 사용할 수 있도록 Xcode Cloud의 패키지 플러그인·매크로 지문 검증을 건너뜁니다. 프로젝트 파일은 저장소에 포함되어 있어 재생성하지 않습니다.
+`ci_scripts/ci_pre_xcodebuild.sh`는 `CI_BUILD_NUMBER`에 `BUILD_NUMBER_OFFSET`을 더해 모든 `CURRENT_PROJECT_VERSION`을 갱신합니다. 기본 오프셋은 수동 업로드된 빌드 5개를 건너뛰기 위한 `5`이며, 필요하면 환경 변수로 바꿀 수 있습니다.
+
 ## 검증
 
 ```sh
