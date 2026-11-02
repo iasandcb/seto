@@ -7,6 +7,8 @@ final class SmokeClient: NSObject, IMKTextInput {
     var text = ""
     var mark = NSRange(location: NSNotFound, length: 0)
     var ignoresReplacementOutsideMark = false
+    var clientBundleIdentifier = "com.sebeol390.SmokeClient"
+    var commitsSingleUppercaseMark = false
     var onInsert: (() -> Void)?
     var onMark: (() -> Void)?
     private func value(_ input: Any?) -> String {
@@ -26,6 +28,12 @@ final class SmokeClient: NSObject, IMKTextInput {
         let replacement = target(replacementRange)
         let string = value(input)
         text = (text as NSString).replacingCharacters(in: replacement, with: string)
+        if commitsSingleUppercaseMark, string.count == 1,
+           let character = string.first, character.isASCII, character.isUppercase {
+            mark = NSRange(location: NSNotFound, length: 0)
+            onMark?()
+            return
+        }
         mark = NSRange(location: replacement.location, length: (string as NSString).length)
         onMark?()
     }
@@ -39,7 +47,7 @@ final class SmokeClient: NSObject, IMKTextInput {
     func overrideKeyboard(withKeyboardNamed name: String?) {}
     func selectMode(_ mode: String?) {}
     func supportsUnicode() -> Bool { true }
-    func bundleIdentifier() -> String? { "com.sebeol390.SmokeClient" }
+    func bundleIdentifier() -> String? { clientBundleIdentifier }
     func windowLevel() -> CGWindowLevel { 0 }
     func supportsProperty(_ property: TSMDocumentPropertyTag) -> Bool { true }
     func uniqueClientIdentifierString() -> String? { "smoke" }
@@ -206,6 +214,27 @@ private func backspace(controller: SebeolInputController, client: SmokeClient) {
                     print(trace.joined(separator: "\n"))
                     failures += 1
                 }
+            }
+        }
+        // Chrome commits a one-character uppercase Latin mark immediately.
+        // The controller must hold the first shifted letter until the whole
+        // capitalized word can be marked, so later keys are not reinterpreted
+        // after Chrome ends the first mark.
+        do {
+            cases += 1
+            let client = SmokeClient()
+            client.clientBundleIdentifier = "com.google.Chrome"
+            client.commitsSingleUppercaseMark = true
+            let controller = SebeolInputController()
+            controller.beginInputContext(bundleIdentifier: client.clientBundleIdentifier)
+            for raw in "Sophia" {
+                let modifiers: NSEvent.ModifierFlags = raw.isUppercase ? [.shift] : []
+                precondition(press(raw, modifiers: modifiers, controller: controller, client: client))
+            }
+            controller.commitComposition(client)
+            if client.text != "Sophia" || client.mark.length != 0 {
+                print("FAIL Chrome capitalized word: \(client.text), expected Sophia")
+                failures += 1
             }
         }
         // Terminal can handle Return itself when no composition is open.

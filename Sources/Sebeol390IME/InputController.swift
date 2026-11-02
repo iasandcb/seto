@@ -31,6 +31,10 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     /// browser may move accessibility focus after IMK activates, so the first
     /// typed key checks once more.
     private var pendingAddressBarCheck: String?
+    /// Chrome commits a one-character uppercase Latin mark before the next
+    /// key. Hold that first shifted letter in the session until it can be sent
+    /// together with the following character as a real composition.
+    private var deferredChromeCapital = false
 
     override func activateServer(_ sender: Any!) {
         super.activateServer(sender)
@@ -73,6 +77,7 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         session.correctsTypos = contextCorrectsTyposOverride ?? Preferences.correctsTypos
         sawCapsLockDown = false
         unmarkedSelection = nil
+        deferredChromeCapital = false
     }
 
     override func recognizedEvents(_ sender: Any!) -> Int {
@@ -204,6 +209,15 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     /// text or recording a retype from a token we no longer own.
     private func reconcileComposition(client: IMKTextInput) {
         guard clientUpdateDepth == 0 else { return }
+        if deferredChromeCapital {
+            let mark = client.markedRange()
+            if mark.location == NSNotFound || mark.length == 0 {
+                // The first capital was deliberately not sent to Chrome.
+                // Its empty marked range is expected until another key arrives.
+                return
+            }
+            deferredChromeCapital = false
+        }
         if session.preedit.isEmpty {
             guard let expected = unmarkedSelection else { return }
             let selection = client.selectedRange()
@@ -434,6 +448,19 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     }
 
     private func apply(_ update: SessionUpdate, client: IMKTextInput) {
+        if client.bundleIdentifier() == "com.google.Chrome",
+           update.mode == .korean,
+           case .mark(let text) = update.field,
+           text.count == 1,
+           let character = text.first,
+           character.isASCII, character.isUppercase {
+            deferredChromeCapital = true
+            updateModeStatus()
+            return
+        }
+        // Any subsequent edit includes the buffered capital. A boundary edit
+        // also flushes it through the ordinary insert/unmark path.
+        if deferredChromeCapital { deferredChromeCapital = false }
         clientUpdateDepth += 1
         defer {
             if clientUpdateDepth == 1 {
