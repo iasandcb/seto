@@ -427,20 +427,14 @@ public final class Session {
                 Segment(start: 0, end: headEnd, lang: .english),
                 Segment(start: headEnd, end: keys.count, lang: .korean),
             ]
-            let changed = previous.flatMap { extend($0, to: keys.count) }
-                .map { render(parts) != render($0) } ?? false
-            segments = parts
-            return changed
+            return installReading(parts, previous: previous)
         }
 
         // Shifted number keys can initially look like a capitalized English
         // prefix (Mu…). Once the tail is Korean, recover the number too.
         if prefersNumberWithKoreanTail() {
             let korean = [Segment(start: 0, end: keys.count, lang: .korean)]
-            let changed = previous.flatMap { extend($0, to: keys.count) }
-                .map { render(korean) != render($0) } ?? false
-            segments = korean
-            return changed
+            return installReading(korean, previous: previous)
         }
 
         // "Open" is 9펴 and "Int" is 8서: a shifted digit plus a syllable.
@@ -448,12 +442,7 @@ public final class Session {
         // digit run (OK → 95) is excluded and stays a number.
         if prefersCapitalizedEnglish() {
             let english = [Segment(start: 0, end: keys.count, lang: .english)]
-            var changed = false
-            if let previous, let extended = extend(previous, to: keys.count) {
-                changed = render(english) != render(extended)
-            }
-            segments = english
-            return changed
+            return installReading(english, previous: previous)
         }
 
         if keys.allSatisfy(\.isDubeol) {
@@ -471,10 +460,7 @@ public final class Session {
             if (knownWhole || knownStem),
                isChatReaction || mode == .korean || knownStem || !lexicon.isEnglishWord(spelling) {
                 let korean = [Segment(start: 0, end: keys.count, lang: .korean)]
-                let changed = previous.flatMap { extend($0, to: keys.count) }
-                    .map { render(korean) != render($0) } ?? false
-                segments = korean
-                return changed
+                return installReading(korean, previous: previous)
             }
         }
 
@@ -484,10 +470,7 @@ public final class Session {
         if let headEnd = pendingAcronymInitialSplit() {
             let parts = [Segment(start: 0, end: headEnd, lang: .english),
                          Segment(start: headEnd, end: keys.count, lang: .korean)]
-            let changed = previous.flatMap { extend($0, to: keys.count) }
-                .map { render(parts) != render($0) } ?? false
-            segments = parts
-            return changed
+            return installReading(parts, previous: previous)
         }
 
         // "ktx는" is two legal syllables (걱는), so Hangul stickiness would
@@ -498,12 +481,7 @@ public final class Session {
                 Segment(start: 0, end: headEnd, lang: .english),
                 Segment(start: headEnd, end: keys.count, lang: .korean),
             ]
-            var changed = false
-            if let previous, let extended = extend(previous, to: keys.count) {
-                changed = render(parts) != render(extended)
-            }
-            segments = parts
-            return changed
+            return installReading(parts, previous: previous)
         }
 
         // "of" is the syllable 차. After an English word the short function
@@ -528,10 +506,7 @@ public final class Session {
         // language change. Keep QWERTY until a stronger Korean reading appears.
         if prefersCurrentEnglishMode() {
             let english = [Segment(start: 0, end: keys.count, lang: .english)]
-            let changed = previous.flatMap { extend($0, to: keys.count) }
-                .map { render(english) != render($0) } ?? false
-            segments = english
-            return changed
+            return installReading(english, previous: previous)
         }
 
         // Two-set keys can form clean but unknown Hangul from an ordinary
@@ -543,10 +518,7 @@ public final class Session {
             if spelling.count >= 3, lexicon.isEnglishWord(spelling),
                !lexicon.isKoreanWord(korean), !lexicon.isValidKorean(korean) {
                 let english = [Segment(start: 0, end: keys.count, lang: .english)]
-                let changed = previous.flatMap { extend($0, to: keys.count) }
-                    .map { render(english) != render($0) } ?? false
-                segments = english
-                return changed
+                return installReading(english, previous: previous)
             }
         }
 
@@ -555,72 +527,42 @@ public final class Session {
         // more syllables, optionally with a trailing choseong, it stays Korean.
         if prefersWholeKorean() {
             let korean = [Segment(start: 0, end: keys.count, lang: .korean)]
-            var changed = false
-            if let previous, let extended = extend(previous, to: keys.count) {
-                changed = render(korean) != render(extended)
-            }
-            segments = korean
-            return changed
+            return installReading(korean, previous: previous)
         }
 
         // Shifted 390 digits sit on letter keys (1 is M, 0 is N). "MN" is an
         // English prefix, so it must not outrank the digits while typing Korean.
         if prefersPadDigits() {
             let korean = [Segment(start: 0, end: keys.count, lang: .korean)]
-            var changed = false
-            if let previous, let extended = extend(previous, to: keys.count) {
-                changed = render(korean) != render(extended)
-            }
-            segments = korean
-            return changed
+            return installReading(korean, previous: previous)
         }
 
         // "N.M" is the digit keys for 0.1. A dot must not turn that into an
         // English token the way "agents.md" stays English.
         if prefersShiftedNumber() {
             let korean = [Segment(start: 0, end: keys.count, lang: .korean)]
-            var changed = false
-            if let previous, let extended = extend(previous, to: keys.count) {
-                changed = render(korean) != render(extended)
-            }
-            segments = korean
-            return changed
+            return installReading(korean, previous: previous)
         }
 
         // ㄲ·ㄸ·ㅃ·ㅆ·ㅉ are one choseong typed with two keys. "ll" is also the
         // prefix of "llvm", so the pair must stay ㅉ and not become Latin.
         if prefersDoubledChoseong() {
             let korean = [Segment(start: 0, end: keys.count, lang: .korean)]
-            var changed = false
-            if let previous, let extended = extend(previous, to: keys.count) {
-                changed = render(korean) != render(extended)
-            }
-            segments = korean
-            return changed
+            return installReading(korean, previous: previous)
         }
 
         // ㅎㅎ, ㅋㅋ, ㅠㅠ, ㄱㅅ. A lone ㅠ may display as "5", but
         // that tentative reading does not change the Korean mode.
         if prefersBareJamoRun(previous) {
             let korean = [Segment(start: 0, end: keys.count, lang: .korean)]
-            var changed = false
-            if let previous, let extended = extend(previous, to: keys.count) {
-                changed = render(korean) != render(extended)
-            }
-            segments = korean
-            return changed
+            return installReading(korean, previous: previous)
         }
 
         // "agents.md" and "https://agents.md" are one token. A dot only ends
         // the word when the buffer is already a Hangul syllable.
         if prefersWholeEnglishCode() {
             let english = [Segment(start: 0, end: keys.count, lang: .english)]
-            var changed = false
-            if let previous, let extended = extend(previous, to: keys.count) {
-                changed = render(english) != render(extended)
-            }
-            segments = english
-            return changed
+            return installReading(english, previous: previous)
         }
 
         // "agents" is still a prefix of "agentship", and "nts" is the syllable
@@ -628,15 +570,17 @@ public final class Session {
         // reading. "AIyv" is not a prefix, so 로 can still take the tail.
         if prefersWholeEnglishWord() {
             let english = [Segment(start: 0, end: keys.count, lang: .english)]
-            var changed = false
-            if let previous, let extended = extend(previous, to: keys.count) {
-                changed = render(english) != render(extended)
-            }
-            segments = english
-            return changed
+            return installReading(english, previous: previous)
         }
 
         return selectBestPath(previous: previous, wordFinal: wordFinal)
+    }
+
+    private func installReading(_ candidate: [Segment], previous: [Segment]?) -> Bool {
+        let previousReading = previous.flatMap { extend($0, to: keys.count) }
+        let changed = previousReading.map { render(candidate) != render($0) } ?? false
+        segments = candidate
+        return changed
     }
 
     /// Selects a scored path while preserving a still-plausible live reading.

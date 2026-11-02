@@ -26,8 +26,12 @@ private let transitionCorpus: [TransitionCase] = [
           expectedText: "흠", expectedMode: .korean),
     .init(name: "English stem with Korean ending", keys: "deploymr2hgsuc", initialMode: .korean,
           expectedText: "deploy했는데", expectedMode: .korean),
+    .init(name: "English stem with Korean ending from English mode", keys: "deploymr2hgsuc", initialMode: .english,
+          expectedText: "deploy했는데", expectedMode: .korean),
     .init(name: "acronym with Korean particle", keys: "AIyv", initialMode: .english,
           expectedText: "AI로", expectedMode: .korean),
+    .init(name: "known acronym particle split", keys: "ktxhgs", initialMode: .korean,
+          expectedText: "ktx는", expectedMode: .korean),
     .init(name: "filename remains a code token", keys: "agents.md", initialMode: .korean,
           expectedText: "agents.md", expectedMode: .english),
     .init(name: "English context preserves ambiguous short word", keys: "one of the", initialMode: .english,
@@ -44,5 +48,10 @@ private let transitionCorpus: [TransitionCase] = [
                 "\(item.name): \(session.debugLine)")
         #expect(session.mode == item.expectedMode,
                 "\(item.name): \(session.debugLine)")
+        _ = session.input(" ")
+        #expect(session.document == item.expectedText + " ",
+                "\(item.name) at word boundary: \(session.debugLine)")
+        #expect(session.mode == item.expectedMode,
+                "\(item.name) at word boundary: \(session.debugLine)")
     }
 }
