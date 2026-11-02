@@ -3,6 +3,7 @@
 from pathlib import Path
 import hashlib
 import plistlib
+import re
 
 root = Path(__file__).resolve().parents[1]
 repo = root.parent
@@ -15,6 +16,181 @@ def obj(name, value):
 def quote(s): return '"' + str(s).replace('\\', '\\\\').replace('"', '\\"') + '"'
 def settings(values): return '{ ' + ' '.join(f'{k} = {quote(v)};' for k, v in values.items()) + ' }'
 def refs(values): return '(' + ', '.join(values) + ',)'
+
+# Parse the deliberately compact OpenStep fragments used below, then emit the
+# same stable, readable layout Xcode writes. Keeping IDs generated from names
+# makes the project reproducible while letting the serializer own formatting.
+def parse_openstep(text):
+    tokens = re.findall(r'"(?:\\.|[^"\\])*"|[{}();=,]|[^\s{}();=,]+', text)
+    pos = 0
+    def value():
+        nonlocal pos
+        token = tokens[pos]; pos += 1
+        if token == '{':
+            result = {}
+            while tokens[pos] != '}':
+                key = scalar(); assert tokens[pos] == '='; pos += 1
+                result[key] = value(); assert tokens[pos] == ';'; pos += 1
+            pos += 1
+            return result
+        if token == '(':
+            result = []
+            while tokens[pos] != ')':
+                if tokens[pos] == ',':
+                    pos += 1
+                    continue
+                result.append(value())
+                if tokens[pos] == ',': pos += 1
+            pos += 1
+            return result
+        return unquote(token)
+    def scalar():
+        nonlocal pos
+        token = tokens[pos]; pos += 1
+        return unquote(token)
+    result = value()
+    assert pos == len(tokens)
+    return result
+
+def unquote(value):
+    if value.startswith('"'):
+        return bytes(value[1:-1], 'utf-8').decode('unicode_escape')
+    return value
+
+SECTION_ORDER = [
+    'PBXBuildFile', 'PBXContainerItemProxy', 'PBXCopyFilesBuildPhase',
+    'PBXFileReference', 'PBXFrameworksBuildPhase', 'PBXGroup',
+    'PBXNativeTarget', 'PBXProject', 'PBXResourcesBuildPhase',
+    'PBXSourcesBuildPhase', 'PBXTargetDependency', 'XCBuildConfiguration',
+    'XCConfigurationList', 'XCRemoteSwiftPackageReference',
+    'XCSwiftPackageProductDependency',
+]
+KEY_ORDER = {
+    'PBXBuildFile': ['isa', 'fileRef', 'productRef', 'settings'],
+    'PBXFileReference': ['isa', 'explicitFileType', 'lastKnownFileType', 'path', 'sourceTree'],
+    'PBXContainerItemProxy': ['isa', 'containerPortal', 'proxyType', 'remoteGlobalIDString', 'remoteInfo'],
+    'PBXCopyFilesBuildPhase': ['isa', 'buildActionMask', 'dstPath', 'dstSubfolderSpec', 'files', 'name', 'runOnlyForDeploymentPostprocessing'],
+    'PBXFrameworksBuildPhase': ['isa', 'buildActionMask', 'files', 'name', 'runOnlyForDeploymentPostprocessing'],
+    'PBXResourcesBuildPhase': ['isa', 'buildActionMask', 'files', 'name', 'runOnlyForDeploymentPostprocessing'],
+    'PBXSourcesBuildPhase': ['isa', 'buildActionMask', 'files', 'name', 'runOnlyForDeploymentPostprocessing'],
+    'PBXGroup': ['isa', 'children', 'name', 'sourceTree'],
+    'PBXNativeTarget': ['isa', 'buildConfigurationList', 'buildPhases', 'buildRules', 'dependencies', 'name', 'packageProductDependencies', 'productName', 'productReference', 'productType'],
+    'PBXProject': ['isa', 'attributes', 'buildConfigurationList', 'compatibilityVersion', 'developmentRegion', 'hasScannedForEncodings', 'knownRegions', 'mainGroup', 'packageReferences', 'productRefGroup', 'projectDirPath', 'projectRoot', 'targets'],
+    'PBXTargetDependency': ['isa', 'target', 'targetProxy'],
+    'XCBuildConfiguration': ['isa', 'buildSettings', 'name'],
+    'XCConfigurationList': ['isa', 'buildConfigurations', 'defaultConfigurationIsVisible', 'defaultConfigurationName'],
+    'XCRemoteSwiftPackageReference': ['isa', 'repositoryURL', 'requirement'],
+    'XCSwiftPackageProductDependency': ['isa', 'package', 'productName'],
+}
+
+def openstep_quote(value):
+    value = str(value)
+    if re.fullmatch(r'[A-Za-z0-9_./$]+', value): return value
+    return '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
+
+def format_project(object_values):
+    parsed = {key: parse_openstep(value) for key, value in object_values.items()}
+    for objv in parsed.values():
+        if objv.get('isa') == 'PBXProject': objv.setdefault('hasScannedForEncodings', '0')
+        if objv.get('isa') == 'XCConfigurationList': objv.setdefault('defaultConfigurationIsVisible', '0')
+    labels = {}
+    for key, objv in parsed.items():
+        isa = objv.get('isa')
+        if isa == 'PBXFileReference':
+            labels[key] = objv.get('path', '')
+        elif isa == 'XCSwiftPackageProductDependency': labels[key] = objv.get('productName', '')
+        elif isa == 'XCRemoteSwiftPackageReference': labels[key] = objv.get('repositoryURL', '').rsplit('/', 1)[-1].removesuffix('.git')
+        elif isa == 'XCBuildConfiguration': labels[key] = objv.get('name', '')
+        elif isa == 'PBXNativeTarget': labels[key] = objv.get('name', '')
+        elif isa == 'PBXProject': labels[key] = 'Project object'
+        elif isa == 'PBXGroup': labels[key] = objv.get('name', '')
+        elif isa.endswith('BuildPhase'):
+            labels[key] = {'PBXSourcesBuildPhase':'Sources','PBXResourcesBuildPhase':'Resources','PBXFrameworksBuildPhase':'Frameworks','PBXCopyFilesBuildPhase':'CopyFiles'}.get(isa, '')
+        elif isa == 'XCConfigurationList': labels[key] = 'Build configuration list'
+        else: labels[key] = isa
+    build_context = {}
+    for objv in parsed.values():
+        if objv.get('isa', '').endswith('BuildPhase'):
+            section = labels.get(objv.get('name', ''), '')
+            phase = {'PBXSourcesBuildPhase':'Sources','PBXResourcesBuildPhase':'Resources','PBXFrameworksBuildPhase':'Frameworks','PBXCopyFilesBuildPhase':'CopyFiles'}.get(objv['isa'], '')
+            for bid in objv.get('files', []): build_context[bid] = phase
+    def comment(oid, objv):
+        isa = objv.get('isa', '')
+        if isa == 'PBXBuildFile':
+            ref = objv.get('fileRef') or objv.get('productRef')
+            suffix = build_context.get(oid, '')
+            base = labels.get(ref, '')
+            if objv.get('productRef'): base += ' in Frameworks'
+            elif suffix: base += ' in ' + suffix
+            return base
+        label = labels.get(oid, isa)
+        if isa == 'XCConfigurationList':
+            target = next((x.get('name') for x in parsed.values() if x.get('isa') == 'PBXNativeTarget' and x.get('buildConfigurationList') == oid), None)
+            label += ' for PBXNativeTarget "' + target + '"' if target else ' for PBXProject "Sebeol390"'
+        if isa == 'XCRemoteSwiftPackageReference': label = f'XCRemoteSwiftPackageReference "{labels[oid]}"'
+        if isa == 'PBXTargetDependency': label = 'PBXTargetDependency'
+        if isa == 'PBXFileReference' and label.endswith(('.txt', '.LICENSE', '.ttf')) or isa == 'PBXFileReference' and '/' in label:
+            return label
+        if isa in ('PBXFileReference', 'PBXNativeTarget', 'XCSwiftPackageProductDependency', 'XCRemoteSwiftPackageReference', 'PBXGroup', 'PBXProject', 'XCBuildConfiguration'):
+            return label
+        return label
+    def scalar(v): return openstep_quote(v)
+    def render(v, depth, key=None):
+        pad = '\t' * depth
+        if isinstance(v, dict):
+            if v.get('isa') in ('PBXBuildFile', 'PBXFileReference'):
+                items = ordered(v)
+                return '{' + ' '.join(f'{k} = {render(val, depth, k)};' for k, val in items) + ' }'
+            if key == 'buildSettings':
+                v = dict(sorted(v.items()))
+            if key not in {'buildSettings', 'attributes', 'requirement'} and 'isa' not in v and all(not isinstance(val, (dict, list)) or isinstance(val, list) and all(not isinstance(x, (dict, list)) for x in val) for val in v.values()):
+                pieces = []
+                for k, val in v.items():
+                    if isinstance(val, list): rendered = '(' + ', '.join(scalar(x) for x in val) + (', ' if val else '') + ')'
+                    else: rendered = scalar(val)
+                    pieces.append(f'{k} = {rendered};')
+                return '{' + ' '.join(pieces) + ' }'
+            lines = ['{']
+            for k, val in ordered(v): lines.append('\t' * (depth + 1) + f'{k} = {render(val, depth + 1, k)};')
+            lines.append(pad + '}')
+            return '\n'.join(lines)
+        if isinstance(v, list):
+            if not v and key not in {'buildRules', 'dependencies', 'packageProductDependencies'}: return '()'
+            if not v: return '(\n' + pad + ')'
+            vals = []
+            for x in v:
+                item = render(x, depth + 1, key)
+                vals.append('\t' * (depth + 1) + item + ',')
+            return '(\n' + '\n'.join(vals) + '\n' + pad + ')'
+        result = scalar(v)
+        if key in {'fileRef', 'productRef', 'containerPortal', 'target', 'targetProxy', 'buildConfigurationList', 'buildPhases', 'buildConfigurations', 'dependencies', 'packageProductDependencies', 'productReference', 'package', 'packageReferences', 'mainGroup', 'productRefGroup', 'children', 'files', 'targets'} and isinstance(v, str) and v in parsed:
+            c = comment(v, parsed[v])
+            if c: result += f' /* {c} */'
+        return result
+    def ordered(d):
+        isa = d.get('isa', '')
+        rank = {k:i for i,k in enumerate(KEY_ORDER.get(isa, []))}
+        return sorted(d.items(), key=lambda kv: rank.get(kv[0], 999))
+    sections = {s: [] for s in SECTION_ORDER}
+    for oid, value in parsed.items(): sections[value['isa']].append(oid)
+    lines = ['// !$*UTF8*$!', '{', '\tarchiveVersion = 1;', '\tclasses = {', '\t};', '\tobjectVersion = 56;', '\tobjects = {', '']
+    for section in SECTION_ORDER:
+        ids = sorted(sections[section])
+        if not ids: continue
+        lines.append(f'/* Begin {section} section */')
+        for oid in ids:
+            value = parsed[oid]
+            c = comment(oid, value)
+            suffix = f' /* {c} */' if c else ''
+            rendered = render(value, 2)
+            if rendered.startswith('{\n'):
+                lines.append(f'\t\t{oid}{suffix} = {rendered};')
+            else:
+                lines.append(f'\t\t{oid}{suffix} = {rendered};')
+        lines.extend([f'/* End {section} section */', ''])
+    if lines[-1] == '': lines.pop()
+    lines += ['\t};', f'\trootObject = {ident("project")} /* Project object */;', '}']
+    return '\n'.join(lines) + '\n'
 def file(path, kind):
     return obj(path, f'{{isa = PBXFileReference; lastKnownFileType = {kind}; path = {quote(path)}; sourceTree = SOURCE_ROOT;}}')
 core = sorted('../' + str(p.relative_to(repo)) for p in (repo / 'Sources/Sebeol390Core').glob('*.swift'))
@@ -112,8 +288,7 @@ product_group = obj('products', '{isa = PBXGroup; children = ' + refs(products) 
 group = obj('main-group', '{isa = PBXGroup; children = ' + refs(all_files + [product_group]) + '; sourceTree = "<group>";}')
 obj('project', '{isa = PBXProject; attributes = {LastUpgradeCheck = 1600;}; buildConfigurationList = ' + project_config_list + '; compatibilityVersion = "Xcode 14.0"; developmentRegion = ko; knownRegions = (ko, en, Base); mainGroup = ' + group + '; productRefGroup = ' + product_group + '; packageReferences = ' + refs(packages) + '; projectDirPath = ""; projectRoot = ""; targets = ' + refs(targets) + ';}')
 # Empty arrays must use (), not (,).
-content = '// !$*UTF8*$!\n{archiveVersion = 1; classes = {}; objectVersion = 56; objects = {\n' + '\n'.join(f'{k} = {v};' for k,v in objects.items()) + '\n}; rootObject = ' + ident('project') + ';}\n'
-(root / 'Sebeol390.xcodeproj/project.pbxproj').write_text(content.replace('(,)', '()'))
+(root / 'Sebeol390.xcodeproj/project.pbxproj').write_text(format_project(objects))
 common = {'CFBundleDevelopmentRegion': 'ko', 'CFBundleExecutable': '$(EXECUTABLE_NAME)', 'CFBundleIdentifier': '$(PRODUCT_BUNDLE_IDENTIFIER)', 'CFBundleInfoDictionaryVersion': '6.0', 'CFBundleName': '$(PRODUCT_NAME)', 'CFBundleDisplayName': '세토', 'CFBundleShortVersionString': '$(MARKETING_VERSION)', 'CFBundleVersion': '$(CURRENT_PROJECT_VERSION)'}
 for ext in [False, True]:
     data = dict(common, CFBundlePackageType='XPC!' if ext else 'APPL')
@@ -123,8 +298,83 @@ for ext in [False, True]:
         data.update(UIAppFonts=['D2Coding-Regular.ttf', 'D2Coding-Bold.ttf'], NSLocalNetworkUsageDescription="입력한 SSH 서버에 접속하기 위해 로컬 네트워크를 사용합니다.", LSRequiresIPhoneOS=True, UILaunchScreen={}, UIApplicationSceneManifest={'UIApplicationSupportsMultipleScenes': False}, UISupportedInterfaceOrientations=['UIInterfaceOrientationPortrait', 'UIInterfaceOrientationPortraitUpsideDown', 'UIInterfaceOrientationLandscapeLeft', 'UIInterfaceOrientationLandscapeRight'])
     with (root / ('Keyboard' if ext else 'App') / 'Info.plist').open('wb') as f: plistlib.dump(data, f)
 scheme = f'''<?xml version="1.0" encoding="UTF-8"?>
-<Scheme LastUpgradeVersion="1600" version="1.3"><BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES"><BuildActionEntries><BuildActionEntry buildForTesting="YES" buildForRunning="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{ident('Sebeol390-target')}" BuildableName="Sebeol390.app" BlueprintName="Sebeol390" ReferencedContainer="container:Sebeol390.xcodeproj"/></BuildActionEntry></BuildActionEntries></BuildAction><LaunchAction buildConfiguration="Debug" launchStyle="0" useCustomWorkingDirectory="NO" ignoresPersistentStateOnLaunch="NO" debugDocumentVersioning="YES" allowLocationSimulation="YES"><BuildableProductRunnable runnableDebuggingMode="0"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{ident('Sebeol390-target')}" BuildableName="Sebeol390.app" BlueprintName="Sebeol390" ReferencedContainer="container:Sebeol390.xcodeproj"/></BuildableProductRunnable></LaunchAction><ProfileAction buildConfiguration="Release"/><AnalyzeAction buildConfiguration="Debug"/><ArchiveAction buildConfiguration="Release" revealArchiveInOrganizer="YES"/></Scheme>'''
-test_action = '<TestAction buildConfiguration="Debug" shouldUseLaunchSchemeArgsEnv="YES"><Testables><TestableReference skipped="NO"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="' + ident('test-target') + '" BuildableName="Sebeol390Tests.xctest" BlueprintName="Sebeol390Tests" ReferencedContainer="container:Sebeol390.xcodeproj"/></TestableReference></Testables></TestAction>'
-scheme = scheme.replace('</BuildAction>', '</BuildAction>' + test_action)
+<Scheme
+   LastUpgradeVersion = "1600"
+   version = "1.3">
+   <BuildAction
+      parallelizeBuildables = "YES"
+      buildImplicitDependencies = "YES">
+      <BuildActionEntries>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "{ident('Sebeol390-target')}"
+               BuildableName = "Sebeol390.app"
+               BlueprintName = "Sebeol390"
+               ReferencedContainer = "container:Sebeol390.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+      </BuildActionEntries>
+   </BuildAction>
+   <TestAction
+      buildConfiguration = "Debug"
+      selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
+      selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
+      shouldUseLaunchSchemeArgsEnv = "YES">
+      <Testables>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "{ident('test-target')}"
+               BuildableName = "Sebeol390Tests.xctest"
+               BlueprintName = "Sebeol390Tests"
+               ReferencedContainer = "container:Sebeol390.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+      </Testables>
+   </TestAction>
+   <LaunchAction
+      buildConfiguration = "Debug"
+      selectedDebuggerIdentifier = ""
+      selectedLauncherIdentifier = "Xcode.IDEFoundation.Launcher.PosixSpawn"
+      launchStyle = "0"
+      useCustomWorkingDirectory = "NO"
+      ignoresPersistentStateOnLaunch = "NO"
+      debugDocumentVersioning = "YES"
+      debugServiceExtension = "internal"
+      allowLocationSimulation = "YES">
+      <BuildableProductRunnable
+         runnableDebuggingMode = "0">
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "{ident('Sebeol390-target')}"
+            BuildableName = "Sebeol390.app"
+            BlueprintName = "Sebeol390"
+            ReferencedContainer = "container:Sebeol390.xcodeproj">
+         </BuildableReference>
+      </BuildableProductRunnable>
+   </LaunchAction>
+   <ProfileAction
+      buildConfiguration = "Release"
+      shouldUseLaunchSchemeArgsEnv = "YES"
+      savedToolIdentifier = ""
+      useCustomWorkingDirectory = "NO"
+      debugDocumentVersioning = "YES">
+   </ProfileAction>
+   <AnalyzeAction
+      buildConfiguration = "Debug">
+   </AnalyzeAction>
+   <ArchiveAction
+      buildConfiguration = "Release"
+      revealArchiveInOrganizer = "YES">
+   </ArchiveAction>
+</Scheme>
+'''
 (root / 'Sebeol390.xcodeproj/xcshareddata/xcschemes/Sebeol390.xcscheme').write_text(scheme)
 print('Generated iOS/Sebeol390.xcodeproj')
