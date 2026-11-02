@@ -293,13 +293,16 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
                 return
             }
             let selection = client.selectedRange()
-            // Chrome may report the previous caret from selectedRange() during
-            // insertText, and defer a single-character insertText from keyDown
-            // until after the event; it catches up before the next key event.
-            let selectionCaughtUp = expected.length == 0 && selection.length == 0
-                && selection.location == expected.location + unmarkedSelectionAdvance
-            let reset = selection.location != NSNotFound && selection != expected && !selectionCaughtUp
-            debugLog(client, "reconcile decision=empty-preedit expected=\(debugRange(expected)) actual=\(debugRange(selection)) advance=\(unmarkedSelectionAdvance) caughtUp=\(selectionCaughtUp) accepted=\(!reset) reset=\(reset) client={\(debugClientState(client))}")
+            // Chrome editors may report either the old caret (before our
+            // insertion) or an optimistic caret beyond it after replacing
+            // neighbouring placeholder text. Both can differ by up to the
+            // length of our own edit; a larger move still signals a new field
+            // position, as in Terminal.
+            let selectionIsOwnEdit = selection.location != NSNotFound
+                && expected.length == 0 && selection.length == 0
+                && abs(selection.location - expected.location) <= unmarkedSelectionAdvance
+            let reset = selection.location != NSNotFound && selection != expected && !selectionIsOwnEdit
+            debugLog(client, "reconcile decision=empty-preedit expected=\(debugRange(expected)) actual=\(debugRange(selection)) advance=\(unmarkedSelectionAdvance) ownEdit=\(selectionIsOwnEdit) accepted=\(!reset) reset=\(reset) client={\(debugClientState(client))}")
             guard reset else { return }
         } else {
             let mark = client.markedRange()

@@ -9,32 +9,45 @@ final class SmokeClient: NSObject, IMKTextInput {
     var ignoresReplacementOutsideMark = false
     var clientBundleIdentifier = "com.sebeol390.SmokeClient"
     var lagsSelection = false
+    var placeholderEditor = false
     private var cachedSelection = NSRange(location: 0, length: 0)
+    private var optimisticSelection: NSRange?
     var onInsert: (() -> Void)?
     var onMark: (() -> Void)?
     private func value(_ input: Any?) -> String {
         (input as? NSAttributedString)?.string ?? (input as? String ?? "")
     }
     private func target(_ range: NSRange) -> NSRange {
+        if placeholderEditor && text == "\u{FEFF}" {
+            return NSRange(location: 0, length: (text as NSString).length)
+        }
         if range.location != NSNotFound && !(ignoresReplacementOutsideMark && mark.location == NSNotFound) { return range }
         return mark.location != NSNotFound ? mark : NSRange(location: (text as NSString).length, length: 0)
     }
     func insertText(_ input: Any?, replacementRange: NSRange) {
+        let optimisticLocation = (text as NSString).length + (value(input) as NSString).length
         let replacement = target(replacementRange)
         text = (text as NSString).replacingCharacters(in: replacement, with: value(input))
         mark = NSRange(location: NSNotFound, length: 0)
+        if placeholderEditor { optimisticSelection = NSRange(location: optimisticLocation, length: 0) }
         onInsert?()
     }
     func setMarkedText(_ input: Any?, selectionRange: NSRange, replacementRange: NSRange) {
+        let optimisticLocation = (text as NSString).length + (value(input) as NSString).length
         let replacement = target(replacementRange)
         let string = value(input)
         text = (text as NSString).replacingCharacters(in: replacement, with: string)
         mark = NSRange(location: replacement.location, length: (string as NSString).length)
+        if placeholderEditor { optimisticSelection = NSRange(location: optimisticLocation, length: 0) }
         onMark?()
     }
-    func syncSelection() { cachedSelection = NSRange(location: (text as NSString).length, length: 0) }
+    func syncSelection() {
+        cachedSelection = NSRange(location: (text as NSString).length, length: 0)
+        optimisticSelection = nil
+    }
     func selectedRange() -> NSRange {
-        lagsSelection ? cachedSelection : NSRange(location: (text as NSString).length, length: 0)
+        if let optimisticSelection { return optimisticSelection }
+        return lagsSelection ? cachedSelection : NSRange(location: (text as NSString).length, length: 0)
     }
     func markedRange() -> NSRange { mark }
     func attributedSubstring(from range: NSRange) -> NSAttributedString? { nil }
@@ -232,6 +245,27 @@ private func backspace(controller: SebeolInputController, client: SmokeClient) {
             controller.commitComposition(client)
             if client.text != expected || client.mark.length != 0 {
                 print("FAIL Chrome lagging selection \(keys): \(client.text), expected \(expected)")
+                failures += 1
+            }
+        }
+        // Discord's empty editor starts with a zero width placeholder. The
+        // first edit replaces it, while selectedRange briefly reports the
+        // optimistic caret beyond the inserted text until the next key event.
+        for (keys, expected) in [("Sophia", "Sophia"), ("Sophia ", "Sophia "), ("Hello ", "Hello ")] {
+            cases += 1
+            let client = SmokeClient()
+            client.clientBundleIdentifier = "com.google.Chrome"
+            client.text = "\u{FEFF}"
+            client.placeholderEditor = true
+            let controller = SebeolInputController()
+            controller.beginInputContext(bundleIdentifier: client.clientBundleIdentifier)
+            for raw in keys {
+                let modifiers: NSEvent.ModifierFlags = raw.isUppercase ? [.shift] : []
+                precondition(press(raw, modifiers: modifiers, controller: controller, client: client))
+            }
+            controller.commitComposition(client)
+            if client.text != expected || client.mark.length != 0 {
+                print("FAIL Chrome placeholder editor \(keys): \(client.text), expected \(expected)")
                 failures += 1
             }
         }
