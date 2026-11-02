@@ -292,13 +292,6 @@ public final class Session {
         return "\(document) {\(description)} mode=\(mode.rawValue) lock=\(locked?.rawValue ?? "-") mark=\(preedit)"
     }
 
-    // DEBUG(chrome-sophia): temporary
-    public var debugDescription: String {
-        let keyDescription = keys.map { "\(String(reflecting: $0.english))->\(String(describing: $0.korean))" }.joined(separator: ",")
-        let segmentDescription = segments.map { "\($0.lang.rawValue):\($0.start)-\($0.end)" }.joined(separator: ",")
-        return "mode=\(mode.rawValue) wordMode=\(wordMode.rawValue) locked=\(locked?.rawValue ?? "nil") preedit=\(String(reflecting: preedit)) document=\(String(reflecting: document)) keys=[\(keyDescription)] segments=[\(segmentDescription)]"
-    }
-
     private func finishWord(appending breaker: Character) -> SessionUpdate {
         let previous = segments
         let before = render(segments)

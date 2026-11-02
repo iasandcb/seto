@@ -1,37 +1,10 @@
 import AppKit
 import Carbon
 import InputMethodKit
-import os
 import Sebeol390Core
 
 @objc(SebeolInputController)
 final class SebeolInputController: IMKInputController, NSMenuDelegate {
-    // DEBUG(chrome-sophia): temporary
-    private static let chromeDebugLogger = Logger(subsystem: "com.ias.seto.debug", category: "chrome")
-
-    // DEBUG(chrome-sophia): temporary
-    private func debugLog(_ inputClient: (any IMKTextInput)?, _ message: @autoclosure () -> String) {
-        guard inputClient?.bundleIdentifier() == "com.google.Chrome" else { return }
-        let text = message()
-        Self.chromeDebugLogger.info("\(text, privacy: .public)")
-    }
-
-    // DEBUG(chrome-sophia): temporary
-    private func debugClientState(_ client: (any IMKTextInput)?) -> String {
-        guard let client else { return "client=nil" }
-        func range(_ value: NSRange) -> String {
-            let location = value.location == NSNotFound ? "NF" : String(value.location)
-            let length = value.length == NSNotFound ? "NF" : String(value.length)
-            return "(\(location),\(length))"
-        }
-        return "bundle=\(client.bundleIdentifier() ?? "nil") selected=\(range(client.selectedRange())) marked=\(range(client.markedRange())) length=\(client.length())"
-    }
-
-    // DEBUG(chrome-sophia): temporary
-    private var debugSessionState: String {
-        "\(session.debugDescription) autoSwitch=\(session.autoSwitch)"
-    }
-
     private static func makeSession(mode: Language = .korean) -> Session {
         let session = Session(
             lexicon: SharedLexicon.lexicon,
@@ -61,9 +34,6 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     private var pendingAddressBarCheck: String?
 
     override func activateServer(_ sender: Any!) {
-        // DEBUG(chrome-sophia): temporary
-        let callbackClient = sender as? IMKTextInput
-        debugLog(callbackClient, "activateServer entry bundle=\(callbackClient?.bundleIdentifier() ?? "nil") session={\(debugSessionState)} client={\(debugClientState(callbackClient))}")
         super.activateServer(sender)
         // Terminal and browser address bars start in English; other input
         // contexts start in Korean.
@@ -94,11 +64,6 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     // Kept separate from IMK activation so the reset can be exercised by a
     // mock client without an InputMethodKit server connection.
     func beginInputContext(bundleIdentifier: String? = nil, addressBar: Bool = false) {
-        // DEBUG(chrome-sophia): temporary
-        if bundleIdentifier == "com.google.Chrome" {
-            let state = debugSessionState
-            Self.chromeDebugLogger.info("beginInputContext bundle=\(bundleIdentifier ?? "nil", privacy: .public) addressBar=\(addressBar) before={\(state, privacy: .public)}")
-        }
         let isTerminal = bundleIdentifier == "com.apple.Terminal"
         let mode: Language = isTerminal || addressBar ? .english : .korean
         contextAutoSwitchOverride = isTerminal || addressBar ? false : nil
@@ -110,12 +75,6 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         sawCapsLockDown = false
         unmarkedSelection = nil
         unmarkedSelectionAdvance = 0
-        // DEBUG(chrome-sophia): temporary
-        if bundleIdentifier == "com.google.Chrome" {
-            let state = debugSessionState
-            let pendingCheck = pendingAddressBarCheck ?? "nil"
-            Self.chromeDebugLogger.info("beginInputContext exit session={\(state, privacy: .public)} pendingAddressBarCheck=\(pendingCheck, privacy: .public)")
-        }
     }
 
     override func recognizedEvents(_ sender: Any!) -> Int {
@@ -124,21 +83,6 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     }
 
     override func handle(_ event: NSEvent!, client sender: Any!) -> Bool {
-        // DEBUG(chrome-sophia): temporary
-        let debugClient = sender as? IMKTextInput
-        let eventType = event.map { String(describing: $0.type) } ?? "nil"
-        let keyCode = event.map { String($0.keyCode) } ?? "nil"
-        let characters = event?.characters.map { String(reflecting: $0) } ?? "nil"
-        let modifierFlags = event.map { String($0.modifierFlags.rawValue) } ?? "nil"
-        debugLog(debugClient, "handle entry type=\(eventType) keyCode=\(keyCode) characters=\(characters) modifierFlagsRaw=\(modifierFlags) session={\(debugSessionState)} client={\(debugClientState(debugClient))}")
-        let result = handleBody(event, client: sender)
-        // DEBUG(chrome-sophia): temporary
-        debugLog(debugClient, "handle exit return=\(result) session={\(debugSessionState)} client={\(debugClientState(debugClient))}")
-        return result
-    }
-
-    // DEBUG(chrome-sophia): temporary
-    private func handleBody(_ event: NSEvent!, client sender: Any!) -> Bool {
         guard let event, let client = sender as? IMKTextInput else { return false }
         reconcileComposition(client: client)
         if event.type == .flagsChanged {
@@ -166,10 +110,7 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         if let browser = pendingAddressBarCheck,
            flags.intersection([.command, .control, .option]).isEmpty {
             pendingAddressBarCheck = nil
-            let isAddressBar = FocusedElementReader.addressBarFocused(bundleIdentifier: browser)
-            // DEBUG(chrome-sophia): temporary
-            debugLog(client, "pendingAddressBarCheck bundle=\(browser) result=\(isAddressBar) session={\(debugSessionState)} client={\(debugClientState(client))}")
-            if isAddressBar {
+            if FocusedElementReader.addressBarFocused(bundleIdentifier: browser) {
                 beginInputContext(bundleIdentifier: browser, addressBar: true)
                 updateModeStatus()
             }
@@ -233,18 +174,11 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     }
 
     override func commitComposition(_ sender: Any!) {
-        // DEBUG(chrome-sophia): temporary
-        let callbackClient = sender as? IMKTextInput
-        debugLog(callbackClient, "commitComposition entry clientUpdateDepth=\(clientUpdateDepth) session={\(debugSessionState)} client={\(debugClientState(callbackClient))}")
         // Some editors synchronously ask us to commit while insertText or
         // setMarkedText is still applying our update. This is an echo of that
         // edit, not a new boundary: clearing keys here loses Latin prefixes
         // before they can be recognized as Hangul (lfw → 잘).
-        guard clientUpdateDepth == 0 else {
-            // DEBUG(chrome-sophia): temporary
-            debugLog(callbackClient, "commitComposition skipped due to clientUpdateDepth=\(clientUpdateDepth)")
-            return
-        }
+        guard clientUpdateDepth == 0 else { return }
         guard let client = sender as? IMKTextInput else { return }
         reconcileComposition(client: client)
         apply(session.commitDisplayed(), client: client)
@@ -254,25 +188,15 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     /// keystrokes. Those keys are `mr2jt` for 했어, so return the Hangul
     /// that is actually marked.
     override func originalString(_ sender: Any!) -> NSAttributedString! {
-        // DEBUG(chrome-sophia): temporary
-        let callbackClient = sender as? IMKTextInput
-        debugLog(callbackClient, "originalString entry session={\(debugSessionState)} client={\(debugClientState(callbackClient))}")
         if let client = sender as? IMKTextInput {
             reconcileComposition(client: client)
         }
-        let result = NSAttributedString(string: session.preedit)
-        // DEBUG(chrome-sophia): temporary
-        debugLog(callbackClient, "originalString return=\(String(reflecting: result.string)) session={\(debugSessionState)}")
-        return result
+        return NSAttributedString(string: session.preedit)
     }
 
     override func cancelComposition() {
-        guard clientUpdateDepth == 0 else {
-            return
-        }
+        guard clientUpdateDepth == 0 else { return }
         guard let client = client() else { return }
-        // DEBUG(chrome-sophia): temporary
-        debugLog(client, "cancelComposition entry clientUpdateDepth=\(clientUpdateDepth) session={\(debugSessionState)}")
         reconcileComposition(client: client)
         apply(session.commitDisplayed(), client: client)
     }
@@ -282,16 +206,9 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     /// command in our token (ls + ls → ㅈㄴㅈㄴ). Start fresh without editing
     /// text or recording a retype from a token we no longer own.
     private func reconcileComposition(client: IMKTextInput) {
-        // DEBUG(chrome-sophia): temporary
-        guard clientUpdateDepth == 0 else {
-            debugLog(client, "reconcile decision=early-return-depth depth=\(clientUpdateDepth) session={\(debugSessionState)} client={\(debugClientState(client))}")
-            return
-        }
+        guard clientUpdateDepth == 0 else { return }
         if session.preedit.isEmpty {
-            guard let expected = unmarkedSelection else {
-                debugLog(client, "reconcile decision=empty-preedit-no-expected-selection session={\(debugSessionState)} client={\(debugClientState(client))}")
-                return
-            }
+            guard let expected = unmarkedSelection else { return }
             let selection = client.selectedRange()
             // Chrome editors may report either the old caret (before our
             // insertion) or an optimistic caret beyond it after replacing
@@ -301,35 +218,17 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
             let selectionIsOwnEdit = selection.location != NSNotFound
                 && expected.length == 0 && selection.length == 0
                 && abs(selection.location - expected.location) <= unmarkedSelectionAdvance
-            let reset = selection.location != NSNotFound && selection != expected && !selectionIsOwnEdit
-            debugLog(client, "reconcile decision=empty-preedit expected=\(debugRange(expected)) actual=\(debugRange(selection)) advance=\(unmarkedSelectionAdvance) ownEdit=\(selectionIsOwnEdit) accepted=\(!reset) reset=\(reset) client={\(debugClientState(client))}")
-            guard reset else { return }
+            guard selection.location != NSNotFound, selection != expected, !selectionIsOwnEdit else { return }
         } else {
             let mark = client.markedRange()
-            let reset = mark.location == NSNotFound || mark.length == 0
-            debugLog(client, "reconcile decision=marked-preedit markedRange=\(debugRange(mark)) reset=\(reset) session={\(debugSessionState)} client={\(debugClientState(client))}")
-            guard reset else { return }
+            guard mark.location == NSNotFound || mark.length == 0 else { return }
         }
-        // DEBUG(chrome-sophia): temporary
-        debugLog(client, "reconcile resetting session old={\(debugSessionState)}")
         session = Self.makeSession(mode: session.mode)
         unmarkedSelection = nil
         unmarkedSelectionAdvance = 0
-        // DEBUG(chrome-sophia): temporary
-        debugLog(client, "reconcile reset complete session={\(debugSessionState)}")
-    }
-
-    // DEBUG(chrome-sophia): temporary
-    private func debugRange(_ value: NSRange) -> String {
-        let location = value.location == NSNotFound ? "NF" : String(value.location)
-        let length = value.length == NSNotFound ? "NF" : String(value.length)
-        return "(\(location),\(length))"
     }
 
     override func deactivateServer(_ sender: Any!) {
-        // DEBUG(chrome-sophia): temporary
-        let callbackClient = sender as? IMKTextInput
-        debugLog(callbackClient, "deactivateServer entry bundle=\(callbackClient?.bundleIdentifier() ?? "nil") session={\(debugSessionState)} client={\(debugClientState(callbackClient))}")
         commitComposition(sender)
         active = false
         let owner = ObjectIdentifier(self)
@@ -337,8 +236,6 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
             ModeStatusItem.shared.hide(owner: owner)
         }
         super.deactivateServer(sender)
-        // DEBUG(chrome-sophia): temporary
-        debugLog(callbackClient, "deactivateServer exit session={\(debugSessionState)}")
     }
 
     private func updateModeStatus() {
@@ -503,8 +400,6 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
 
     private func syncPreferences(client inputClient: (any IMKTextInput)? = nil) {
         if session.layout != Preferences.layout {
-            // DEBUG(chrome-sophia): temporary
-            debugLog(inputClient, "syncPreferences recreating session old={\(debugSessionState)} layout=\(session.layout.rawValue) newLayout=\(Preferences.layout.rawValue)")
             let update = session.commitDisplayed()
             if update.field != .none, let client = inputClient ?? client() {
                 apply(update, client: client)
@@ -551,8 +446,6 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     }
 
     private func apply(_ update: SessionUpdate, client: IMKTextInput) {
-        // DEBUG(chrome-sophia): temporary
-        debugLog(client, "apply entry field=\(String(describing: update.field)) mode=\(update.mode.rawValue) updatePreedit=\(String(reflecting: update.preedit)) session={\(debugSessionState)} client={\(debugClientState(client))} unmarkedSelection=\(unmarkedSelection.map(debugRange) ?? "nil") unmarkedSelectionAdvance=\(unmarkedSelectionAdvance)")
         let initialDocumentLength = client.length()
         let initialMarkedLength = markedLength(client)
         let intendedAdvance: Int
@@ -584,8 +477,6 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
                 }
             }
             clientUpdateDepth -= 1
-            // DEBUG(chrome-sophia): temporary
-            debugLog(client, "apply exit field=\(String(describing: update.field)) mode=\(update.mode.rawValue) session={\(debugSessionState)} client={\(debugClientState(client))} unmarkedSelection=\(unmarkedSelection.map(debugRange) ?? "nil") unmarkedSelectionAdvance=\(unmarkedSelectionAdvance)")
         }
         updateModeStatus()
         let notFound = NSRange(location: NSNotFound, length: NSNotFound)
