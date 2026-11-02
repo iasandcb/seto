@@ -1,5 +1,5 @@
 import AppKit
-import Sebeol390Core
+import SetoCore
 
 /// Show the confirmed mode without switching macOS input sources, which can
 /// interrupt a composition. All status-item access stays on the main actor.

@@ -5,13 +5,13 @@ let package = Package(
     name: "Sebeol390",
     platforms: [.macOS(.v13)],
     products: [
-        .executable(name: "Sebeol390", targets: ["Sebeol390IME"]),
+        .executable(name: "Sebeol390", targets: ["SetoIME"]),
     ],
     targets: [
-        .target(name: "Sebeol390Core"),
+        .target(name: "SetoCore"),
         .executableTarget(
-            name: "Sebeol390IME",
-            dependencies: ["Sebeol390Core"],
+            name: "SetoIME",
+            dependencies: ["SetoCore"],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("InputMethodKit"),
@@ -21,7 +21,7 @@ let package = Package(
         ),
         .testTarget(
             name: "Sebeol390CoreTests",
-            dependencies: ["Sebeol390Core"],
+            dependencies: ["SetoCore"],
             swiftSettings: [
                 // Command Line Tools keep TestingMacros out of the default
                 // plugin path, so `swift test` cannot see @Test / #expect.

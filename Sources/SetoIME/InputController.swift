@@ -1,7 +1,7 @@
 import AppKit
 import Carbon
 import InputMethodKit
-import Sebeol390Core
+import SetoCore
 
 @objc(SebeolInputController)
 final class SebeolInputController: IMKInputController, NSMenuDelegate {

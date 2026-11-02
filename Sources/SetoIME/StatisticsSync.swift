@@ -1,7 +1,7 @@
 import AppKit
 import CloudKit
 import Security
-import Sebeol390Core
+import SetoCore
 
 /// One writer per installation. Each upload replaces that installation's snapshot.
 @MainActor

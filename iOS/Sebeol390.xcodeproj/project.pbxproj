@@ -7,85 +7,85 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		077BA8799C38E87404865DE8 /* ../Sources/Sebeol390Core/TypingStatistics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F4F54D243D0C3A1CBAD18B3 /* ../Sources/Sebeol390Core/TypingStatistics.swift */; };
-		08DD6DDF76BD17ED63F0CA2C /* ../Sources/Sebeol390Core/LayoutDubeol.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB3B8D82FDEC875F75E2C62D /* ../Sources/Sebeol390Core/LayoutDubeol.swift */; };
+		00C9ADAE4EFE1A6C0CD5D9E1 /* ../Sources/SetoCore/LearnedWords.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B441EFBC8C95B348A08877D /* ../Sources/SetoCore/LearnedWords.swift */; };
+		0471B69B6C4C73691608FC57 /* ../Sources/SetoCore/TypoLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46531D1D86DECF2BBB3D43EB /* ../Sources/SetoCore/TypoLog.swift */; };
+		073ABE301D3A867FE3CD6978 /* ../Sources/SetoCore/KeyboardReplacement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24D0308AE7D8EABABC514816 /* ../Sources/SetoCore/KeyboardReplacement.swift */; };
 		0D5F994CDF9FF1B40F66125B /* App/SSHConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 158E4F855C565ABDC1CFFB86 /* App/SSHConnection.swift */; };
 		0DA292C81D726A55CA469326 /* App/Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E0C46FC9C6960273B8657C66 /* App/Assets.xcassets */; };
 		0DD9EF62E80E8299762484B3 /* Shared/KeyboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E6B400ABFF2670652131CD0 /* Shared/KeyboardView.swift */; };
-		107C26489ACD52950B1DF9E1 /* ../Sources/Sebeol390Core/LearnedWords.swift in Sources */ = {isa = PBXBuildFile; fileRef = 842090D8F241AECFE83E2C32 /* ../Sources/Sebeol390Core/LearnedWords.swift */; };
-		11F17302659B932EB22940F8 /* ../Sources/Sebeol390Core/KeyboardLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B51C9EF15A08CE0D4822ECD /* ../Sources/Sebeol390Core/KeyboardLayout.swift */; };
-		196A60F267210B0EE5E18575 /* ../Sources/Sebeol390Core/DoubleSpacePeriod.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C44B389A635E3C5D2BA6609 /* ../Sources/Sebeol390Core/DoubleSpacePeriod.swift */; };
+		19A1CF76C55A56B7DF1FCCD7 /* ../Sources/SetoCore/Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D82E966A71B45F7944349F /* ../Sources/SetoCore/Session.swift */; };
 		1EDC872B82DE6667D579CC5D /* ../Resources/korean-valid.LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = 64E024BA63873A8760E50879 /* ../Resources/korean-valid.LICENSE */; };
 		20FE4B6B8D9D97B44EAAA391 /* App/ThirdParty/D2Coding-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = D428FBCEB0F4C90E3B44F239 /* App/ThirdParty/D2Coding-OFL.txt */; };
-		2163F6F5F70EA222C0BA99FA /* ../Sources/Sebeol390Core/TypoLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26011EC1235491EA19ACD58C /* ../Sources/Sebeol390Core/TypoLog.swift */; };
 		2212CD255B50271F456F4C58 /* App/HardwareTextEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A37900721EB46DEB4F8BA6C /* App/HardwareTextEditor.swift */; };
 		287FFF9C68C9D7C3CE2368CE /* NIOSSH in Frameworks */ = {isa = PBXBuildFile; productRef = 4493DC94DE7F0450129656A8 /* NIOSSH */; };
+		298BB041BC2F74DB85763355 /* ../Sources/SetoCore/KeyboardLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 628CB951D8E91DDD29253E55 /* ../Sources/SetoCore/KeyboardLayout.swift */; };
+		2D9DB6021FAAC32BF86F2E14 /* ../Sources/SetoCore/Hangul.swift in Sources */ = {isa = PBXBuildFile; fileRef = C63947FD8091BF6B01CD687A /* ../Sources/SetoCore/Hangul.swift */; };
 		2E32415B0E26A27FE9A3F3AF /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 1EE743F7EEC7A4EDAFB26FA0 /* SwiftTerm */; };
+		2E97931863B5EB24445CEA08 /* ../Sources/SetoCore/TypingStatistics.swift in Sources */ = {isa = PBXBuildFile; fileRef = D64D5487E0EEC159A467C0D4 /* ../Sources/SetoCore/TypingStatistics.swift */; };
 		2FA1F019C212F2AB972C41E3 /* ../Resources/english-extra.txt in Resources */ = {isa = PBXBuildFile; fileRef = C8B800727112BB43FDD5F5CA /* ../Resources/english-extra.txt */; };
+		30845141121466DDA98C85C9 /* ../Sources/SetoCore/WordSuggestions.swift in Sources */ = {isa = PBXBuildFile; fileRef = C831159926DA9EECEAD75219 /* ../Sources/SetoCore/WordSuggestions.swift */; };
 		331FC04096E519285C276CAA /* App/ThirdParty/D2Coding-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = D428FBCEB0F4C90E3B44F239 /* App/ThirdParty/D2Coding-OFL.txt */; };
-		3453E3902757FB649D2324C6 /* ../Sources/Sebeol390Core/Hangul.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3310BA53902080A77EEF25B0 /* ../Sources/Sebeol390Core/Hangul.swift */; };
-		39F86DF605EAB4EC38DBD073 /* ../Sources/Sebeol390Core/Hangul.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3310BA53902080A77EEF25B0 /* ../Sources/Sebeol390Core/Hangul.swift */; };
-		3A64FFB786F713C8F990939B /* ../Sources/Sebeol390Core/Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3066C826224BCCCDD65B012C /* ../Sources/Sebeol390Core/Session.swift */; };
+		35A248ACCA96011B1E0D84CD /* ../Sources/SetoCore/KeyboardLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 628CB951D8E91DDD29253E55 /* ../Sources/SetoCore/KeyboardLayout.swift */; };
 		3A932D0E53ABFF44F186C0CA /* ../Resources/korean-words.txt in Resources */ = {isa = PBXBuildFile; fileRef = 78B4725E6FC13C8F40ECB7AB /* ../Resources/korean-words.txt */; };
 		3DCAE9B5F2F48529A065E483 /* App/Sebeol390App.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDB2E328BCEA43E95B531045 /* App/Sebeol390App.swift */; };
+		47108E70E23CCE044B3D16CD /* ../Sources/SetoCore/LayoutFinal.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEC683672AFB1924B03BB799 /* ../Sources/SetoCore/LayoutFinal.swift */; };
+		48188632AD3882C7CBB513C3 /* ../Sources/SetoCore/DoubleSpacePeriod.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0F1883D715BA6DD5687DDF7 /* ../Sources/SetoCore/DoubleSpacePeriod.swift */; };
 		4872C74F4A2CBAD59C1D5453 /* Keyboard/Resources/keyboard-english.txt in Resources */ = {isa = PBXBuildFile; fileRef = 1FA66026E69086AF967D4DF3 /* Keyboard/Resources/keyboard-english.txt */; };
-		4C922E5E1059F944D3C773BB /* ../Sources/Sebeol390Core/KeyboardReplacement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35A78681711DC3600C96D76C /* ../Sources/Sebeol390Core/KeyboardReplacement.swift */; };
-		4CC916D0416C0A9F033091CA /* ../Sources/Sebeol390Core/Composer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 639BACC3F24F8983E4F9FBF7 /* ../Sources/Sebeol390Core/Composer.swift */; };
+		491B6A4789B2C4F905122FA5 /* ../Sources/SetoCore/AddressBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF8018366C6FF1D2C3C4A42D /* ../Sources/SetoCore/AddressBar.swift */; };
 		4F4F103F35C39985FF787ECD /* App/Fonts/D2Coding-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 8D4E8606294DBB25FBAF1CEB /* App/Fonts/D2Coding-Regular.ttf */; };
-		4FC5C72B5AC2F75EDC410DE2 /* ../Sources/Sebeol390Core/TypingStatistics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F4F54D243D0C3A1CBAD18B3 /* ../Sources/Sebeol390Core/TypingStatistics.swift */; };
-		54752BD6E8B9D6ED8856ACCC /* ../Sources/Sebeol390Core/Layout390.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8E2FD5A2FF0E03FEB03B7A6 /* ../Sources/Sebeol390Core/Layout390.swift */; };
-		571332CF34AFF7B37AB2FD7E /* ../Sources/Sebeol390Core/TypoCorrector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C0357685B9DE8B50BE20847 /* ../Sources/Sebeol390Core/TypoCorrector.swift */; };
+		55A68733BEFDEAB2FCB3BB2F /* ../Sources/SetoCore/Keymap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 992C51514FC0024A28B35190 /* ../Sources/SetoCore/Keymap.swift */; };
+		5AD00018025885096D52FFD2 /* ../Sources/SetoCore/TypoCorrector.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFE3AA53523C98E19EDB9B3A /* ../Sources/SetoCore/TypoCorrector.swift */; };
 		5BBDA0F1E889031AD3C6122F /* Shared/KeyboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E6B400ABFF2670652131CD0 /* Shared/KeyboardView.swift */; };
-		5CF90438474EE59CE190C8BE /* ../Sources/Sebeol390Core/LayoutFinal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E07948797F233D90818AC67 /* ../Sources/Sebeol390Core/LayoutFinal.swift */; };
-		5D2194FD76B7CC568CEA6982 /* ../Sources/Sebeol390Core/LearnedWords.swift in Sources */ = {isa = PBXBuildFile; fileRef = 842090D8F241AECFE83E2C32 /* ../Sources/Sebeol390Core/LearnedWords.swift */; };
+		5E4453D8E1CED349CA7DD368 /* ../Sources/SetoCore/AddressBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF8018366C6FF1D2C3C4A42D /* ../Sources/SetoCore/AddressBar.swift */; };
 		6ED2591934C9D6183871C5A3 /* Tests/SSHRemoteEditorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 500D6BB9065DFFA071674729 /* Tests/SSHRemoteEditorTests.swift */; };
-		704D9B3BEBB5F7A52DB06C8D /* ../Sources/Sebeol390Core/KeyboardLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B51C9EF15A08CE0D4822ECD /* ../Sources/Sebeol390Core/KeyboardLayout.swift */; };
+		6EFA8D2E78B5C8E3DDACA906 /* ../Sources/SetoCore/LayoutDubeol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C2EE2AA987E771889023B16 /* ../Sources/SetoCore/LayoutDubeol.swift */; };
 		767320929A1ACEC528CA4538 /* ../Resources/english-words.txt in Resources */ = {isa = PBXBuildFile; fileRef = 736A61A2816A5EBB19BF16CF /* ../Resources/english-words.txt */; };
-		7B0A4FF0B9A4F792F72B5D2C /* ../Sources/Sebeol390Core/TypoLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26011EC1235491EA19ACD58C /* ../Sources/Sebeol390Core/TypoLog.swift */; };
+		7A9BC32A0FF5BE7C104034C5 /* ../Sources/SetoCore/KeyboardReplacement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24D0308AE7D8EABABC514816 /* ../Sources/SetoCore/KeyboardReplacement.swift */; };
+		7C6CE1BEA090AAD66CCB70D9 /* ../Sources/SetoCore/DoubleSpacePeriod.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0F1883D715BA6DD5687DDF7 /* ../Sources/SetoCore/DoubleSpacePeriod.swift */; };
 		7DCDE64E46FA314505EE9491 /* Sebeol390Keyboard.appex in CopyFiles */ = {isa = PBXBuildFile; fileRef = 098F4803AC6D5B96AF2DFDBE /* Sebeol390Keyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		7E1F9333CDE8250F80B3E83B /* App/MarkVectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 560D04D07EED8CE9C1EFC6FF /* App/MarkVectorView.swift */; };
 		806B3CCECF813E03EF3FA3A8 /* ../NOTICE in Resources */ = {isa = PBXBuildFile; fileRef = AB22B8B15C1C91DF29794AE4 /* ../NOTICE */; };
 		813EAA564C023F9125E915EF /* Tests/HardwareTextEditorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C95FF4FEAB2A0F3EF6DCDF4 /* Tests/HardwareTextEditorTests.swift */; };
-		8330000004429EE0B7CC347D /* ../Sources/Sebeol390Core/WordSuggestions.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF1E227FA25A61C39708B1F9 /* ../Sources/Sebeol390Core/WordSuggestions.swift */; };
-		834E15F0EDAAE703F19B403C /* ../Sources/Sebeol390Core/HardwareKeymap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83E74BEEED3230B4EBF005E1 /* ../Sources/Sebeol390Core/HardwareKeymap.swift */; };
+		86EFAC6C9C549C8F33FE3513 /* ../Sources/SetoCore/WordSuggestions.swift in Sources */ = {isa = PBXBuildFile; fileRef = C831159926DA9EECEAD75219 /* ../Sources/SetoCore/WordSuggestions.swift */; };
 		87A1CF807AB2E775183EDE71 /* NIOConcurrencyHelpers in Frameworks */ = {isa = PBXBuildFile; productRef = EBEFC7EC83473136E3A14045 /* NIOConcurrencyHelpers */; };
-		88944C2AAA5C68130491B56B /* ../Sources/Sebeol390Core/WordSuggestions.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF1E227FA25A61C39708B1F9 /* ../Sources/Sebeol390Core/WordSuggestions.swift */; };
 		8B736594C76318DD91F0C8AA /* Tests/SSHServerStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF56CAD955CCBFF7F3B073E8 /* Tests/SSHServerStoreTests.swift */; };
 		8D70E2C92D2CDE71364B0DC9 /* App/TerminalInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23827CEBC0430F2C2C98C1C5 /* App/TerminalInput.swift */; };
-		906427A9614B0ADB2D76D673 /* ../Sources/Sebeol390Core/Layout390.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8E2FD5A2FF0E03FEB03B7A6 /* ../Sources/Sebeol390Core/Layout390.swift */; };
+		930841EEE571E23C145D7BF0 /* ../Sources/SetoCore/Hangul.swift in Sources */ = {isa = PBXBuildFile; fileRef = C63947FD8091BF6B01CD687A /* ../Sources/SetoCore/Hangul.swift */; };
 		9330C430C76D950BBCF9FE6C /* App/ThirdParty/SwiftTerm-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 379549B53B6DE29C71CAE10B /* App/ThirdParty/SwiftTerm-LICENSE.txt */; };
 		9575155462F77D9893D6BA14 /* App/SSHTerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 921F9E533E76A616133CF198 /* App/SSHTerminalView.swift */; };
-		971008BAC2822116E7875726 /* ../Sources/Sebeol390Core/HardwareKeymap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83E74BEEED3230B4EBF005E1 /* ../Sources/Sebeol390Core/HardwareKeymap.swift */; };
-		97195C94C1996C7954EC3C86 /* ../Sources/Sebeol390Core/Keymap.swift in Sources */ = {isa = PBXBuildFile; fileRef = A91C3D2799C9003433D87125 /* ../Sources/Sebeol390Core/Keymap.swift */; };
 		973FC91A6AA03E656C3AB67F /* App/Fonts/D2Coding-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9C892AAD53FC7F46BC7F0D5E /* App/Fonts/D2Coding-Bold.ttf */; };
+		98C74CE721D85058180A183A /* ../Sources/SetoCore/Lexicon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65B3D2F4DF57596F117911E6 /* ../Sources/SetoCore/Lexicon.swift */; };
 		98F4D19968F26DA0A6702C2E /* ../Resources/korean-words.txt in Resources */ = {isa = PBXBuildFile; fileRef = 78B4725E6FC13C8F40ECB7AB /* ../Resources/korean-words.txt */; };
-		A14F64810D07744617E343DA /* ../Sources/Sebeol390Core/Keymap.swift in Sources */ = {isa = PBXBuildFile; fileRef = A91C3D2799C9003433D87125 /* ../Sources/Sebeol390Core/Keymap.swift */; };
-		A2FD289107F924FA99014B8A /* ../Sources/Sebeol390Core/DoubleSpacePeriod.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C44B389A635E3C5D2BA6609 /* ../Sources/Sebeol390Core/DoubleSpacePeriod.swift */; };
 		A566750A42DA0090366D3F8E /* NIOPosix in Frameworks */ = {isa = PBXBuildFile; productRef = C1D36A5F230BE3EB7AC369C3 /* NIOPosix */; };
+		A63D072B1E637D83E89BACAC /* ../Sources/SetoCore/Composer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1C76F2E1AAA43C13EE23B4F /* ../Sources/SetoCore/Composer.swift */; };
 		A87A97ABA7A3B711E0F1CF26 /* App/ThirdParty/SwiftTerm-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 379549B53B6DE29C71CAE10B /* App/ThirdParty/SwiftTerm-LICENSE.txt */; };
 		A8BB1FFFA7B904F153AEBFED /* App/SSHServerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7970FCF68F771BE6475059BA /* App/SSHServerStore.swift */; };
 		AED46CBD6FB45189C32654B9 /* App/MarkVectorLiveSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = F64BBBD277520A73AD1DCABF /* App/MarkVectorLiveSync.swift */; };
-		B49BFA45A7E98D6F96B53979 /* ../Sources/Sebeol390Core/Composer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 639BACC3F24F8983E4F9FBF7 /* ../Sources/Sebeol390Core/Composer.swift */; };
-		B522CCCCFA9D561C137AB28D /* ../Sources/Sebeol390Core/Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3066C826224BCCCDD65B012C /* ../Sources/Sebeol390Core/Session.swift */; };
+		AF8EA6032A54B4A580DE9649 /* ../Sources/SetoCore/TypingStatistics.swift in Sources */ = {isa = PBXBuildFile; fileRef = D64D5487E0EEC159A467C0D4 /* ../Sources/SetoCore/TypingStatistics.swift */; };
 		B6D39AD6AA7F21671DABF731 /* App/SSHRemoteEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB9F4AF476D2009525D13454 /* App/SSHRemoteEditor.swift */; };
+		B94CC91E213F118FD84880BD /* ../Sources/SetoCore/LayoutDubeol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C2EE2AA987E771889023B16 /* ../Sources/SetoCore/LayoutDubeol.swift */; };
 		B9DCD4228BB27EE591851C6B /* ../LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = 706EE53880DE10DF518DA7E8 /* ../LICENSE */; };
 		BE72F8786B82DE55F6CB0E3F /* App/Fonts/D2Coding-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9C892AAD53FC7F46BC7F0D5E /* App/Fonts/D2Coding-Bold.ttf */; };
-		C33884AB3E0B6CB776C05CF4 /* ../Sources/Sebeol390Core/AddressBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A59E2A0CC3CA8535751E9CFE /* ../Sources/Sebeol390Core/AddressBar.swift */; };
-		CB4A7557272E97ABA8C8AD97 /* ../Sources/Sebeol390Core/LayoutFinal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E07948797F233D90818AC67 /* ../Sources/Sebeol390Core/LayoutFinal.swift */; };
+		C03131C584E0672F84A964DE /* ../Sources/SetoCore/Composer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1C76F2E1AAA43C13EE23B4F /* ../Sources/SetoCore/Composer.swift */; };
+		C1835E4D2D49CE1E38BBDC81 /* ../Sources/SetoCore/TypoLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46531D1D86DECF2BBB3D43EB /* ../Sources/SetoCore/TypoLog.swift */; };
 		CBEFEF1850490E1046488929 /* Keyboard/KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAF07ABCC8BAD6B752453E66 /* Keyboard/KeyboardViewController.swift */; };
-		D63F7EE0CB0D01DA73832A96 /* ../Sources/Sebeol390Core/KeyboardReplacement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35A78681711DC3600C96D76C /* ../Sources/Sebeol390Core/KeyboardReplacement.swift */; };
+		D45BF6B3AF304218F7CBC7E1 /* ../Sources/SetoCore/HardwareKeymap.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAC6FF9370C76A1B3E8ECB14 /* ../Sources/SetoCore/HardwareKeymap.swift */; };
 		D7AA909927EBD80E8EFF962D /* ../LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = 706EE53880DE10DF518DA7E8 /* ../LICENSE */; };
-		DCA469D326AF30B044BC5D76 /* ../Sources/Sebeol390Core/Lexicon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83A10659F5A957B3CEAA5739 /* ../Sources/Sebeol390Core/Lexicon.swift */; };
+		DE8D599DBA61E665AF60975F /* ../Sources/SetoCore/Layout390.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D30CEFF5635767C7C4595C9 /* ../Sources/SetoCore/Layout390.swift */; };
+		E29AB1E248B8A4AD3A34886C /* ../Sources/SetoCore/Keymap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 992C51514FC0024A28B35190 /* ../Sources/SetoCore/Keymap.swift */; };
 		E3E07875F178E12B1EDB897D /* Keyboard/Resources/keyboard-korean-valid.txt in Resources */ = {isa = PBXBuildFile; fileRef = 86484978F49E45E9DBB09649 /* Keyboard/Resources/keyboard-korean-valid.txt */; };
-		E9075056DBA69EE7F75DE4CD /* ../Sources/Sebeol390Core/Lexicon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83A10659F5A957B3CEAA5739 /* ../Sources/Sebeol390Core/Lexicon.swift */; };
-		EAD5DB9C884262C8BA9A0574 /* ../Sources/Sebeol390Core/AddressBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A59E2A0CC3CA8535751E9CFE /* ../Sources/Sebeol390Core/AddressBar.swift */; };
+		E68664035CF53DE320719EAC /* ../Sources/SetoCore/Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D82E966A71B45F7944349F /* ../Sources/SetoCore/Session.swift */; };
 		ED705C962E9CC8F73DC162F2 /* ../NOTICE in Resources */ = {isa = PBXBuildFile; fileRef = AB22B8B15C1C91DF29794AE4 /* ../NOTICE */; };
 		F2AE57B5015CD49FF5456E12 /* NIOCore in Frameworks */ = {isa = PBXBuildFile; productRef = 0058AA893234BA33353E0586 /* NIOCore */; };
 		F2D3F5DA77F1F6A504B35EF2 /* ../Resources/korean-valid.LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = 64E024BA63873A8760E50879 /* ../Resources/korean-valid.LICENSE */; };
-		F34F8D99BAF1073EFB85893E /* ../Sources/Sebeol390Core/TypoCorrector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C0357685B9DE8B50BE20847 /* ../Sources/Sebeol390Core/TypoCorrector.swift */; };
-		F4DA716F6371EC341AF1B824 /* ../Sources/Sebeol390Core/LayoutDubeol.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB3B8D82FDEC875F75E2C62D /* ../Sources/Sebeol390Core/LayoutDubeol.swift */; };
+		F464056666C2E5AB9E5EBFB0 /* ../Sources/SetoCore/Layout390.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D30CEFF5635767C7C4595C9 /* ../Sources/SetoCore/Layout390.swift */; };
+		F77FFD1EC4D5080D22A4B27E /* ../Sources/SetoCore/TypoCorrector.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFE3AA53523C98E19EDB9B3A /* ../Sources/SetoCore/TypoCorrector.swift */; };
 		FAA68E469184E4872E8FE245 /* App/Fonts/D2Coding-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 8D4E8606294DBB25FBAF1CEB /* App/Fonts/D2Coding-Regular.ttf */; };
 		FC03DB9AE4E7BD425A0E4DF9 /* ../Resources/korean-valid.txt in Resources */ = {isa = PBXBuildFile; fileRef = 2DAD22EB3C71580F1F16DC5A /* ../Resources/korean-valid.txt */; };
+		FC96D9BA50C1A8D5CD54BF44 /* ../Sources/SetoCore/HardwareKeymap.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAC6FF9370C76A1B3E8ECB14 /* ../Sources/SetoCore/HardwareKeymap.swift */; };
+		FEAA536BCEF8B1A9F4086A41 /* ../Sources/SetoCore/LayoutFinal.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEC683672AFB1924B03BB799 /* ../Sources/SetoCore/LayoutFinal.swift */; };
+		FFDD30118CC894F62C137193 /* ../Sources/SetoCore/Lexicon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65B3D2F4DF57596F117911E6 /* ../Sources/SetoCore/Lexicon.swift */; };
+		FFF725D52255878A6C6FB3CD /* ../Sources/SetoCore/LearnedWords.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B441EFBC8C95B348A08877D /* ../Sources/SetoCore/LearnedWords.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -120,54 +120,54 @@
 
 /* Begin PBXFileReference section */
 		098F4803AC6D5B96AF2DFDBE /* Sebeol390Keyboard.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; path = Sebeol390Keyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		0B441EFBC8C95B348A08877D /* ../Sources/SetoCore/LearnedWords.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/SetoCore/LearnedWords.swift; sourceTree = SOURCE_ROOT; };
 		158E4F855C565ABDC1CFFB86 /* App/SSHConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/SSHConnection.swift; sourceTree = SOURCE_ROOT; };
-		1E07948797F233D90818AC67 /* ../Sources/Sebeol390Core/LayoutFinal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/LayoutFinal.swift; sourceTree = SOURCE_ROOT; };
 		1E13EBF6BF9AD36B27FB1716 /* Sebeol390.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; path = Sebeol390.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1FA66026E69086AF967D4DF3 /* Keyboard/Resources/keyboard-english.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Keyboard/Resources/keyboard-english.txt"; sourceTree = SOURCE_ROOT; };
 		23827CEBC0430F2C2C98C1C5 /* App/TerminalInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/TerminalInput.swift; sourceTree = SOURCE_ROOT; };
-		26011EC1235491EA19ACD58C /* ../Sources/Sebeol390Core/TypoLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/TypoLog.swift; sourceTree = SOURCE_ROOT; };
+		24D0308AE7D8EABABC514816 /* ../Sources/SetoCore/KeyboardReplacement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/SetoCore/KeyboardReplacement.swift; sourceTree = SOURCE_ROOT; };
 		2C95FF4FEAB2A0F3EF6DCDF4 /* Tests/HardwareTextEditorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/HardwareTextEditorTests.swift; sourceTree = SOURCE_ROOT; };
 		2DAD22EB3C71580F1F16DC5A /* ../Resources/korean-valid.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "../Resources/korean-valid.txt"; sourceTree = SOURCE_ROOT; };
-		3066C826224BCCCDD65B012C /* ../Sources/Sebeol390Core/Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/Session.swift; sourceTree = SOURCE_ROOT; };
-		3310BA53902080A77EEF25B0 /* ../Sources/Sebeol390Core/Hangul.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/Hangul.swift; sourceTree = SOURCE_ROOT; };
-		35A78681711DC3600C96D76C /* ../Sources/Sebeol390Core/KeyboardReplacement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/KeyboardReplacement.swift; sourceTree = SOURCE_ROOT; };
 		379549B53B6DE29C71CAE10B /* App/ThirdParty/SwiftTerm-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "App/ThirdParty/SwiftTerm-LICENSE.txt"; sourceTree = SOURCE_ROOT; };
-		3C0357685B9DE8B50BE20847 /* ../Sources/Sebeol390Core/TypoCorrector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/TypoCorrector.swift; sourceTree = SOURCE_ROOT; };
+		3C2EE2AA987E771889023B16 /* ../Sources/SetoCore/LayoutDubeol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/SetoCore/LayoutDubeol.swift; sourceTree = SOURCE_ROOT; };
+		46531D1D86DECF2BBB3D43EB /* ../Sources/SetoCore/TypoLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/SetoCore/TypoLog.swift; sourceTree = SOURCE_ROOT; };
 		4E6B400ABFF2670652131CD0 /* Shared/KeyboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/KeyboardView.swift; sourceTree = SOURCE_ROOT; };
 		500D6BB9065DFFA071674729 /* Tests/SSHRemoteEditorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/SSHRemoteEditorTests.swift; sourceTree = SOURCE_ROOT; };
 		560D04D07EED8CE9C1EFC6FF /* App/MarkVectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/MarkVectorView.swift; sourceTree = SOURCE_ROOT; };
-		5C44B389A635E3C5D2BA6609 /* ../Sources/Sebeol390Core/DoubleSpacePeriod.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/DoubleSpacePeriod.swift; sourceTree = SOURCE_ROOT; };
-		5F4F54D243D0C3A1CBAD18B3 /* ../Sources/Sebeol390Core/TypingStatistics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/TypingStatistics.swift; sourceTree = SOURCE_ROOT; };
-		639BACC3F24F8983E4F9FBF7 /* ../Sources/Sebeol390Core/Composer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/Composer.swift; sourceTree = SOURCE_ROOT; };
+		5D30CEFF5635767C7C4595C9 /* ../Sources/SetoCore/Layout390.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/SetoCore/Layout390.swift; sourceTree = SOURCE_ROOT; };
+		628CB951D8E91DDD29253E55 /* ../Sources/SetoCore/KeyboardLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/SetoCore/KeyboardLayout.swift; sourceTree = SOURCE_ROOT; };
 		64E024BA63873A8760E50879 /* ../Resources/korean-valid.LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = "../Resources/korean-valid.LICENSE"; sourceTree = SOURCE_ROOT; };
+		65B3D2F4DF57596F117911E6 /* ../Sources/SetoCore/Lexicon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/SetoCore/Lexicon.swift; sourceTree = SOURCE_ROOT; };
 		6A37900721EB46DEB4F8BA6C /* App/HardwareTextEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/HardwareTextEditor.swift; sourceTree = SOURCE_ROOT; };
 		6C7CCDEB3609F1FAA874E941 /* Sebeol390Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = Sebeol390Tests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		706EE53880DE10DF518DA7E8 /* ../LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = ../LICENSE; sourceTree = SOURCE_ROOT; };
 		736A61A2816A5EBB19BF16CF /* ../Resources/english-words.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "../Resources/english-words.txt"; sourceTree = SOURCE_ROOT; };
 		78B4725E6FC13C8F40ECB7AB /* ../Resources/korean-words.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "../Resources/korean-words.txt"; sourceTree = SOURCE_ROOT; };
 		7970FCF68F771BE6475059BA /* App/SSHServerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/SSHServerStore.swift; sourceTree = SOURCE_ROOT; };
-		83A10659F5A957B3CEAA5739 /* ../Sources/Sebeol390Core/Lexicon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/Lexicon.swift; sourceTree = SOURCE_ROOT; };
-		83E74BEEED3230B4EBF005E1 /* ../Sources/Sebeol390Core/HardwareKeymap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/HardwareKeymap.swift; sourceTree = SOURCE_ROOT; };
-		842090D8F241AECFE83E2C32 /* ../Sources/Sebeol390Core/LearnedWords.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/LearnedWords.swift; sourceTree = SOURCE_ROOT; };
 		86484978F49E45E9DBB09649 /* Keyboard/Resources/keyboard-korean-valid.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Keyboard/Resources/keyboard-korean-valid.txt"; sourceTree = SOURCE_ROOT; };
 		8D4E8606294DBB25FBAF1CEB /* App/Fonts/D2Coding-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = text; path = "App/Fonts/D2Coding-Regular.ttf"; sourceTree = SOURCE_ROOT; };
 		921F9E533E76A616133CF198 /* App/SSHTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/SSHTerminalView.swift; sourceTree = SOURCE_ROOT; };
-		9B51C9EF15A08CE0D4822ECD /* ../Sources/Sebeol390Core/KeyboardLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/KeyboardLayout.swift; sourceTree = SOURCE_ROOT; };
+		992C51514FC0024A28B35190 /* ../Sources/SetoCore/Keymap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/SetoCore/Keymap.swift; sourceTree = SOURCE_ROOT; };
 		9C892AAD53FC7F46BC7F0D5E /* App/Fonts/D2Coding-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = text; path = "App/Fonts/D2Coding-Bold.ttf"; sourceTree = SOURCE_ROOT; };
-		A59E2A0CC3CA8535751E9CFE /* ../Sources/Sebeol390Core/AddressBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/AddressBar.swift; sourceTree = SOURCE_ROOT; };
-		A8E2FD5A2FF0E03FEB03B7A6 /* ../Sources/Sebeol390Core/Layout390.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/Layout390.swift; sourceTree = SOURCE_ROOT; };
-		A91C3D2799C9003433D87125 /* ../Sources/Sebeol390Core/Keymap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/Keymap.swift; sourceTree = SOURCE_ROOT; };
+		A0F1883D715BA6DD5687DDF7 /* ../Sources/SetoCore/DoubleSpacePeriod.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/SetoCore/DoubleSpacePeriod.swift; sourceTree = SOURCE_ROOT; };
 		AB22B8B15C1C91DF29794AE4 /* ../NOTICE */ = {isa = PBXFileReference; lastKnownFileType = text; path = ../NOTICE; sourceTree = SOURCE_ROOT; };
 		AB9F4AF476D2009525D13454 /* App/SSHRemoteEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/SSHRemoteEditor.swift; sourceTree = SOURCE_ROOT; };
-		BF1E227FA25A61C39708B1F9 /* ../Sources/Sebeol390Core/WordSuggestions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/WordSuggestions.swift; sourceTree = SOURCE_ROOT; };
+		BAC6FF9370C76A1B3E8ECB14 /* ../Sources/SetoCore/HardwareKeymap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/SetoCore/HardwareKeymap.swift; sourceTree = SOURCE_ROOT; };
+		BEC683672AFB1924B03BB799 /* ../Sources/SetoCore/LayoutFinal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/SetoCore/LayoutFinal.swift; sourceTree = SOURCE_ROOT; };
+		C0D82E966A71B45F7944349F /* ../Sources/SetoCore/Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/SetoCore/Session.swift; sourceTree = SOURCE_ROOT; };
+		C63947FD8091BF6B01CD687A /* ../Sources/SetoCore/Hangul.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/SetoCore/Hangul.swift; sourceTree = SOURCE_ROOT; };
+		C831159926DA9EECEAD75219 /* ../Sources/SetoCore/WordSuggestions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/SetoCore/WordSuggestions.swift; sourceTree = SOURCE_ROOT; };
 		C8B800727112BB43FDD5F5CA /* ../Resources/english-extra.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "../Resources/english-extra.txt"; sourceTree = SOURCE_ROOT; };
-		CB3B8D82FDEC875F75E2C62D /* ../Sources/Sebeol390Core/LayoutDubeol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/LayoutDubeol.swift; sourceTree = SOURCE_ROOT; };
 		CF56CAD955CCBFF7F3B073E8 /* Tests/SSHServerStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/SSHServerStoreTests.swift; sourceTree = SOURCE_ROOT; };
+		CFE3AA53523C98E19EDB9B3A /* ../Sources/SetoCore/TypoCorrector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/SetoCore/TypoCorrector.swift; sourceTree = SOURCE_ROOT; };
+		D1C76F2E1AAA43C13EE23B4F /* ../Sources/SetoCore/Composer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/SetoCore/Composer.swift; sourceTree = SOURCE_ROOT; };
 		D428FBCEB0F4C90E3B44F239 /* App/ThirdParty/D2Coding-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "App/ThirdParty/D2Coding-OFL.txt"; sourceTree = SOURCE_ROOT; };
+		D64D5487E0EEC159A467C0D4 /* ../Sources/SetoCore/TypingStatistics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/SetoCore/TypingStatistics.swift; sourceTree = SOURCE_ROOT; };
 		DAF07ABCC8BAD6B752453E66 /* Keyboard/KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keyboard/KeyboardViewController.swift; sourceTree = SOURCE_ROOT; };
 		DDB2E328BCEA43E95B531045 /* App/Sebeol390App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/Sebeol390App.swift; sourceTree = SOURCE_ROOT; };
 		E0C46FC9C6960273B8657C66 /* App/Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = App/Assets.xcassets; sourceTree = SOURCE_ROOT; };
 		F64BBBD277520A73AD1DCABF /* App/MarkVectorLiveSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/MarkVectorLiveSync.swift; sourceTree = SOURCE_ROOT; };
+		FF8018366C6FF1D2C3C4A42D /* ../Sources/SetoCore/AddressBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/SetoCore/AddressBar.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -189,24 +189,24 @@
 		870B3294C0CBD48AF6BBCC1B = {
 			isa = PBXGroup;
 			children = (
-				A59E2A0CC3CA8535751E9CFE /* ../Sources/Sebeol390Core/AddressBar.swift */,
-				639BACC3F24F8983E4F9FBF7 /* ../Sources/Sebeol390Core/Composer.swift */,
-				5C44B389A635E3C5D2BA6609 /* ../Sources/Sebeol390Core/DoubleSpacePeriod.swift */,
-				3310BA53902080A77EEF25B0 /* ../Sources/Sebeol390Core/Hangul.swift */,
-				83E74BEEED3230B4EBF005E1 /* ../Sources/Sebeol390Core/HardwareKeymap.swift */,
-				9B51C9EF15A08CE0D4822ECD /* ../Sources/Sebeol390Core/KeyboardLayout.swift */,
-				35A78681711DC3600C96D76C /* ../Sources/Sebeol390Core/KeyboardReplacement.swift */,
-				A91C3D2799C9003433D87125 /* ../Sources/Sebeol390Core/Keymap.swift */,
-				A8E2FD5A2FF0E03FEB03B7A6 /* ../Sources/Sebeol390Core/Layout390.swift */,
-				CB3B8D82FDEC875F75E2C62D /* ../Sources/Sebeol390Core/LayoutDubeol.swift */,
-				1E07948797F233D90818AC67 /* ../Sources/Sebeol390Core/LayoutFinal.swift */,
-				842090D8F241AECFE83E2C32 /* ../Sources/Sebeol390Core/LearnedWords.swift */,
-				83A10659F5A957B3CEAA5739 /* ../Sources/Sebeol390Core/Lexicon.swift */,
-				3066C826224BCCCDD65B012C /* ../Sources/Sebeol390Core/Session.swift */,
-				5F4F54D243D0C3A1CBAD18B3 /* ../Sources/Sebeol390Core/TypingStatistics.swift */,
-				3C0357685B9DE8B50BE20847 /* ../Sources/Sebeol390Core/TypoCorrector.swift */,
-				26011EC1235491EA19ACD58C /* ../Sources/Sebeol390Core/TypoLog.swift */,
-				BF1E227FA25A61C39708B1F9 /* ../Sources/Sebeol390Core/WordSuggestions.swift */,
+				FF8018366C6FF1D2C3C4A42D /* ../Sources/SetoCore/AddressBar.swift */,
+				D1C76F2E1AAA43C13EE23B4F /* ../Sources/SetoCore/Composer.swift */,
+				A0F1883D715BA6DD5687DDF7 /* ../Sources/SetoCore/DoubleSpacePeriod.swift */,
+				C63947FD8091BF6B01CD687A /* ../Sources/SetoCore/Hangul.swift */,
+				BAC6FF9370C76A1B3E8ECB14 /* ../Sources/SetoCore/HardwareKeymap.swift */,
+				628CB951D8E91DDD29253E55 /* ../Sources/SetoCore/KeyboardLayout.swift */,
+				24D0308AE7D8EABABC514816 /* ../Sources/SetoCore/KeyboardReplacement.swift */,
+				992C51514FC0024A28B35190 /* ../Sources/SetoCore/Keymap.swift */,
+				5D30CEFF5635767C7C4595C9 /* ../Sources/SetoCore/Layout390.swift */,
+				3C2EE2AA987E771889023B16 /* ../Sources/SetoCore/LayoutDubeol.swift */,
+				BEC683672AFB1924B03BB799 /* ../Sources/SetoCore/LayoutFinal.swift */,
+				0B441EFBC8C95B348A08877D /* ../Sources/SetoCore/LearnedWords.swift */,
+				65B3D2F4DF57596F117911E6 /* ../Sources/SetoCore/Lexicon.swift */,
+				C0D82E966A71B45F7944349F /* ../Sources/SetoCore/Session.swift */,
+				D64D5487E0EEC159A467C0D4 /* ../Sources/SetoCore/TypingStatistics.swift */,
+				CFE3AA53523C98E19EDB9B3A /* ../Sources/SetoCore/TypoCorrector.swift */,
+				46531D1D86DECF2BBB3D43EB /* ../Sources/SetoCore/TypoLog.swift */,
+				C831159926DA9EECEAD75219 /* ../Sources/SetoCore/WordSuggestions.swift */,
 				4E6B400ABFF2670652131CD0 /* Shared/KeyboardView.swift */,
 				DDB2E328BCEA43E95B531045 /* App/Sebeol390App.swift */,
 				6A37900721EB46DEB4F8BA6C /* App/HardwareTextEditor.swift */,
@@ -390,24 +390,24 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				C33884AB3E0B6CB776C05CF4 /* ../Sources/Sebeol390Core/AddressBar.swift in Sources */,
-				4CC916D0416C0A9F033091CA /* ../Sources/Sebeol390Core/Composer.swift in Sources */,
-				A2FD289107F924FA99014B8A /* ../Sources/Sebeol390Core/DoubleSpacePeriod.swift in Sources */,
-				3453E3902757FB649D2324C6 /* ../Sources/Sebeol390Core/Hangul.swift in Sources */,
-				971008BAC2822116E7875726 /* ../Sources/Sebeol390Core/HardwareKeymap.swift in Sources */,
-				11F17302659B932EB22940F8 /* ../Sources/Sebeol390Core/KeyboardLayout.swift in Sources */,
-				D63F7EE0CB0D01DA73832A96 /* ../Sources/Sebeol390Core/KeyboardReplacement.swift in Sources */,
-				A14F64810D07744617E343DA /* ../Sources/Sebeol390Core/Keymap.swift in Sources */,
-				54752BD6E8B9D6ED8856ACCC /* ../Sources/Sebeol390Core/Layout390.swift in Sources */,
-				F4DA716F6371EC341AF1B824 /* ../Sources/Sebeol390Core/LayoutDubeol.swift in Sources */,
-				CB4A7557272E97ABA8C8AD97 /* ../Sources/Sebeol390Core/LayoutFinal.swift in Sources */,
-				5D2194FD76B7CC568CEA6982 /* ../Sources/Sebeol390Core/LearnedWords.swift in Sources */,
-				DCA469D326AF30B044BC5D76 /* ../Sources/Sebeol390Core/Lexicon.swift in Sources */,
-				3A64FFB786F713C8F990939B /* ../Sources/Sebeol390Core/Session.swift in Sources */,
-				4FC5C72B5AC2F75EDC410DE2 /* ../Sources/Sebeol390Core/TypingStatistics.swift in Sources */,
-				571332CF34AFF7B37AB2FD7E /* ../Sources/Sebeol390Core/TypoCorrector.swift in Sources */,
-				2163F6F5F70EA222C0BA99FA /* ../Sources/Sebeol390Core/TypoLog.swift in Sources */,
-				8330000004429EE0B7CC347D /* ../Sources/Sebeol390Core/WordSuggestions.swift in Sources */,
+				491B6A4789B2C4F905122FA5 /* ../Sources/SetoCore/AddressBar.swift in Sources */,
+				C03131C584E0672F84A964DE /* ../Sources/SetoCore/Composer.swift in Sources */,
+				7C6CE1BEA090AAD66CCB70D9 /* ../Sources/SetoCore/DoubleSpacePeriod.swift in Sources */,
+				2D9DB6021FAAC32BF86F2E14 /* ../Sources/SetoCore/Hangul.swift in Sources */,
+				D45BF6B3AF304218F7CBC7E1 /* ../Sources/SetoCore/HardwareKeymap.swift in Sources */,
+				298BB041BC2F74DB85763355 /* ../Sources/SetoCore/KeyboardLayout.swift in Sources */,
+				073ABE301D3A867FE3CD6978 /* ../Sources/SetoCore/KeyboardReplacement.swift in Sources */,
+				E29AB1E248B8A4AD3A34886C /* ../Sources/SetoCore/Keymap.swift in Sources */,
+				F464056666C2E5AB9E5EBFB0 /* ../Sources/SetoCore/Layout390.swift in Sources */,
+				6EFA8D2E78B5C8E3DDACA906 /* ../Sources/SetoCore/LayoutDubeol.swift in Sources */,
+				FEAA536BCEF8B1A9F4086A41 /* ../Sources/SetoCore/LayoutFinal.swift in Sources */,
+				FFF725D52255878A6C6FB3CD /* ../Sources/SetoCore/LearnedWords.swift in Sources */,
+				FFDD30118CC894F62C137193 /* ../Sources/SetoCore/Lexicon.swift in Sources */,
+				E68664035CF53DE320719EAC /* ../Sources/SetoCore/Session.swift in Sources */,
+				AF8EA6032A54B4A580DE9649 /* ../Sources/SetoCore/TypingStatistics.swift in Sources */,
+				5AD00018025885096D52FFD2 /* ../Sources/SetoCore/TypoCorrector.swift in Sources */,
+				C1835E4D2D49CE1E38BBDC81 /* ../Sources/SetoCore/TypoLog.swift in Sources */,
+				86EFAC6C9C549C8F33FE3513 /* ../Sources/SetoCore/WordSuggestions.swift in Sources */,
 				5BBDA0F1E889031AD3C6122F /* Shared/KeyboardView.swift in Sources */,
 				3DCAE9B5F2F48529A065E483 /* App/Sebeol390App.swift in Sources */,
 				2212CD255B50271F456F4C58 /* App/HardwareTextEditor.swift in Sources */,
@@ -435,24 +435,24 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				EAD5DB9C884262C8BA9A0574 /* ../Sources/Sebeol390Core/AddressBar.swift in Sources */,
-				B49BFA45A7E98D6F96B53979 /* ../Sources/Sebeol390Core/Composer.swift in Sources */,
-				196A60F267210B0EE5E18575 /* ../Sources/Sebeol390Core/DoubleSpacePeriod.swift in Sources */,
-				39F86DF605EAB4EC38DBD073 /* ../Sources/Sebeol390Core/Hangul.swift in Sources */,
-				834E15F0EDAAE703F19B403C /* ../Sources/Sebeol390Core/HardwareKeymap.swift in Sources */,
-				704D9B3BEBB5F7A52DB06C8D /* ../Sources/Sebeol390Core/KeyboardLayout.swift in Sources */,
-				4C922E5E1059F944D3C773BB /* ../Sources/Sebeol390Core/KeyboardReplacement.swift in Sources */,
-				97195C94C1996C7954EC3C86 /* ../Sources/Sebeol390Core/Keymap.swift in Sources */,
-				906427A9614B0ADB2D76D673 /* ../Sources/Sebeol390Core/Layout390.swift in Sources */,
-				08DD6DDF76BD17ED63F0CA2C /* ../Sources/Sebeol390Core/LayoutDubeol.swift in Sources */,
-				5CF90438474EE59CE190C8BE /* ../Sources/Sebeol390Core/LayoutFinal.swift in Sources */,
-				107C26489ACD52950B1DF9E1 /* ../Sources/Sebeol390Core/LearnedWords.swift in Sources */,
-				E9075056DBA69EE7F75DE4CD /* ../Sources/Sebeol390Core/Lexicon.swift in Sources */,
-				B522CCCCFA9D561C137AB28D /* ../Sources/Sebeol390Core/Session.swift in Sources */,
-				077BA8799C38E87404865DE8 /* ../Sources/Sebeol390Core/TypingStatistics.swift in Sources */,
-				F34F8D99BAF1073EFB85893E /* ../Sources/Sebeol390Core/TypoCorrector.swift in Sources */,
-				7B0A4FF0B9A4F792F72B5D2C /* ../Sources/Sebeol390Core/TypoLog.swift in Sources */,
-				88944C2AAA5C68130491B56B /* ../Sources/Sebeol390Core/WordSuggestions.swift in Sources */,
+				5E4453D8E1CED349CA7DD368 /* ../Sources/SetoCore/AddressBar.swift in Sources */,
+				A63D072B1E637D83E89BACAC /* ../Sources/SetoCore/Composer.swift in Sources */,
+				48188632AD3882C7CBB513C3 /* ../Sources/SetoCore/DoubleSpacePeriod.swift in Sources */,
+				930841EEE571E23C145D7BF0 /* ../Sources/SetoCore/Hangul.swift in Sources */,
+				FC96D9BA50C1A8D5CD54BF44 /* ../Sources/SetoCore/HardwareKeymap.swift in Sources */,
+				35A248ACCA96011B1E0D84CD /* ../Sources/SetoCore/KeyboardLayout.swift in Sources */,
+				7A9BC32A0FF5BE7C104034C5 /* ../Sources/SetoCore/KeyboardReplacement.swift in Sources */,
+				55A68733BEFDEAB2FCB3BB2F /* ../Sources/SetoCore/Keymap.swift in Sources */,
+				DE8D599DBA61E665AF60975F /* ../Sources/SetoCore/Layout390.swift in Sources */,
+				B94CC91E213F118FD84880BD /* ../Sources/SetoCore/LayoutDubeol.swift in Sources */,
+				47108E70E23CCE044B3D16CD /* ../Sources/SetoCore/LayoutFinal.swift in Sources */,
+				00C9ADAE4EFE1A6C0CD5D9E1 /* ../Sources/SetoCore/LearnedWords.swift in Sources */,
+				98C74CE721D85058180A183A /* ../Sources/SetoCore/Lexicon.swift in Sources */,
+				19A1CF76C55A56B7DF1FCCD7 /* ../Sources/SetoCore/Session.swift in Sources */,
+				2E97931863B5EB24445CEA08 /* ../Sources/SetoCore/TypingStatistics.swift in Sources */,
+				F77FFD1EC4D5080D22A4B27E /* ../Sources/SetoCore/TypoCorrector.swift in Sources */,
+				0471B69B6C4C73691608FC57 /* ../Sources/SetoCore/TypoLog.swift in Sources */,
+				30845141121466DDA98C85C9 /* ../Sources/SetoCore/WordSuggestions.swift in Sources */,
 				0DD9EF62E80E8299762484B3 /* Shared/KeyboardView.swift in Sources */,
 				CBEFEF1850490E1046488929 /* Keyboard/KeyboardViewController.swift in Sources */,
 			);

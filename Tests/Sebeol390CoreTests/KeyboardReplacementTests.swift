@@ -1,5 +1,5 @@
 import Testing
-@testable import Sebeol390Core
+@testable import SetoCore
 
 @Test func keyboardReplacementUsesGraphemes() {
     let change = KeyboardReplacement.between("가족 👨‍👩‍👧‍👦가", "가족 👨‍👩‍👧‍👦각")

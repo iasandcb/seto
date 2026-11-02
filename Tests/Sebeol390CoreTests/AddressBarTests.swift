@@ -1,5 +1,5 @@
 import Testing
-@testable import Sebeol390Core
+@testable import SetoCore
 
 @Test func safariAddressFieldIsRecognizedByIdentifier() {
     let field = FocusedElement(role: "AXTextField", identifier: "WEB_BROWSER_ADDRESS_AND_SEARCH_FIELD", insideWebArea: false)

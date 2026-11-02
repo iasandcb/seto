@@ -1,6 +1,6 @@
 import AppKit
 import ApplicationServices
-import Sebeol390Core
+import SetoCore
 
 /// Reads the system-wide focused element through Accessibility. Without the
 /// Accessibility permission this returns nil and nothing changes.

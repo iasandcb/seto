@@ -1,6 +1,6 @@
 # 한/영 전환 코어
 
-이 문서는 현재 구현의 전환 흐름을 설명합니다. 핵심 로직은 `Sources/Sebeol390Core/Session.swift`에 있고, macOS의 키 이벤트 연결은 `Sources/Sebeol390IME/InputController.swift`가 맡습니다.
+이 문서는 현재 구현의 전환 흐름을 설명합니다. 핵심 로직은 `Sources/SetoCore/Session.swift`에 있고, macOS의 키 이벤트 연결은 `Sources/SetoIME/InputController.swift`가 맡습니다.
 
 ## 전환 모델
 

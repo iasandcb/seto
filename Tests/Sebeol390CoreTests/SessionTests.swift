@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import Sebeol390Core
+@testable import SetoCore
 
 private let lexicon: Lexicon = {
     let root = URL(fileURLWithPath: #filePath)

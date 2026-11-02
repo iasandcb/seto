@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import Sebeol390Core
+@testable import SetoCore
 
 @Test func selectedLayoutComposesThroughSession() {
     for (layout, keys) in [(KeyboardLayout.sebeol390, "mfs kgw"), (.sebeolFinal, "mfs kgw"), (.dubeol, "gks rmf")] {

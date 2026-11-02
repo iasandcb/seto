@@ -11,18 +11,18 @@ trap 'rm -rf "${SEBEOL_SMOKE_DIR}"' EXIT
 for name in english-words.txt english-extra.txt korean-words.txt korean-valid.txt; do
     ln -s "${PWD}/Resources/${name}" "${SEBEOL_SMOKE_DIR}/${name}"
 done
-if [[ -f "${SEBEOL_BIN_DIR}/Sebeol390Core.o" ]]; then
-    SEBEOL_CORE_OBJECTS=("${SEBEOL_BIN_DIR}/Sebeol390Core.o")
+if [[ -f "${SEBEOL_BIN_DIR}/SetoCore.o" ]]; then
+    SEBEOL_CORE_OBJECTS=("${SEBEOL_BIN_DIR}/SetoCore.o")
 else
-    SEBEOL_CORE_OBJECTS=("${SEBEOL_BIN_DIR}/Sebeol390Core.build/"*.o)
+    SEBEOL_CORE_OBJECTS=("${SEBEOL_BIN_DIR}/SetoCore.build/"*.o)
 fi
 swiftc -swift-version 6 -module-cache-path "${CLANG_MODULE_CACHE_PATH}" \
     -I "${SEBEOL_BIN_DIR}" -I "${SEBEOL_BIN_DIR}/Modules" \
-    Sources/Sebeol390IME/InputController.swift \
-    Sources/Sebeol390IME/FocusedElementReader.swift \
-    Sources/Sebeol390IME/ModeStatusItem.swift \
-    Sources/Sebeol390IME/CapsLock.swift \
-    Sources/Sebeol390IME/StatisticsSync.swift \
+    Sources/SetoIME/InputController.swift \
+    Sources/SetoIME/FocusedElementReader.swift \
+    Sources/SetoIME/ModeStatusItem.swift \
+    Sources/SetoIME/CapsLock.swift \
+    Sources/SetoIME/StatisticsSync.swift \
     Tests/Integration/ClientSmoke.swift "${SEBEOL_CORE_OBJECTS[@]}" \
     -o "${SEBEOL_SMOKE_DIR}/ClientSmoke"
 "${SEBEOL_SMOKE_DIR}/ClientSmoke"

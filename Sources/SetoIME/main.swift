@@ -1,7 +1,7 @@
 import AppKit
 import Carbon
 import InputMethodKit
-import Sebeol390Core
+import SetoCore
 
 private let bundleIdentifier = "com.ias.inputmethod.seto"
 private let connectionName = bundleIdentifier + "_Connection"

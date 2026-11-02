@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import Sebeol390Core
+@testable import SetoCore
 
 @Test func typingStatisticsCountKeysAndPersistAcrossControllers() throws {
     let suite = "Sebeol390.TypingStatisticsTests.\(UUID())"
