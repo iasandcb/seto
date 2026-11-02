@@ -1,165 +1,700 @@
 // !$*UTF8*$!
-{archiveVersion = 1; classes = {}; objectVersion = 56; objects = {
-A59E2A0CC3CA8535751E9CFE = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../Sources/Sebeol390Core/AddressBar.swift"; sourceTree = SOURCE_ROOT;};
-639BACC3F24F8983E4F9FBF7 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../Sources/Sebeol390Core/Composer.swift"; sourceTree = SOURCE_ROOT;};
-3310BA53902080A77EEF25B0 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../Sources/Sebeol390Core/Hangul.swift"; sourceTree = SOURCE_ROOT;};
-83E74BEEED3230B4EBF005E1 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../Sources/Sebeol390Core/HardwareKeymap.swift"; sourceTree = SOURCE_ROOT;};
-9B51C9EF15A08CE0D4822ECD = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../Sources/Sebeol390Core/KeyboardLayout.swift"; sourceTree = SOURCE_ROOT;};
-35A78681711DC3600C96D76C = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../Sources/Sebeol390Core/KeyboardReplacement.swift"; sourceTree = SOURCE_ROOT;};
-A91C3D2799C9003433D87125 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../Sources/Sebeol390Core/Keymap.swift"; sourceTree = SOURCE_ROOT;};
-A8E2FD5A2FF0E03FEB03B7A6 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../Sources/Sebeol390Core/Layout390.swift"; sourceTree = SOURCE_ROOT;};
-CB3B8D82FDEC875F75E2C62D = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../Sources/Sebeol390Core/LayoutDubeol.swift"; sourceTree = SOURCE_ROOT;};
-1E07948797F233D90818AC67 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../Sources/Sebeol390Core/LayoutFinal.swift"; sourceTree = SOURCE_ROOT;};
-842090D8F241AECFE83E2C32 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../Sources/Sebeol390Core/LearnedWords.swift"; sourceTree = SOURCE_ROOT;};
-83A10659F5A957B3CEAA5739 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../Sources/Sebeol390Core/Lexicon.swift"; sourceTree = SOURCE_ROOT;};
-3066C826224BCCCDD65B012C = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../Sources/Sebeol390Core/Session.swift"; sourceTree = SOURCE_ROOT;};
-5F4F54D243D0C3A1CBAD18B3 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../Sources/Sebeol390Core/TypingStatistics.swift"; sourceTree = SOURCE_ROOT;};
-3C0357685B9DE8B50BE20847 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../Sources/Sebeol390Core/TypoCorrector.swift"; sourceTree = SOURCE_ROOT;};
-26011EC1235491EA19ACD58C = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../Sources/Sebeol390Core/TypoLog.swift"; sourceTree = SOURCE_ROOT;};
-BF1E227FA25A61C39708B1F9 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../Sources/Sebeol390Core/WordSuggestions.swift"; sourceTree = SOURCE_ROOT;};
-4E6B400ABFF2670652131CD0 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Shared/KeyboardView.swift"; sourceTree = SOURCE_ROOT;};
-DDB2E328BCEA43E95B531045 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/Sebeol390App.swift"; sourceTree = SOURCE_ROOT;};
-6A37900721EB46DEB4F8BA6C = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/HardwareTextEditor.swift"; sourceTree = SOURCE_ROOT;};
-560D04D07EED8CE9C1EFC6FF = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/MarkVectorView.swift"; sourceTree = SOURCE_ROOT;};
-F64BBBD277520A73AD1DCABF = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/MarkVectorLiveSync.swift"; sourceTree = SOURCE_ROOT;};
-921F9E533E76A616133CF198 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/SSHTerminalView.swift"; sourceTree = SOURCE_ROOT;};
-7970FCF68F771BE6475059BA = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/SSHServerStore.swift"; sourceTree = SOURCE_ROOT;};
-158E4F855C565ABDC1CFFB86 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/SSHConnection.swift"; sourceTree = SOURCE_ROOT;};
-AB9F4AF476D2009525D13454 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/SSHRemoteEditor.swift"; sourceTree = SOURCE_ROOT;};
-23827CEBC0430F2C2C98C1C5 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "App/TerminalInput.swift"; sourceTree = SOURCE_ROOT;};
-DAF07ABCC8BAD6B752453E66 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Keyboard/KeyboardViewController.swift"; sourceTree = SOURCE_ROOT;};
-736A61A2816A5EBB19BF16CF = {isa = PBXFileReference; lastKnownFileType = text; path = "../Resources/english-words.txt"; sourceTree = SOURCE_ROOT;};
-C8B800727112BB43FDD5F5CA = {isa = PBXFileReference; lastKnownFileType = text; path = "../Resources/english-extra.txt"; sourceTree = SOURCE_ROOT;};
-78B4725E6FC13C8F40ECB7AB = {isa = PBXFileReference; lastKnownFileType = text; path = "../Resources/korean-words.txt"; sourceTree = SOURCE_ROOT;};
-2DAD22EB3C71580F1F16DC5A = {isa = PBXFileReference; lastKnownFileType = text; path = "../Resources/korean-valid.txt"; sourceTree = SOURCE_ROOT;};
-64E024BA63873A8760E50879 = {isa = PBXFileReference; lastKnownFileType = text; path = "../Resources/korean-valid.LICENSE"; sourceTree = SOURCE_ROOT;};
-706EE53880DE10DF518DA7E8 = {isa = PBXFileReference; lastKnownFileType = text; path = "../LICENSE"; sourceTree = SOURCE_ROOT;};
-AB22B8B15C1C91DF29794AE4 = {isa = PBXFileReference; lastKnownFileType = text; path = "../NOTICE"; sourceTree = SOURCE_ROOT;};
-379549B53B6DE29C71CAE10B = {isa = PBXFileReference; lastKnownFileType = text; path = "App/ThirdParty/SwiftTerm-LICENSE.txt"; sourceTree = SOURCE_ROOT;};
-D428FBCEB0F4C90E3B44F239 = {isa = PBXFileReference; lastKnownFileType = text; path = "App/ThirdParty/D2Coding-OFL.txt"; sourceTree = SOURCE_ROOT;};
-8D4E8606294DBB25FBAF1CEB = {isa = PBXFileReference; lastKnownFileType = text; path = "App/Fonts/D2Coding-Regular.ttf"; sourceTree = SOURCE_ROOT;};
-9C892AAD53FC7F46BC7F0D5E = {isa = PBXFileReference; lastKnownFileType = text; path = "App/Fonts/D2Coding-Bold.ttf"; sourceTree = SOURCE_ROOT;};
-E0C46FC9C6960273B8657C66 = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "App/Assets.xcassets"; sourceTree = SOURCE_ROOT;};
-1FA66026E69086AF967D4DF3 = {isa = PBXFileReference; lastKnownFileType = text; path = "Keyboard/Resources/keyboard-english.txt"; sourceTree = SOURCE_ROOT;};
-86484978F49E45E9DBB09649 = {isa = PBXFileReference; lastKnownFileType = text; path = "Keyboard/Resources/keyboard-korean-valid.txt"; sourceTree = SOURCE_ROOT;};
-89E1FD6268CC0F221A2BE178 = {isa = XCBuildConfiguration; name = Debug; buildSettings = { SDKROOT = "iphoneos"; IPHONEOS_DEPLOYMENT_TARGET = "16.0"; SWIFT_VERSION = "6.0"; CLANG_ENABLE_MODULES = "YES"; ONLY_ACTIVE_ARCH = "YES"; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; };};
-E6DE6C99132752C914FEF632 = {isa = XCBuildConfiguration; name = Release; buildSettings = { SDKROOT = "iphoneos"; IPHONEOS_DEPLOYMENT_TARGET = "16.0"; SWIFT_VERSION = "6.0"; CLANG_ENABLE_MODULES = "YES"; ONLY_ACTIVE_ARCH = "NO"; SWIFT_OPTIMIZATION_LEVEL = "-O"; };};
-640DC9EFD529235A8D9E2727 = {isa = XCConfigurationList; buildConfigurations = (89E1FD6268CC0F221A2BE178, E6DE6C99132752C914FEF632,); defaultConfigurationName = Release;};
-FD63323E7222A9BCF39B8F74 = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/migueldeicaza/SwiftTerm.git"; requirement = {kind = revision; revision = "9eccf3548a563f6f91d8e9a06dd98db3086a68d1";};};
-1EE743F7EEC7A4EDAFB26FA0 = {isa = XCSwiftPackageProductDependency; package = FD63323E7222A9BCF39B8F74; productName = SwiftTerm;};
-2E32415B0E26A27FE9A3F3AF = {isa = PBXBuildFile; productRef = 1EE743F7EEC7A4EDAFB26FA0;};
-2A2D36B7557CD8EAF0A9AB3C = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/apple/swift-nio-ssh.git"; requirement = {kind = revision; revision = "d1985926494b624e751b379009dc83f3395fd88a";};};
-4493DC94DE7F0450129656A8 = {isa = XCSwiftPackageProductDependency; package = 2A2D36B7557CD8EAF0A9AB3C; productName = NIOSSH;};
-287FFF9C68C9D7C3CE2368CE = {isa = PBXBuildFile; productRef = 4493DC94DE7F0450129656A8;};
-929DC773ADFA37F5E4106AEF = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/apple/swift-nio.git"; requirement = {kind = upToNextMajorVersion; minimumVersion = 2.81.0;};};
-0058AA893234BA33353E0586 = {isa = XCSwiftPackageProductDependency; package = 929DC773ADFA37F5E4106AEF; productName = NIOCore;};
-F2AE57B5015CD49FF5456E12 = {isa = PBXBuildFile; productRef = 0058AA893234BA33353E0586;};
-C1D36A5F230BE3EB7AC369C3 = {isa = XCSwiftPackageProductDependency; package = 929DC773ADFA37F5E4106AEF; productName = NIOPosix;};
-A566750A42DA0090366D3F8E = {isa = PBXBuildFile; productRef = C1D36A5F230BE3EB7AC369C3;};
-EBEFC7EC83473136E3A14045 = {isa = XCSwiftPackageProductDependency; package = 929DC773ADFA37F5E4106AEF; productName = NIOConcurrencyHelpers;};
-87A1CF807AB2E775183EDE71 = {isa = PBXBuildFile; productRef = EBEFC7EC83473136E3A14045;};
-098F4803AC6D5B96AF2DFDBE = {isa = PBXFileReference; explicitFileType = wrapper.app-extension; path = Sebeol390Keyboard.appex; sourceTree = BUILT_PRODUCTS_DIR;};
-EAD5DB9C884262C8BA9A0574 = {isa = PBXBuildFile; fileRef = A59E2A0CC3CA8535751E9CFE;};
-B49BFA45A7E98D6F96B53979 = {isa = PBXBuildFile; fileRef = 639BACC3F24F8983E4F9FBF7;};
-39F86DF605EAB4EC38DBD073 = {isa = PBXBuildFile; fileRef = 3310BA53902080A77EEF25B0;};
-834E15F0EDAAE703F19B403C = {isa = PBXBuildFile; fileRef = 83E74BEEED3230B4EBF005E1;};
-704D9B3BEBB5F7A52DB06C8D = {isa = PBXBuildFile; fileRef = 9B51C9EF15A08CE0D4822ECD;};
-4C922E5E1059F944D3C773BB = {isa = PBXBuildFile; fileRef = 35A78681711DC3600C96D76C;};
-97195C94C1996C7954EC3C86 = {isa = PBXBuildFile; fileRef = A91C3D2799C9003433D87125;};
-906427A9614B0ADB2D76D673 = {isa = PBXBuildFile; fileRef = A8E2FD5A2FF0E03FEB03B7A6;};
-08DD6DDF76BD17ED63F0CA2C = {isa = PBXBuildFile; fileRef = CB3B8D82FDEC875F75E2C62D;};
-5CF90438474EE59CE190C8BE = {isa = PBXBuildFile; fileRef = 1E07948797F233D90818AC67;};
-107C26489ACD52950B1DF9E1 = {isa = PBXBuildFile; fileRef = 842090D8F241AECFE83E2C32;};
-E9075056DBA69EE7F75DE4CD = {isa = PBXBuildFile; fileRef = 83A10659F5A957B3CEAA5739;};
-B522CCCCFA9D561C137AB28D = {isa = PBXBuildFile; fileRef = 3066C826224BCCCDD65B012C;};
-077BA8799C38E87404865DE8 = {isa = PBXBuildFile; fileRef = 5F4F54D243D0C3A1CBAD18B3;};
-F34F8D99BAF1073EFB85893E = {isa = PBXBuildFile; fileRef = 3C0357685B9DE8B50BE20847;};
-7B0A4FF0B9A4F792F72B5D2C = {isa = PBXBuildFile; fileRef = 26011EC1235491EA19ACD58C;};
-88944C2AAA5C68130491B56B = {isa = PBXBuildFile; fileRef = BF1E227FA25A61C39708B1F9;};
-0DD9EF62E80E8299762484B3 = {isa = PBXBuildFile; fileRef = 4E6B400ABFF2670652131CD0;};
-CBEFEF1850490E1046488929 = {isa = PBXBuildFile; fileRef = DAF07ABCC8BAD6B752453E66;};
-AAC440C79F0338940797C53D = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (EAD5DB9C884262C8BA9A0574, B49BFA45A7E98D6F96B53979, 39F86DF605EAB4EC38DBD073, 834E15F0EDAAE703F19B403C, 704D9B3BEBB5F7A52DB06C8D, 4C922E5E1059F944D3C773BB, 97195C94C1996C7954EC3C86, 906427A9614B0ADB2D76D673, 08DD6DDF76BD17ED63F0CA2C, 5CF90438474EE59CE190C8BE, 107C26489ACD52950B1DF9E1, E9075056DBA69EE7F75DE4CD, B522CCCCFA9D561C137AB28D, 077BA8799C38E87404865DE8, F34F8D99BAF1073EFB85893E, 7B0A4FF0B9A4F792F72B5D2C, 88944C2AAA5C68130491B56B, 0DD9EF62E80E8299762484B3, CBEFEF1850490E1046488929,); runOnlyForDeploymentPostprocessing = 0;};
-3A932D0E53ABFF44F186C0CA = {isa = PBXBuildFile; fileRef = 78B4725E6FC13C8F40ECB7AB;};
-F2D3F5DA77F1F6A504B35EF2 = {isa = PBXBuildFile; fileRef = 64E024BA63873A8760E50879;};
-B9DCD4228BB27EE591851C6B = {isa = PBXBuildFile; fileRef = 706EE53880DE10DF518DA7E8;};
-806B3CCECF813E03EF3FA3A8 = {isa = PBXBuildFile; fileRef = AB22B8B15C1C91DF29794AE4;};
-9330C430C76D950BBCF9FE6C = {isa = PBXBuildFile; fileRef = 379549B53B6DE29C71CAE10B;};
-20FE4B6B8D9D97B44EAAA391 = {isa = PBXBuildFile; fileRef = D428FBCEB0F4C90E3B44F239;};
-4F4F103F35C39985FF787ECD = {isa = PBXBuildFile; fileRef = 8D4E8606294DBB25FBAF1CEB;};
-BE72F8786B82DE55F6CB0E3F = {isa = PBXBuildFile; fileRef = 9C892AAD53FC7F46BC7F0D5E;};
-4872C74F4A2CBAD59C1D5453 = {isa = PBXBuildFile; fileRef = 1FA66026E69086AF967D4DF3;};
-E3E07875F178E12B1EDB897D = {isa = PBXBuildFile; fileRef = 86484978F49E45E9DBB09649;};
-40729C9C3BB0C495B34138D5 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (3A932D0E53ABFF44F186C0CA, F2D3F5DA77F1F6A504B35EF2, B9DCD4228BB27EE591851C6B, 806B3CCECF813E03EF3FA3A8, 9330C430C76D950BBCF9FE6C, 20FE4B6B8D9D97B44EAAA391, 4F4F103F35C39985FF787ECD, BE72F8786B82DE55F6CB0E3F, 4872C74F4A2CBAD59C1D5453, E3E07875F178E12B1EDB897D,); runOnlyForDeploymentPostprocessing = 0;};
-98538B0B2D1791AED302B101 = {isa = XCBuildConfiguration; name = Debug; buildSettings = { PRODUCT_NAME = "Sebeol390Keyboard"; PRODUCT_BUNDLE_IDENTIFIER = "com.ias.seto.keyboard"; INFOPLIST_FILE = "Keyboard/Info.plist"; GENERATE_INFOPLIST_FILE = "NO"; CODE_SIGN_STYLE = "Automatic"; TARGETED_DEVICE_FAMILY = "1,2"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; MARKETING_VERSION = "1.0"; CURRENT_PROJECT_VERSION = "5"; APPLICATION_EXTENSION_API_ONLY = "YES"; SKIP_INSTALL = "YES"; SWIFT_STRICT_CONCURRENCY = "complete"; ENABLE_TESTABILITY = "YES"; DEVELOPMENT_TEAM = "RZUH4T3FCB"; };};
-FE5357497BBE0E735112BC22 = {isa = XCBuildConfiguration; name = Release; buildSettings = { PRODUCT_NAME = "Sebeol390Keyboard"; PRODUCT_BUNDLE_IDENTIFIER = "com.ias.seto.keyboard"; INFOPLIST_FILE = "Keyboard/Info.plist"; GENERATE_INFOPLIST_FILE = "NO"; CODE_SIGN_STYLE = "Automatic"; TARGETED_DEVICE_FAMILY = "1,2"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; MARKETING_VERSION = "1.0"; CURRENT_PROJECT_VERSION = "5"; APPLICATION_EXTENSION_API_ONLY = "YES"; SKIP_INSTALL = "YES"; SWIFT_STRICT_CONCURRENCY = "complete"; ENABLE_TESTABILITY = "NO"; DEVELOPMENT_TEAM = "RZUH4T3FCB"; };};
-A462C3DF93A79C039BC68D1B = {isa = XCConfigurationList; buildConfigurations = (98538B0B2D1791AED302B101, FE5357497BBE0E735112BC22,); defaultConfigurationName = Release;};
-D29B8974E88C00C0364C5FAF = {isa = PBXNativeTarget; buildConfigurationList = A462C3DF93A79C039BC68D1B; buildPhases = (AAC440C79F0338940797C53D, 40729C9C3BB0C495B34138D5,); packageProductDependencies = (); buildRules = (); dependencies = (); name = Sebeol390Keyboard; productName = Sebeol390Keyboard; productReference = 098F4803AC6D5B96AF2DFDBE; productType = "com.apple.product-type.app-extension";};
-1E13EBF6BF9AD36B27FB1716 = {isa = PBXFileReference; explicitFileType = wrapper.application; path = Sebeol390.app; sourceTree = BUILT_PRODUCTS_DIR;};
-C33884AB3E0B6CB776C05CF4 = {isa = PBXBuildFile; fileRef = A59E2A0CC3CA8535751E9CFE;};
-4CC916D0416C0A9F033091CA = {isa = PBXBuildFile; fileRef = 639BACC3F24F8983E4F9FBF7;};
-3453E3902757FB649D2324C6 = {isa = PBXBuildFile; fileRef = 3310BA53902080A77EEF25B0;};
-971008BAC2822116E7875726 = {isa = PBXBuildFile; fileRef = 83E74BEEED3230B4EBF005E1;};
-11F17302659B932EB22940F8 = {isa = PBXBuildFile; fileRef = 9B51C9EF15A08CE0D4822ECD;};
-D63F7EE0CB0D01DA73832A96 = {isa = PBXBuildFile; fileRef = 35A78681711DC3600C96D76C;};
-A14F64810D07744617E343DA = {isa = PBXBuildFile; fileRef = A91C3D2799C9003433D87125;};
-54752BD6E8B9D6ED8856ACCC = {isa = PBXBuildFile; fileRef = A8E2FD5A2FF0E03FEB03B7A6;};
-F4DA716F6371EC341AF1B824 = {isa = PBXBuildFile; fileRef = CB3B8D82FDEC875F75E2C62D;};
-CB4A7557272E97ABA8C8AD97 = {isa = PBXBuildFile; fileRef = 1E07948797F233D90818AC67;};
-5D2194FD76B7CC568CEA6982 = {isa = PBXBuildFile; fileRef = 842090D8F241AECFE83E2C32;};
-DCA469D326AF30B044BC5D76 = {isa = PBXBuildFile; fileRef = 83A10659F5A957B3CEAA5739;};
-3A64FFB786F713C8F990939B = {isa = PBXBuildFile; fileRef = 3066C826224BCCCDD65B012C;};
-4FC5C72B5AC2F75EDC410DE2 = {isa = PBXBuildFile; fileRef = 5F4F54D243D0C3A1CBAD18B3;};
-571332CF34AFF7B37AB2FD7E = {isa = PBXBuildFile; fileRef = 3C0357685B9DE8B50BE20847;};
-2163F6F5F70EA222C0BA99FA = {isa = PBXBuildFile; fileRef = 26011EC1235491EA19ACD58C;};
-8330000004429EE0B7CC347D = {isa = PBXBuildFile; fileRef = BF1E227FA25A61C39708B1F9;};
-5BBDA0F1E889031AD3C6122F = {isa = PBXBuildFile; fileRef = 4E6B400ABFF2670652131CD0;};
-3DCAE9B5F2F48529A065E483 = {isa = PBXBuildFile; fileRef = DDB2E328BCEA43E95B531045;};
-2212CD255B50271F456F4C58 = {isa = PBXBuildFile; fileRef = 6A37900721EB46DEB4F8BA6C;};
-7E1F9333CDE8250F80B3E83B = {isa = PBXBuildFile; fileRef = 560D04D07EED8CE9C1EFC6FF;};
-AED46CBD6FB45189C32654B9 = {isa = PBXBuildFile; fileRef = F64BBBD277520A73AD1DCABF;};
-9575155462F77D9893D6BA14 = {isa = PBXBuildFile; fileRef = 921F9E533E76A616133CF198;};
-A8BB1FFFA7B904F153AEBFED = {isa = PBXBuildFile; fileRef = 7970FCF68F771BE6475059BA;};
-0D5F994CDF9FF1B40F66125B = {isa = PBXBuildFile; fileRef = 158E4F855C565ABDC1CFFB86;};
-B6D39AD6AA7F21671DABF731 = {isa = PBXBuildFile; fileRef = AB9F4AF476D2009525D13454;};
-8D70E2C92D2CDE71364B0DC9 = {isa = PBXBuildFile; fileRef = 23827CEBC0430F2C2C98C1C5;};
-364F3F68DB46511FFD8DDA44 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (C33884AB3E0B6CB776C05CF4, 4CC916D0416C0A9F033091CA, 3453E3902757FB649D2324C6, 971008BAC2822116E7875726, 11F17302659B932EB22940F8, D63F7EE0CB0D01DA73832A96, A14F64810D07744617E343DA, 54752BD6E8B9D6ED8856ACCC, F4DA716F6371EC341AF1B824, CB4A7557272E97ABA8C8AD97, 5D2194FD76B7CC568CEA6982, DCA469D326AF30B044BC5D76, 3A64FFB786F713C8F990939B, 4FC5C72B5AC2F75EDC410DE2, 571332CF34AFF7B37AB2FD7E, 2163F6F5F70EA222C0BA99FA, 8330000004429EE0B7CC347D, 5BBDA0F1E889031AD3C6122F, 3DCAE9B5F2F48529A065E483, 2212CD255B50271F456F4C58, 7E1F9333CDE8250F80B3E83B, AED46CBD6FB45189C32654B9, 9575155462F77D9893D6BA14, A8BB1FFFA7B904F153AEBFED, 0D5F994CDF9FF1B40F66125B, B6D39AD6AA7F21671DABF731, 8D70E2C92D2CDE71364B0DC9,); runOnlyForDeploymentPostprocessing = 0;};
-767320929A1ACEC528CA4538 = {isa = PBXBuildFile; fileRef = 736A61A2816A5EBB19BF16CF;};
-2FA1F019C212F2AB972C41E3 = {isa = PBXBuildFile; fileRef = C8B800727112BB43FDD5F5CA;};
-98F4D19968F26DA0A6702C2E = {isa = PBXBuildFile; fileRef = 78B4725E6FC13C8F40ECB7AB;};
-FC03DB9AE4E7BD425A0E4DF9 = {isa = PBXBuildFile; fileRef = 2DAD22EB3C71580F1F16DC5A;};
-1EDC872B82DE6667D579CC5D = {isa = PBXBuildFile; fileRef = 64E024BA63873A8760E50879;};
-D7AA909927EBD80E8EFF962D = {isa = PBXBuildFile; fileRef = 706EE53880DE10DF518DA7E8;};
-ED705C962E9CC8F73DC162F2 = {isa = PBXBuildFile; fileRef = AB22B8B15C1C91DF29794AE4;};
-A87A97ABA7A3B711E0F1CF26 = {isa = PBXBuildFile; fileRef = 379549B53B6DE29C71CAE10B;};
-331FC04096E519285C276CAA = {isa = PBXBuildFile; fileRef = D428FBCEB0F4C90E3B44F239;};
-FAA68E469184E4872E8FE245 = {isa = PBXBuildFile; fileRef = 8D4E8606294DBB25FBAF1CEB;};
-973FC91A6AA03E656C3AB67F = {isa = PBXBuildFile; fileRef = 9C892AAD53FC7F46BC7F0D5E;};
-0DA292C81D726A55CA469326 = {isa = PBXBuildFile; fileRef = E0C46FC9C6960273B8657C66;};
-565E23D03667591DEF8A8C74 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (767320929A1ACEC528CA4538, 2FA1F019C212F2AB972C41E3, 98F4D19968F26DA0A6702C2E, FC03DB9AE4E7BD425A0E4DF9, 1EDC872B82DE6667D579CC5D, D7AA909927EBD80E8EFF962D, ED705C962E9CC8F73DC162F2, A87A97ABA7A3B711E0F1CF26, 331FC04096E519285C276CAA, FAA68E469184E4872E8FE245, 973FC91A6AA03E656C3AB67F, 0DA292C81D726A55CA469326,); runOnlyForDeploymentPostprocessing = 0;};
-BD92572B49AC16A86614498D = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (2E32415B0E26A27FE9A3F3AF, 287FFF9C68C9D7C3CE2368CE, F2AE57B5015CD49FF5456E12, A566750A42DA0090366D3F8E, 87A1CF807AB2E775183EDE71,); runOnlyForDeploymentPostprocessing = 0;};
-7DCDE64E46FA314505EE9491 = {isa = PBXBuildFile; fileRef = 098F4803AC6D5B96AF2DFDBE; settings = {ATTRIBUTES = (RemoveHeadersOnCopy,);};};
-CFFF27C96089B93150F3553B = {isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = ""; dstSubfolderSpec = 13; files = (7DCDE64E46FA314505EE9491,); runOnlyForDeploymentPostprocessing = 0;};
-D799BAE6088A90139B415FCC = {isa = PBXContainerItemProxy; containerPortal = 98F54143AB4E86B28C3AFEE0; proxyType = 1; remoteGlobalIDString = D29B8974E88C00C0364C5FAF; remoteInfo = Sebeol390Keyboard;};
-DE58E2B17C19600779694943 = {isa = PBXTargetDependency; target = D29B8974E88C00C0364C5FAF; targetProxy = D799BAE6088A90139B415FCC;};
-2F10CBED68BCC8F9F8FFB51A = {isa = XCBuildConfiguration; name = Debug; buildSettings = { PRODUCT_NAME = "Sebeol390"; PRODUCT_BUNDLE_IDENTIFIER = "com.ias.seto"; INFOPLIST_FILE = "App/Info.plist"; GENERATE_INFOPLIST_FILE = "NO"; CODE_SIGN_STYLE = "Automatic"; TARGETED_DEVICE_FAMILY = "1,2"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; MARKETING_VERSION = "1.0"; CURRENT_PROJECT_VERSION = "5"; APPLICATION_EXTENSION_API_ONLY = "NO"; SKIP_INSTALL = "NO"; SWIFT_STRICT_CONCURRENCY = "complete"; ENABLE_TESTABILITY = "YES"; DEVELOPMENT_TEAM = "RZUH4T3FCB"; ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon"; };};
-7C4929072113781D15F0640C = {isa = XCBuildConfiguration; name = Release; buildSettings = { PRODUCT_NAME = "Sebeol390"; PRODUCT_BUNDLE_IDENTIFIER = "com.ias.seto"; INFOPLIST_FILE = "App/Info.plist"; GENERATE_INFOPLIST_FILE = "NO"; CODE_SIGN_STYLE = "Automatic"; TARGETED_DEVICE_FAMILY = "1,2"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; MARKETING_VERSION = "1.0"; CURRENT_PROJECT_VERSION = "5"; APPLICATION_EXTENSION_API_ONLY = "NO"; SKIP_INSTALL = "NO"; SWIFT_STRICT_CONCURRENCY = "complete"; ENABLE_TESTABILITY = "NO"; DEVELOPMENT_TEAM = "RZUH4T3FCB"; ASSETCATALOG_COMPILER_APPICON_NAME = "AppIcon"; };};
-AD3696F24152640C40433D07 = {isa = XCConfigurationList; buildConfigurations = (2F10CBED68BCC8F9F8FFB51A, 7C4929072113781D15F0640C,); defaultConfigurationName = Release;};
-CFE2A861A679F6A2265A66F3 = {isa = PBXNativeTarget; buildConfigurationList = AD3696F24152640C40433D07; buildPhases = (364F3F68DB46511FFD8DDA44, 565E23D03667591DEF8A8C74, BD92572B49AC16A86614498D, CFFF27C96089B93150F3553B,); packageProductDependencies = (1EE743F7EEC7A4EDAFB26FA0, 4493DC94DE7F0450129656A8, 0058AA893234BA33353E0586, C1D36A5F230BE3EB7AC369C3, EBEFC7EC83473136E3A14045,); buildRules = (); dependencies = (DE58E2B17C19600779694943,); name = Sebeol390; productName = Sebeol390; productReference = 1E13EBF6BF9AD36B27FB1716; productType = "com.apple.product-type.application";};
-2C95FF4FEAB2A0F3EF6DCDF4 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Tests/HardwareTextEditorTests.swift"; sourceTree = SOURCE_ROOT;};
-500D6BB9065DFFA071674729 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Tests/SSHRemoteEditorTests.swift"; sourceTree = SOURCE_ROOT;};
-CF56CAD955CCBFF7F3B073E8 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Tests/SSHServerStoreTests.swift"; sourceTree = SOURCE_ROOT;};
-6C7CCDEB3609F1FAA874E941 = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = Sebeol390Tests.xctest; sourceTree = BUILT_PRODUCTS_DIR;};
-813EAA564C023F9125E915EF = {isa = PBXBuildFile; fileRef = 2C95FF4FEAB2A0F3EF6DCDF4;};
-6ED2591934C9D6183871C5A3 = {isa = PBXBuildFile; fileRef = 500D6BB9065DFFA071674729;};
-8B736594C76318DD91F0C8AA = {isa = PBXBuildFile; fileRef = CF56CAD955CCBFF7F3B073E8;};
-78A10A681B05EBFA9A1352B2 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (813EAA564C023F9125E915EF, 6ED2591934C9D6183871C5A3, 8B736594C76318DD91F0C8AA,); runOnlyForDeploymentPostprocessing = 0;};
-C449802CFC00FE43A29E0F19 = {isa = XCBuildConfiguration; name = Debug; buildSettings = { PRODUCT_NAME = "Sebeol390Tests"; PRODUCT_BUNDLE_IDENTIFIER = "com.ias.seto.tests"; GENERATE_INFOPLIST_FILE = "YES"; CODE_SIGN_STYLE = "Automatic"; TARGETED_DEVICE_FAMILY = "1,2"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Sebeol390.app/Sebeol390"; BUNDLE_LOADER = "$(TEST_HOST)"; };};
-C4D458CFDB61996E24F4F16F = {isa = XCBuildConfiguration; name = Release; buildSettings = { PRODUCT_NAME = "Sebeol390Tests"; PRODUCT_BUNDLE_IDENTIFIER = "com.ias.seto.tests"; GENERATE_INFOPLIST_FILE = "YES"; CODE_SIGN_STYLE = "Automatic"; TARGETED_DEVICE_FAMILY = "1,2"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Sebeol390.app/Sebeol390"; BUNDLE_LOADER = "$(TEST_HOST)"; };};
-19170B56EA5642A46C383F29 = {isa = XCConfigurationList; buildConfigurations = (C449802CFC00FE43A29E0F19, C4D458CFDB61996E24F4F16F,); defaultConfigurationName = Release;};
-7E85D4A68785761E1DBB22D8 = {isa = PBXContainerItemProxy; containerPortal = 98F54143AB4E86B28C3AFEE0; proxyType = 1; remoteGlobalIDString = CFE2A861A679F6A2265A66F3; remoteInfo = Sebeol390;};
-BAE932EF166B50AB877FDC6F = {isa = PBXTargetDependency; target = CFE2A861A679F6A2265A66F3; targetProxy = 7E85D4A68785761E1DBB22D8;};
-C062A5A4A7F4F37DD90F54CB = {isa = PBXNativeTarget; buildConfigurationList = 19170B56EA5642A46C383F29; buildPhases = (78A10A681B05EBFA9A1352B2,); buildRules = (); dependencies = (BAE932EF166B50AB877FDC6F,); name = Sebeol390Tests; productName = Sebeol390Tests; productReference = 6C7CCDEB3609F1FAA874E941; productType = "com.apple.product-type.bundle.unit-test";};
-FBDC4F23F93125BBEEAE800C = {isa = PBXGroup; children = (098F4803AC6D5B96AF2DFDBE, 1E13EBF6BF9AD36B27FB1716, 6C7CCDEB3609F1FAA874E941,); name = Products; sourceTree = "<group>";};
-870B3294C0CBD48AF6BBCC1B = {isa = PBXGroup; children = (A59E2A0CC3CA8535751E9CFE, 639BACC3F24F8983E4F9FBF7, 3310BA53902080A77EEF25B0, 83E74BEEED3230B4EBF005E1, 9B51C9EF15A08CE0D4822ECD, 35A78681711DC3600C96D76C, A91C3D2799C9003433D87125, A8E2FD5A2FF0E03FEB03B7A6, CB3B8D82FDEC875F75E2C62D, 1E07948797F233D90818AC67, 842090D8F241AECFE83E2C32, 83A10659F5A957B3CEAA5739, 3066C826224BCCCDD65B012C, 5F4F54D243D0C3A1CBAD18B3, 3C0357685B9DE8B50BE20847, 26011EC1235491EA19ACD58C, BF1E227FA25A61C39708B1F9, 4E6B400ABFF2670652131CD0, DDB2E328BCEA43E95B531045, 6A37900721EB46DEB4F8BA6C, 560D04D07EED8CE9C1EFC6FF, F64BBBD277520A73AD1DCABF, 921F9E533E76A616133CF198, 7970FCF68F771BE6475059BA, 158E4F855C565ABDC1CFFB86, AB9F4AF476D2009525D13454, 23827CEBC0430F2C2C98C1C5, DAF07ABCC8BAD6B752453E66, 736A61A2816A5EBB19BF16CF, C8B800727112BB43FDD5F5CA, 78B4725E6FC13C8F40ECB7AB, 2DAD22EB3C71580F1F16DC5A, 64E024BA63873A8760E50879, 706EE53880DE10DF518DA7E8, AB22B8B15C1C91DF29794AE4, 379549B53B6DE29C71CAE10B, D428FBCEB0F4C90E3B44F239, 8D4E8606294DBB25FBAF1CEB, 9C892AAD53FC7F46BC7F0D5E, E0C46FC9C6960273B8657C66, 1FA66026E69086AF967D4DF3, 86484978F49E45E9DBB09649, 2C95FF4FEAB2A0F3EF6DCDF4, 500D6BB9065DFFA071674729, CF56CAD955CCBFF7F3B073E8, FBDC4F23F93125BBEEAE800C,); sourceTree = "<group>";};
-98F54143AB4E86B28C3AFEE0 = {isa = PBXProject; attributes = {LastUpgradeCheck = 1600;}; buildConfigurationList = 640DC9EFD529235A8D9E2727; compatibilityVersion = "Xcode 14.0"; developmentRegion = ko; knownRegions = (ko, en, Base); mainGroup = 870B3294C0CBD48AF6BBCC1B; productRefGroup = FBDC4F23F93125BBEEAE800C; packageReferences = (FD63323E7222A9BCF39B8F74, 2A2D36B7557CD8EAF0A9AB3C, 929DC773ADFA37F5E4106AEF,); projectDirPath = ""; projectRoot = ""; targets = (D29B8974E88C00C0364C5FAF, CFE2A861A679F6A2265A66F3, C062A5A4A7F4F37DD90F54CB,);};
-}; rootObject = 98F54143AB4E86B28C3AFEE0;}
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		077BA8799C38E87404865DE8 /* ../Sources/Sebeol390Core/TypingStatistics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F4F54D243D0C3A1CBAD18B3 /* ../Sources/Sebeol390Core/TypingStatistics.swift */; };
+		08DD6DDF76BD17ED63F0CA2C /* ../Sources/Sebeol390Core/LayoutDubeol.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB3B8D82FDEC875F75E2C62D /* ../Sources/Sebeol390Core/LayoutDubeol.swift */; };
+		0D5F994CDF9FF1B40F66125B /* App/SSHConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 158E4F855C565ABDC1CFFB86 /* App/SSHConnection.swift */; };
+		0DA292C81D726A55CA469326 /* App/Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E0C46FC9C6960273B8657C66 /* App/Assets.xcassets */; };
+		0DD9EF62E80E8299762484B3 /* Shared/KeyboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E6B400ABFF2670652131CD0 /* Shared/KeyboardView.swift */; };
+		107C26489ACD52950B1DF9E1 /* ../Sources/Sebeol390Core/LearnedWords.swift in Sources */ = {isa = PBXBuildFile; fileRef = 842090D8F241AECFE83E2C32 /* ../Sources/Sebeol390Core/LearnedWords.swift */; };
+		11F17302659B932EB22940F8 /* ../Sources/Sebeol390Core/KeyboardLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B51C9EF15A08CE0D4822ECD /* ../Sources/Sebeol390Core/KeyboardLayout.swift */; };
+		1EDC872B82DE6667D579CC5D /* ../Resources/korean-valid.LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = 64E024BA63873A8760E50879 /* ../Resources/korean-valid.LICENSE */; };
+		20FE4B6B8D9D97B44EAAA391 /* App/ThirdParty/D2Coding-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = D428FBCEB0F4C90E3B44F239 /* App/ThirdParty/D2Coding-OFL.txt */; };
+		2163F6F5F70EA222C0BA99FA /* ../Sources/Sebeol390Core/TypoLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26011EC1235491EA19ACD58C /* ../Sources/Sebeol390Core/TypoLog.swift */; };
+		2212CD255B50271F456F4C58 /* App/HardwareTextEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A37900721EB46DEB4F8BA6C /* App/HardwareTextEditor.swift */; };
+		287FFF9C68C9D7C3CE2368CE /* NIOSSH in Frameworks */ = {isa = PBXBuildFile; productRef = 4493DC94DE7F0450129656A8 /* NIOSSH */; };
+		2E32415B0E26A27FE9A3F3AF /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 1EE743F7EEC7A4EDAFB26FA0 /* SwiftTerm */; };
+		2FA1F019C212F2AB972C41E3 /* ../Resources/english-extra.txt in Resources */ = {isa = PBXBuildFile; fileRef = C8B800727112BB43FDD5F5CA /* ../Resources/english-extra.txt */; };
+		331FC04096E519285C276CAA /* App/ThirdParty/D2Coding-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = D428FBCEB0F4C90E3B44F239 /* App/ThirdParty/D2Coding-OFL.txt */; };
+		3453E3902757FB649D2324C6 /* ../Sources/Sebeol390Core/Hangul.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3310BA53902080A77EEF25B0 /* ../Sources/Sebeol390Core/Hangul.swift */; };
+		39F86DF605EAB4EC38DBD073 /* ../Sources/Sebeol390Core/Hangul.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3310BA53902080A77EEF25B0 /* ../Sources/Sebeol390Core/Hangul.swift */; };
+		3A64FFB786F713C8F990939B /* ../Sources/Sebeol390Core/Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3066C826224BCCCDD65B012C /* ../Sources/Sebeol390Core/Session.swift */; };
+		3A932D0E53ABFF44F186C0CA /* ../Resources/korean-words.txt in Resources */ = {isa = PBXBuildFile; fileRef = 78B4725E6FC13C8F40ECB7AB /* ../Resources/korean-words.txt */; };
+		3DCAE9B5F2F48529A065E483 /* App/Sebeol390App.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDB2E328BCEA43E95B531045 /* App/Sebeol390App.swift */; };
+		4872C74F4A2CBAD59C1D5453 /* Keyboard/Resources/keyboard-english.txt in Resources */ = {isa = PBXBuildFile; fileRef = 1FA66026E69086AF967D4DF3 /* Keyboard/Resources/keyboard-english.txt */; };
+		4C922E5E1059F944D3C773BB /* ../Sources/Sebeol390Core/KeyboardReplacement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35A78681711DC3600C96D76C /* ../Sources/Sebeol390Core/KeyboardReplacement.swift */; };
+		4CC916D0416C0A9F033091CA /* ../Sources/Sebeol390Core/Composer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 639BACC3F24F8983E4F9FBF7 /* ../Sources/Sebeol390Core/Composer.swift */; };
+		4F4F103F35C39985FF787ECD /* App/Fonts/D2Coding-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 8D4E8606294DBB25FBAF1CEB /* App/Fonts/D2Coding-Regular.ttf */; };
+		4FC5C72B5AC2F75EDC410DE2 /* ../Sources/Sebeol390Core/TypingStatistics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F4F54D243D0C3A1CBAD18B3 /* ../Sources/Sebeol390Core/TypingStatistics.swift */; };
+		54752BD6E8B9D6ED8856ACCC /* ../Sources/Sebeol390Core/Layout390.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8E2FD5A2FF0E03FEB03B7A6 /* ../Sources/Sebeol390Core/Layout390.swift */; };
+		571332CF34AFF7B37AB2FD7E /* ../Sources/Sebeol390Core/TypoCorrector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C0357685B9DE8B50BE20847 /* ../Sources/Sebeol390Core/TypoCorrector.swift */; };
+		5BBDA0F1E889031AD3C6122F /* Shared/KeyboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E6B400ABFF2670652131CD0 /* Shared/KeyboardView.swift */; };
+		5CF90438474EE59CE190C8BE /* ../Sources/Sebeol390Core/LayoutFinal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E07948797F233D90818AC67 /* ../Sources/Sebeol390Core/LayoutFinal.swift */; };
+		5D2194FD76B7CC568CEA6982 /* ../Sources/Sebeol390Core/LearnedWords.swift in Sources */ = {isa = PBXBuildFile; fileRef = 842090D8F241AECFE83E2C32 /* ../Sources/Sebeol390Core/LearnedWords.swift */; };
+		6ED2591934C9D6183871C5A3 /* Tests/SSHRemoteEditorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 500D6BB9065DFFA071674729 /* Tests/SSHRemoteEditorTests.swift */; };
+		704D9B3BEBB5F7A52DB06C8D /* ../Sources/Sebeol390Core/KeyboardLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B51C9EF15A08CE0D4822ECD /* ../Sources/Sebeol390Core/KeyboardLayout.swift */; };
+		767320929A1ACEC528CA4538 /* ../Resources/english-words.txt in Resources */ = {isa = PBXBuildFile; fileRef = 736A61A2816A5EBB19BF16CF /* ../Resources/english-words.txt */; };
+		7B0A4FF0B9A4F792F72B5D2C /* ../Sources/Sebeol390Core/TypoLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26011EC1235491EA19ACD58C /* ../Sources/Sebeol390Core/TypoLog.swift */; };
+		7DCDE64E46FA314505EE9491 /* Sebeol390Keyboard.appex in CopyFiles */ = {isa = PBXBuildFile; fileRef = 098F4803AC6D5B96AF2DFDBE /* Sebeol390Keyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		7E1F9333CDE8250F80B3E83B /* App/MarkVectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 560D04D07EED8CE9C1EFC6FF /* App/MarkVectorView.swift */; };
+		806B3CCECF813E03EF3FA3A8 /* ../NOTICE in Resources */ = {isa = PBXBuildFile; fileRef = AB22B8B15C1C91DF29794AE4 /* ../NOTICE */; };
+		813EAA564C023F9125E915EF /* Tests/HardwareTextEditorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C95FF4FEAB2A0F3EF6DCDF4 /* Tests/HardwareTextEditorTests.swift */; };
+		8330000004429EE0B7CC347D /* ../Sources/Sebeol390Core/WordSuggestions.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF1E227FA25A61C39708B1F9 /* ../Sources/Sebeol390Core/WordSuggestions.swift */; };
+		834E15F0EDAAE703F19B403C /* ../Sources/Sebeol390Core/HardwareKeymap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83E74BEEED3230B4EBF005E1 /* ../Sources/Sebeol390Core/HardwareKeymap.swift */; };
+		87A1CF807AB2E775183EDE71 /* NIOConcurrencyHelpers in Frameworks */ = {isa = PBXBuildFile; productRef = EBEFC7EC83473136E3A14045 /* NIOConcurrencyHelpers */; };
+		88944C2AAA5C68130491B56B /* ../Sources/Sebeol390Core/WordSuggestions.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF1E227FA25A61C39708B1F9 /* ../Sources/Sebeol390Core/WordSuggestions.swift */; };
+		8B736594C76318DD91F0C8AA /* Tests/SSHServerStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF56CAD955CCBFF7F3B073E8 /* Tests/SSHServerStoreTests.swift */; };
+		8D70E2C92D2CDE71364B0DC9 /* App/TerminalInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23827CEBC0430F2C2C98C1C5 /* App/TerminalInput.swift */; };
+		906427A9614B0ADB2D76D673 /* ../Sources/Sebeol390Core/Layout390.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8E2FD5A2FF0E03FEB03B7A6 /* ../Sources/Sebeol390Core/Layout390.swift */; };
+		9330C430C76D950BBCF9FE6C /* App/ThirdParty/SwiftTerm-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 379549B53B6DE29C71CAE10B /* App/ThirdParty/SwiftTerm-LICENSE.txt */; };
+		9575155462F77D9893D6BA14 /* App/SSHTerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 921F9E533E76A616133CF198 /* App/SSHTerminalView.swift */; };
+		971008BAC2822116E7875726 /* ../Sources/Sebeol390Core/HardwareKeymap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83E74BEEED3230B4EBF005E1 /* ../Sources/Sebeol390Core/HardwareKeymap.swift */; };
+		97195C94C1996C7954EC3C86 /* ../Sources/Sebeol390Core/Keymap.swift in Sources */ = {isa = PBXBuildFile; fileRef = A91C3D2799C9003433D87125 /* ../Sources/Sebeol390Core/Keymap.swift */; };
+		973FC91A6AA03E656C3AB67F /* App/Fonts/D2Coding-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9C892AAD53FC7F46BC7F0D5E /* App/Fonts/D2Coding-Bold.ttf */; };
+		98F4D19968F26DA0A6702C2E /* ../Resources/korean-words.txt in Resources */ = {isa = PBXBuildFile; fileRef = 78B4725E6FC13C8F40ECB7AB /* ../Resources/korean-words.txt */; };
+		A14F64810D07744617E343DA /* ../Sources/Sebeol390Core/Keymap.swift in Sources */ = {isa = PBXBuildFile; fileRef = A91C3D2799C9003433D87125 /* ../Sources/Sebeol390Core/Keymap.swift */; };
+		A566750A42DA0090366D3F8E /* NIOPosix in Frameworks */ = {isa = PBXBuildFile; productRef = C1D36A5F230BE3EB7AC369C3 /* NIOPosix */; };
+		A87A97ABA7A3B711E0F1CF26 /* App/ThirdParty/SwiftTerm-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 379549B53B6DE29C71CAE10B /* App/ThirdParty/SwiftTerm-LICENSE.txt */; };
+		A8BB1FFFA7B904F153AEBFED /* App/SSHServerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7970FCF68F771BE6475059BA /* App/SSHServerStore.swift */; };
+		AED46CBD6FB45189C32654B9 /* App/MarkVectorLiveSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = F64BBBD277520A73AD1DCABF /* App/MarkVectorLiveSync.swift */; };
+		B49BFA45A7E98D6F96B53979 /* ../Sources/Sebeol390Core/Composer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 639BACC3F24F8983E4F9FBF7 /* ../Sources/Sebeol390Core/Composer.swift */; };
+		B522CCCCFA9D561C137AB28D /* ../Sources/Sebeol390Core/Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3066C826224BCCCDD65B012C /* ../Sources/Sebeol390Core/Session.swift */; };
+		B6D39AD6AA7F21671DABF731 /* App/SSHRemoteEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB9F4AF476D2009525D13454 /* App/SSHRemoteEditor.swift */; };
+		B9DCD4228BB27EE591851C6B /* ../LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = 706EE53880DE10DF518DA7E8 /* ../LICENSE */; };
+		BE72F8786B82DE55F6CB0E3F /* App/Fonts/D2Coding-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9C892AAD53FC7F46BC7F0D5E /* App/Fonts/D2Coding-Bold.ttf */; };
+		C33884AB3E0B6CB776C05CF4 /* ../Sources/Sebeol390Core/AddressBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A59E2A0CC3CA8535751E9CFE /* ../Sources/Sebeol390Core/AddressBar.swift */; };
+		CB4A7557272E97ABA8C8AD97 /* ../Sources/Sebeol390Core/LayoutFinal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E07948797F233D90818AC67 /* ../Sources/Sebeol390Core/LayoutFinal.swift */; };
+		CBEFEF1850490E1046488929 /* Keyboard/KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAF07ABCC8BAD6B752453E66 /* Keyboard/KeyboardViewController.swift */; };
+		D63F7EE0CB0D01DA73832A96 /* ../Sources/Sebeol390Core/KeyboardReplacement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35A78681711DC3600C96D76C /* ../Sources/Sebeol390Core/KeyboardReplacement.swift */; };
+		D7AA909927EBD80E8EFF962D /* ../LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = 706EE53880DE10DF518DA7E8 /* ../LICENSE */; };
+		DCA469D326AF30B044BC5D76 /* ../Sources/Sebeol390Core/Lexicon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83A10659F5A957B3CEAA5739 /* ../Sources/Sebeol390Core/Lexicon.swift */; };
+		E3E07875F178E12B1EDB897D /* Keyboard/Resources/keyboard-korean-valid.txt in Resources */ = {isa = PBXBuildFile; fileRef = 86484978F49E45E9DBB09649 /* Keyboard/Resources/keyboard-korean-valid.txt */; };
+		E9075056DBA69EE7F75DE4CD /* ../Sources/Sebeol390Core/Lexicon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83A10659F5A957B3CEAA5739 /* ../Sources/Sebeol390Core/Lexicon.swift */; };
+		EAD5DB9C884262C8BA9A0574 /* ../Sources/Sebeol390Core/AddressBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A59E2A0CC3CA8535751E9CFE /* ../Sources/Sebeol390Core/AddressBar.swift */; };
+		ED705C962E9CC8F73DC162F2 /* ../NOTICE in Resources */ = {isa = PBXBuildFile; fileRef = AB22B8B15C1C91DF29794AE4 /* ../NOTICE */; };
+		F2AE57B5015CD49FF5456E12 /* NIOCore in Frameworks */ = {isa = PBXBuildFile; productRef = 0058AA893234BA33353E0586 /* NIOCore */; };
+		F2D3F5DA77F1F6A504B35EF2 /* ../Resources/korean-valid.LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = 64E024BA63873A8760E50879 /* ../Resources/korean-valid.LICENSE */; };
+		F34F8D99BAF1073EFB85893E /* ../Sources/Sebeol390Core/TypoCorrector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C0357685B9DE8B50BE20847 /* ../Sources/Sebeol390Core/TypoCorrector.swift */; };
+		F4DA716F6371EC341AF1B824 /* ../Sources/Sebeol390Core/LayoutDubeol.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB3B8D82FDEC875F75E2C62D /* ../Sources/Sebeol390Core/LayoutDubeol.swift */; };
+		FAA68E469184E4872E8FE245 /* App/Fonts/D2Coding-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 8D4E8606294DBB25FBAF1CEB /* App/Fonts/D2Coding-Regular.ttf */; };
+		FC03DB9AE4E7BD425A0E4DF9 /* ../Resources/korean-valid.txt in Resources */ = {isa = PBXBuildFile; fileRef = 2DAD22EB3C71580F1F16DC5A /* ../Resources/korean-valid.txt */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		7E85D4A68785761E1DBB22D8 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 98F54143AB4E86B28C3AFEE0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CFE2A861A679F6A2265A66F3;
+			remoteInfo = Sebeol390;
+		};
+		D799BAE6088A90139B415FCC /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 98F54143AB4E86B28C3AFEE0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D29B8974E88C00C0364C5FAF;
+			remoteInfo = Sebeol390Keyboard;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		CFFF27C96089B93150F3553B /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				7DCDE64E46FA314505EE9491 /* Sebeol390Keyboard.appex in CopyFiles */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		098F4803AC6D5B96AF2DFDBE /* Sebeol390Keyboard.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; path = Sebeol390Keyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		158E4F855C565ABDC1CFFB86 /* App/SSHConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/SSHConnection.swift; sourceTree = SOURCE_ROOT; };
+		1E07948797F233D90818AC67 /* ../Sources/Sebeol390Core/LayoutFinal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/LayoutFinal.swift; sourceTree = SOURCE_ROOT; };
+		1E13EBF6BF9AD36B27FB1716 /* Sebeol390.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; path = Sebeol390.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1FA66026E69086AF967D4DF3 /* Keyboard/Resources/keyboard-english.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Keyboard/Resources/keyboard-english.txt"; sourceTree = SOURCE_ROOT; };
+		23827CEBC0430F2C2C98C1C5 /* App/TerminalInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/TerminalInput.swift; sourceTree = SOURCE_ROOT; };
+		26011EC1235491EA19ACD58C /* ../Sources/Sebeol390Core/TypoLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/TypoLog.swift; sourceTree = SOURCE_ROOT; };
+		2C95FF4FEAB2A0F3EF6DCDF4 /* Tests/HardwareTextEditorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/HardwareTextEditorTests.swift; sourceTree = SOURCE_ROOT; };
+		2DAD22EB3C71580F1F16DC5A /* ../Resources/korean-valid.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "../Resources/korean-valid.txt"; sourceTree = SOURCE_ROOT; };
+		3066C826224BCCCDD65B012C /* ../Sources/Sebeol390Core/Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/Session.swift; sourceTree = SOURCE_ROOT; };
+		3310BA53902080A77EEF25B0 /* ../Sources/Sebeol390Core/Hangul.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/Hangul.swift; sourceTree = SOURCE_ROOT; };
+		35A78681711DC3600C96D76C /* ../Sources/Sebeol390Core/KeyboardReplacement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/KeyboardReplacement.swift; sourceTree = SOURCE_ROOT; };
+		379549B53B6DE29C71CAE10B /* App/ThirdParty/SwiftTerm-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "App/ThirdParty/SwiftTerm-LICENSE.txt"; sourceTree = SOURCE_ROOT; };
+		3C0357685B9DE8B50BE20847 /* ../Sources/Sebeol390Core/TypoCorrector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/TypoCorrector.swift; sourceTree = SOURCE_ROOT; };
+		4E6B400ABFF2670652131CD0 /* Shared/KeyboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/KeyboardView.swift; sourceTree = SOURCE_ROOT; };
+		500D6BB9065DFFA071674729 /* Tests/SSHRemoteEditorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/SSHRemoteEditorTests.swift; sourceTree = SOURCE_ROOT; };
+		560D04D07EED8CE9C1EFC6FF /* App/MarkVectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/MarkVectorView.swift; sourceTree = SOURCE_ROOT; };
+		5F4F54D243D0C3A1CBAD18B3 /* ../Sources/Sebeol390Core/TypingStatistics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/TypingStatistics.swift; sourceTree = SOURCE_ROOT; };
+		639BACC3F24F8983E4F9FBF7 /* ../Sources/Sebeol390Core/Composer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/Composer.swift; sourceTree = SOURCE_ROOT; };
+		64E024BA63873A8760E50879 /* ../Resources/korean-valid.LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = "../Resources/korean-valid.LICENSE"; sourceTree = SOURCE_ROOT; };
+		6A37900721EB46DEB4F8BA6C /* App/HardwareTextEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/HardwareTextEditor.swift; sourceTree = SOURCE_ROOT; };
+		6C7CCDEB3609F1FAA874E941 /* Sebeol390Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = Sebeol390Tests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		706EE53880DE10DF518DA7E8 /* ../LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = ../LICENSE; sourceTree = SOURCE_ROOT; };
+		736A61A2816A5EBB19BF16CF /* ../Resources/english-words.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "../Resources/english-words.txt"; sourceTree = SOURCE_ROOT; };
+		78B4725E6FC13C8F40ECB7AB /* ../Resources/korean-words.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "../Resources/korean-words.txt"; sourceTree = SOURCE_ROOT; };
+		7970FCF68F771BE6475059BA /* App/SSHServerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/SSHServerStore.swift; sourceTree = SOURCE_ROOT; };
+		83A10659F5A957B3CEAA5739 /* ../Sources/Sebeol390Core/Lexicon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/Lexicon.swift; sourceTree = SOURCE_ROOT; };
+		83E74BEEED3230B4EBF005E1 /* ../Sources/Sebeol390Core/HardwareKeymap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/HardwareKeymap.swift; sourceTree = SOURCE_ROOT; };
+		842090D8F241AECFE83E2C32 /* ../Sources/Sebeol390Core/LearnedWords.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/LearnedWords.swift; sourceTree = SOURCE_ROOT; };
+		86484978F49E45E9DBB09649 /* Keyboard/Resources/keyboard-korean-valid.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Keyboard/Resources/keyboard-korean-valid.txt"; sourceTree = SOURCE_ROOT; };
+		8D4E8606294DBB25FBAF1CEB /* App/Fonts/D2Coding-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = text; path = "App/Fonts/D2Coding-Regular.ttf"; sourceTree = SOURCE_ROOT; };
+		921F9E533E76A616133CF198 /* App/SSHTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/SSHTerminalView.swift; sourceTree = SOURCE_ROOT; };
+		9B51C9EF15A08CE0D4822ECD /* ../Sources/Sebeol390Core/KeyboardLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/KeyboardLayout.swift; sourceTree = SOURCE_ROOT; };
+		9C892AAD53FC7F46BC7F0D5E /* App/Fonts/D2Coding-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = text; path = "App/Fonts/D2Coding-Bold.ttf"; sourceTree = SOURCE_ROOT; };
+		A59E2A0CC3CA8535751E9CFE /* ../Sources/Sebeol390Core/AddressBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/AddressBar.swift; sourceTree = SOURCE_ROOT; };
+		A8E2FD5A2FF0E03FEB03B7A6 /* ../Sources/Sebeol390Core/Layout390.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/Layout390.swift; sourceTree = SOURCE_ROOT; };
+		A91C3D2799C9003433D87125 /* ../Sources/Sebeol390Core/Keymap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/Keymap.swift; sourceTree = SOURCE_ROOT; };
+		AB22B8B15C1C91DF29794AE4 /* ../NOTICE */ = {isa = PBXFileReference; lastKnownFileType = text; path = ../NOTICE; sourceTree = SOURCE_ROOT; };
+		AB9F4AF476D2009525D13454 /* App/SSHRemoteEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/SSHRemoteEditor.swift; sourceTree = SOURCE_ROOT; };
+		BF1E227FA25A61C39708B1F9 /* ../Sources/Sebeol390Core/WordSuggestions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/WordSuggestions.swift; sourceTree = SOURCE_ROOT; };
+		C8B800727112BB43FDD5F5CA /* ../Resources/english-extra.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "../Resources/english-extra.txt"; sourceTree = SOURCE_ROOT; };
+		CB3B8D82FDEC875F75E2C62D /* ../Sources/Sebeol390Core/LayoutDubeol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/Sebeol390Core/LayoutDubeol.swift; sourceTree = SOURCE_ROOT; };
+		CF56CAD955CCBFF7F3B073E8 /* Tests/SSHServerStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tests/SSHServerStoreTests.swift; sourceTree = SOURCE_ROOT; };
+		D428FBCEB0F4C90E3B44F239 /* App/ThirdParty/D2Coding-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "App/ThirdParty/D2Coding-OFL.txt"; sourceTree = SOURCE_ROOT; };
+		DAF07ABCC8BAD6B752453E66 /* Keyboard/KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keyboard/KeyboardViewController.swift; sourceTree = SOURCE_ROOT; };
+		DDB2E328BCEA43E95B531045 /* App/Sebeol390App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/Sebeol390App.swift; sourceTree = SOURCE_ROOT; };
+		E0C46FC9C6960273B8657C66 /* App/Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = App/Assets.xcassets; sourceTree = SOURCE_ROOT; };
+		F64BBBD277520A73AD1DCABF /* App/MarkVectorLiveSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/MarkVectorLiveSync.swift; sourceTree = SOURCE_ROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		BD92572B49AC16A86614498D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2E32415B0E26A27FE9A3F3AF /* SwiftTerm in Frameworks */,
+				287FFF9C68C9D7C3CE2368CE /* NIOSSH in Frameworks */,
+				F2AE57B5015CD49FF5456E12 /* NIOCore in Frameworks */,
+				A566750A42DA0090366D3F8E /* NIOPosix in Frameworks */,
+				87A1CF807AB2E775183EDE71 /* NIOConcurrencyHelpers in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		870B3294C0CBD48AF6BBCC1B = {
+			isa = PBXGroup;
+			children = (
+				A59E2A0CC3CA8535751E9CFE /* ../Sources/Sebeol390Core/AddressBar.swift */,
+				639BACC3F24F8983E4F9FBF7 /* ../Sources/Sebeol390Core/Composer.swift */,
+				3310BA53902080A77EEF25B0 /* ../Sources/Sebeol390Core/Hangul.swift */,
+				83E74BEEED3230B4EBF005E1 /* ../Sources/Sebeol390Core/HardwareKeymap.swift */,
+				9B51C9EF15A08CE0D4822ECD /* ../Sources/Sebeol390Core/KeyboardLayout.swift */,
+				35A78681711DC3600C96D76C /* ../Sources/Sebeol390Core/KeyboardReplacement.swift */,
+				A91C3D2799C9003433D87125 /* ../Sources/Sebeol390Core/Keymap.swift */,
+				A8E2FD5A2FF0E03FEB03B7A6 /* ../Sources/Sebeol390Core/Layout390.swift */,
+				CB3B8D82FDEC875F75E2C62D /* ../Sources/Sebeol390Core/LayoutDubeol.swift */,
+				1E07948797F233D90818AC67 /* ../Sources/Sebeol390Core/LayoutFinal.swift */,
+				842090D8F241AECFE83E2C32 /* ../Sources/Sebeol390Core/LearnedWords.swift */,
+				83A10659F5A957B3CEAA5739 /* ../Sources/Sebeol390Core/Lexicon.swift */,
+				3066C826224BCCCDD65B012C /* ../Sources/Sebeol390Core/Session.swift */,
+				5F4F54D243D0C3A1CBAD18B3 /* ../Sources/Sebeol390Core/TypingStatistics.swift */,
+				3C0357685B9DE8B50BE20847 /* ../Sources/Sebeol390Core/TypoCorrector.swift */,
+				26011EC1235491EA19ACD58C /* ../Sources/Sebeol390Core/TypoLog.swift */,
+				BF1E227FA25A61C39708B1F9 /* ../Sources/Sebeol390Core/WordSuggestions.swift */,
+				4E6B400ABFF2670652131CD0 /* Shared/KeyboardView.swift */,
+				DDB2E328BCEA43E95B531045 /* App/Sebeol390App.swift */,
+				6A37900721EB46DEB4F8BA6C /* App/HardwareTextEditor.swift */,
+				560D04D07EED8CE9C1EFC6FF /* App/MarkVectorView.swift */,
+				F64BBBD277520A73AD1DCABF /* App/MarkVectorLiveSync.swift */,
+				921F9E533E76A616133CF198 /* App/SSHTerminalView.swift */,
+				7970FCF68F771BE6475059BA /* App/SSHServerStore.swift */,
+				158E4F855C565ABDC1CFFB86 /* App/SSHConnection.swift */,
+				AB9F4AF476D2009525D13454 /* App/SSHRemoteEditor.swift */,
+				23827CEBC0430F2C2C98C1C5 /* App/TerminalInput.swift */,
+				DAF07ABCC8BAD6B752453E66 /* Keyboard/KeyboardViewController.swift */,
+				736A61A2816A5EBB19BF16CF /* ../Resources/english-words.txt */,
+				C8B800727112BB43FDD5F5CA /* ../Resources/english-extra.txt */,
+				78B4725E6FC13C8F40ECB7AB /* ../Resources/korean-words.txt */,
+				2DAD22EB3C71580F1F16DC5A /* ../Resources/korean-valid.txt */,
+				64E024BA63873A8760E50879 /* ../Resources/korean-valid.LICENSE */,
+				706EE53880DE10DF518DA7E8 /* ../LICENSE */,
+				AB22B8B15C1C91DF29794AE4 /* ../NOTICE */,
+				379549B53B6DE29C71CAE10B /* App/ThirdParty/SwiftTerm-LICENSE.txt */,
+				D428FBCEB0F4C90E3B44F239 /* App/ThirdParty/D2Coding-OFL.txt */,
+				8D4E8606294DBB25FBAF1CEB /* App/Fonts/D2Coding-Regular.ttf */,
+				9C892AAD53FC7F46BC7F0D5E /* App/Fonts/D2Coding-Bold.ttf */,
+				E0C46FC9C6960273B8657C66 /* App/Assets.xcassets */,
+				1FA66026E69086AF967D4DF3 /* Keyboard/Resources/keyboard-english.txt */,
+				86484978F49E45E9DBB09649 /* Keyboard/Resources/keyboard-korean-valid.txt */,
+				2C95FF4FEAB2A0F3EF6DCDF4 /* Tests/HardwareTextEditorTests.swift */,
+				500D6BB9065DFFA071674729 /* Tests/SSHRemoteEditorTests.swift */,
+				CF56CAD955CCBFF7F3B073E8 /* Tests/SSHServerStoreTests.swift */,
+				FBDC4F23F93125BBEEAE800C /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		FBDC4F23F93125BBEEAE800C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				098F4803AC6D5B96AF2DFDBE /* Sebeol390Keyboard.appex */,
+				1E13EBF6BF9AD36B27FB1716 /* Sebeol390.app */,
+				6C7CCDEB3609F1FAA874E941 /* Sebeol390Tests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		C062A5A4A7F4F37DD90F54CB /* Sebeol390Tests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 19170B56EA5642A46C383F29 /* Build configuration list for PBXNativeTarget "Sebeol390Tests" */;
+			buildPhases = (
+				78A10A681B05EBFA9A1352B2 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				BAE932EF166B50AB877FDC6F /* PBXTargetDependency */,
+			);
+			name = Sebeol390Tests;
+			productName = Sebeol390Tests;
+			productReference = 6C7CCDEB3609F1FAA874E941 /* Sebeol390Tests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		CFE2A861A679F6A2265A66F3 /* Sebeol390 */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AD3696F24152640C40433D07 /* Build configuration list for PBXNativeTarget "Sebeol390" */;
+			buildPhases = (
+				364F3F68DB46511FFD8DDA44 /* Sources */,
+				565E23D03667591DEF8A8C74 /* Resources */,
+				BD92572B49AC16A86614498D /* Frameworks */,
+				CFFF27C96089B93150F3553B /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				DE58E2B17C19600779694943 /* PBXTargetDependency */,
+			);
+			name = Sebeol390;
+			packageProductDependencies = (
+				1EE743F7EEC7A4EDAFB26FA0 /* SwiftTerm */,
+				4493DC94DE7F0450129656A8 /* NIOSSH */,
+				0058AA893234BA33353E0586 /* NIOCore */,
+				C1D36A5F230BE3EB7AC369C3 /* NIOPosix */,
+				EBEFC7EC83473136E3A14045 /* NIOConcurrencyHelpers */,
+			);
+			productName = Sebeol390;
+			productReference = 1E13EBF6BF9AD36B27FB1716 /* Sebeol390.app */;
+			productType = "com.apple.product-type.application";
+		};
+		D29B8974E88C00C0364C5FAF /* Sebeol390Keyboard */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A462C3DF93A79C039BC68D1B /* Build configuration list for PBXNativeTarget "Sebeol390Keyboard" */;
+			buildPhases = (
+				AAC440C79F0338940797C53D /* Sources */,
+				40729C9C3BB0C495B34138D5 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Sebeol390Keyboard;
+			packageProductDependencies = (
+			);
+			productName = Sebeol390Keyboard;
+			productReference = 098F4803AC6D5B96AF2DFDBE /* Sebeol390Keyboard.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		98F54143AB4E86B28C3AFEE0 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 1600;
+			};
+			buildConfigurationList = 640DC9EFD529235A8D9E2727 /* Build configuration list for PBXProject "Sebeol390" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = ko;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				ko,
+				en,
+				Base,
+			);
+			mainGroup = 870B3294C0CBD48AF6BBCC1B;
+			packageReferences = (
+				FD63323E7222A9BCF39B8F74 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
+				2A2D36B7557CD8EAF0A9AB3C /* XCRemoteSwiftPackageReference "swift-nio-ssh" */,
+				929DC773ADFA37F5E4106AEF /* XCRemoteSwiftPackageReference "swift-nio" */,
+			);
+			productRefGroup = FBDC4F23F93125BBEEAE800C /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				D29B8974E88C00C0364C5FAF /* Sebeol390Keyboard */,
+				CFE2A861A679F6A2265A66F3 /* Sebeol390 */,
+				C062A5A4A7F4F37DD90F54CB /* Sebeol390Tests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		40729C9C3BB0C495B34138D5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3A932D0E53ABFF44F186C0CA /* ../Resources/korean-words.txt in Resources */,
+				F2D3F5DA77F1F6A504B35EF2 /* ../Resources/korean-valid.LICENSE in Resources */,
+				B9DCD4228BB27EE591851C6B /* ../LICENSE in Resources */,
+				806B3CCECF813E03EF3FA3A8 /* ../NOTICE in Resources */,
+				9330C430C76D950BBCF9FE6C /* App/ThirdParty/SwiftTerm-LICENSE.txt in Resources */,
+				20FE4B6B8D9D97B44EAAA391 /* App/ThirdParty/D2Coding-OFL.txt in Resources */,
+				4F4F103F35C39985FF787ECD /* App/Fonts/D2Coding-Regular.ttf in Resources */,
+				BE72F8786B82DE55F6CB0E3F /* App/Fonts/D2Coding-Bold.ttf in Resources */,
+				4872C74F4A2CBAD59C1D5453 /* Keyboard/Resources/keyboard-english.txt in Resources */,
+				E3E07875F178E12B1EDB897D /* Keyboard/Resources/keyboard-korean-valid.txt in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		565E23D03667591DEF8A8C74 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				767320929A1ACEC528CA4538 /* ../Resources/english-words.txt in Resources */,
+				2FA1F019C212F2AB972C41E3 /* ../Resources/english-extra.txt in Resources */,
+				98F4D19968F26DA0A6702C2E /* ../Resources/korean-words.txt in Resources */,
+				FC03DB9AE4E7BD425A0E4DF9 /* ../Resources/korean-valid.txt in Resources */,
+				1EDC872B82DE6667D579CC5D /* ../Resources/korean-valid.LICENSE in Resources */,
+				D7AA909927EBD80E8EFF962D /* ../LICENSE in Resources */,
+				ED705C962E9CC8F73DC162F2 /* ../NOTICE in Resources */,
+				A87A97ABA7A3B711E0F1CF26 /* App/ThirdParty/SwiftTerm-LICENSE.txt in Resources */,
+				331FC04096E519285C276CAA /* App/ThirdParty/D2Coding-OFL.txt in Resources */,
+				FAA68E469184E4872E8FE245 /* App/Fonts/D2Coding-Regular.ttf in Resources */,
+				973FC91A6AA03E656C3AB67F /* App/Fonts/D2Coding-Bold.ttf in Resources */,
+				0DA292C81D726A55CA469326 /* App/Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		364F3F68DB46511FFD8DDA44 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C33884AB3E0B6CB776C05CF4 /* ../Sources/Sebeol390Core/AddressBar.swift in Sources */,
+				4CC916D0416C0A9F033091CA /* ../Sources/Sebeol390Core/Composer.swift in Sources */,
+				3453E3902757FB649D2324C6 /* ../Sources/Sebeol390Core/Hangul.swift in Sources */,
+				971008BAC2822116E7875726 /* ../Sources/Sebeol390Core/HardwareKeymap.swift in Sources */,
+				11F17302659B932EB22940F8 /* ../Sources/Sebeol390Core/KeyboardLayout.swift in Sources */,
+				D63F7EE0CB0D01DA73832A96 /* ../Sources/Sebeol390Core/KeyboardReplacement.swift in Sources */,
+				A14F64810D07744617E343DA /* ../Sources/Sebeol390Core/Keymap.swift in Sources */,
+				54752BD6E8B9D6ED8856ACCC /* ../Sources/Sebeol390Core/Layout390.swift in Sources */,
+				F4DA716F6371EC341AF1B824 /* ../Sources/Sebeol390Core/LayoutDubeol.swift in Sources */,
+				CB4A7557272E97ABA8C8AD97 /* ../Sources/Sebeol390Core/LayoutFinal.swift in Sources */,
+				5D2194FD76B7CC568CEA6982 /* ../Sources/Sebeol390Core/LearnedWords.swift in Sources */,
+				DCA469D326AF30B044BC5D76 /* ../Sources/Sebeol390Core/Lexicon.swift in Sources */,
+				3A64FFB786F713C8F990939B /* ../Sources/Sebeol390Core/Session.swift in Sources */,
+				4FC5C72B5AC2F75EDC410DE2 /* ../Sources/Sebeol390Core/TypingStatistics.swift in Sources */,
+				571332CF34AFF7B37AB2FD7E /* ../Sources/Sebeol390Core/TypoCorrector.swift in Sources */,
+				2163F6F5F70EA222C0BA99FA /* ../Sources/Sebeol390Core/TypoLog.swift in Sources */,
+				8330000004429EE0B7CC347D /* ../Sources/Sebeol390Core/WordSuggestions.swift in Sources */,
+				5BBDA0F1E889031AD3C6122F /* Shared/KeyboardView.swift in Sources */,
+				3DCAE9B5F2F48529A065E483 /* App/Sebeol390App.swift in Sources */,
+				2212CD255B50271F456F4C58 /* App/HardwareTextEditor.swift in Sources */,
+				7E1F9333CDE8250F80B3E83B /* App/MarkVectorView.swift in Sources */,
+				AED46CBD6FB45189C32654B9 /* App/MarkVectorLiveSync.swift in Sources */,
+				9575155462F77D9893D6BA14 /* App/SSHTerminalView.swift in Sources */,
+				A8BB1FFFA7B904F153AEBFED /* App/SSHServerStore.swift in Sources */,
+				0D5F994CDF9FF1B40F66125B /* App/SSHConnection.swift in Sources */,
+				B6D39AD6AA7F21671DABF731 /* App/SSHRemoteEditor.swift in Sources */,
+				8D70E2C92D2CDE71364B0DC9 /* App/TerminalInput.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		78A10A681B05EBFA9A1352B2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				813EAA564C023F9125E915EF /* Tests/HardwareTextEditorTests.swift in Sources */,
+				6ED2591934C9D6183871C5A3 /* Tests/SSHRemoteEditorTests.swift in Sources */,
+				8B736594C76318DD91F0C8AA /* Tests/SSHServerStoreTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AAC440C79F0338940797C53D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EAD5DB9C884262C8BA9A0574 /* ../Sources/Sebeol390Core/AddressBar.swift in Sources */,
+				B49BFA45A7E98D6F96B53979 /* ../Sources/Sebeol390Core/Composer.swift in Sources */,
+				39F86DF605EAB4EC38DBD073 /* ../Sources/Sebeol390Core/Hangul.swift in Sources */,
+				834E15F0EDAAE703F19B403C /* ../Sources/Sebeol390Core/HardwareKeymap.swift in Sources */,
+				704D9B3BEBB5F7A52DB06C8D /* ../Sources/Sebeol390Core/KeyboardLayout.swift in Sources */,
+				4C922E5E1059F944D3C773BB /* ../Sources/Sebeol390Core/KeyboardReplacement.swift in Sources */,
+				97195C94C1996C7954EC3C86 /* ../Sources/Sebeol390Core/Keymap.swift in Sources */,
+				906427A9614B0ADB2D76D673 /* ../Sources/Sebeol390Core/Layout390.swift in Sources */,
+				08DD6DDF76BD17ED63F0CA2C /* ../Sources/Sebeol390Core/LayoutDubeol.swift in Sources */,
+				5CF90438474EE59CE190C8BE /* ../Sources/Sebeol390Core/LayoutFinal.swift in Sources */,
+				107C26489ACD52950B1DF9E1 /* ../Sources/Sebeol390Core/LearnedWords.swift in Sources */,
+				E9075056DBA69EE7F75DE4CD /* ../Sources/Sebeol390Core/Lexicon.swift in Sources */,
+				B522CCCCFA9D561C137AB28D /* ../Sources/Sebeol390Core/Session.swift in Sources */,
+				077BA8799C38E87404865DE8 /* ../Sources/Sebeol390Core/TypingStatistics.swift in Sources */,
+				F34F8D99BAF1073EFB85893E /* ../Sources/Sebeol390Core/TypoCorrector.swift in Sources */,
+				7B0A4FF0B9A4F792F72B5D2C /* ../Sources/Sebeol390Core/TypoLog.swift in Sources */,
+				88944C2AAA5C68130491B56B /* ../Sources/Sebeol390Core/WordSuggestions.swift in Sources */,
+				0DD9EF62E80E8299762484B3 /* Shared/KeyboardView.swift in Sources */,
+				CBEFEF1850490E1046488929 /* Keyboard/KeyboardViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		BAE932EF166B50AB877FDC6F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = CFE2A861A679F6A2265A66F3 /* Sebeol390 */;
+			targetProxy = 7E85D4A68785761E1DBB22D8 /* PBXContainerItemProxy */;
+		};
+		DE58E2B17C19600779694943 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D29B8974E88C00C0364C5FAF /* Sebeol390Keyboard */;
+			targetProxy = D799BAE6088A90139B415FCC /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		2F10CBED68BCC8F9F8FFB51A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = NO;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 5;
+				DEVELOPMENT_TEAM = RZUH4T3FCB;
+				ENABLE_TESTABILITY = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = App/Info.plist;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ias.seto;
+				PRODUCT_NAME = Sebeol390;
+				SKIP_INSTALL = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		7C4929072113781D15F0640C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = NO;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 5;
+				DEVELOPMENT_TEAM = RZUH4T3FCB;
+				ENABLE_TESTABILITY = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = App/Info.plist;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ias.seto;
+				PRODUCT_NAME = Sebeol390;
+				SKIP_INSTALL = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		89E1FD6268CC0F221A2BE178 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		98538B0B2D1791AED302B101 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 5;
+				DEVELOPMENT_TEAM = RZUH4T3FCB;
+				ENABLE_TESTABILITY = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Keyboard/Info.plist;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ias.seto.keyboard;
+				PRODUCT_NAME = Sebeol390Keyboard;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		C449802CFC00FE43A29E0F19 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ias.seto.tests;
+				PRODUCT_NAME = Sebeol390Tests;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Sebeol390.app/Sebeol390";
+			};
+			name = Debug;
+		};
+		C4D458CFDB61996E24F4F16F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ias.seto.tests;
+				PRODUCT_NAME = Sebeol390Tests;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Sebeol390.app/Sebeol390";
+			};
+			name = Release;
+		};
+		E6DE6C99132752C914FEF632 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				ONLY_ACTIVE_ARCH = NO;
+				SDKROOT = iphoneos;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		FE5357497BBE0E735112BC22 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 5;
+				DEVELOPMENT_TEAM = RZUH4T3FCB;
+				ENABLE_TESTABILITY = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Keyboard/Info.plist;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ias.seto.keyboard;
+				PRODUCT_NAME = Sebeol390Keyboard;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		19170B56EA5642A46C383F29 /* Build configuration list for PBXNativeTarget "Sebeol390Tests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C449802CFC00FE43A29E0F19 /* Debug */,
+				C4D458CFDB61996E24F4F16F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		640DC9EFD529235A8D9E2727 /* Build configuration list for PBXProject "Sebeol390" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				89E1FD6268CC0F221A2BE178 /* Debug */,
+				E6DE6C99132752C914FEF632 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A462C3DF93A79C039BC68D1B /* Build configuration list for PBXNativeTarget "Sebeol390Keyboard" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				98538B0B2D1791AED302B101 /* Debug */,
+				FE5357497BBE0E735112BC22 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AD3696F24152640C40433D07 /* Build configuration list for PBXNativeTarget "Sebeol390" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2F10CBED68BCC8F9F8FFB51A /* Debug */,
+				7C4929072113781D15F0640C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		2A2D36B7557CD8EAF0A9AB3C /* XCRemoteSwiftPackageReference "swift-nio-ssh" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-nio-ssh.git";
+			requirement = {
+				kind = revision;
+				revision = d1985926494b624e751b379009dc83f3395fd88a;
+			};
+		};
+		929DC773ADFA37F5E4106AEF /* XCRemoteSwiftPackageReference "swift-nio" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-nio.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.81.0;
+			};
+		};
+		FD63323E7222A9BCF39B8F74 /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm.git";
+			requirement = {
+				kind = revision;
+				revision = 9eccf3548a563f6f91d8e9a06dd98db3086a68d1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		0058AA893234BA33353E0586 /* NIOCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 929DC773ADFA37F5E4106AEF /* XCRemoteSwiftPackageReference "swift-nio" */;
+			productName = NIOCore;
+		};
+		1EE743F7EEC7A4EDAFB26FA0 /* SwiftTerm */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FD63323E7222A9BCF39B8F74 /* XCRemoteSwiftPackageReference "SwiftTerm" */;
+			productName = SwiftTerm;
+		};
+		4493DC94DE7F0450129656A8 /* NIOSSH */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2A2D36B7557CD8EAF0A9AB3C /* XCRemoteSwiftPackageReference "swift-nio-ssh" */;
+			productName = NIOSSH;
+		};
+		C1D36A5F230BE3EB7AC369C3 /* NIOPosix */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 929DC773ADFA37F5E4106AEF /* XCRemoteSwiftPackageReference "swift-nio" */;
+			productName = NIOPosix;
+		};
+		EBEFC7EC83473136E3A14045 /* NIOConcurrencyHelpers */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 929DC773ADFA37F5E4106AEF /* XCRemoteSwiftPackageReference "swift-nio" */;
+			productName = NIOConcurrencyHelpers;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 98F54143AB4E86B28C3AFEE0 /* Project object */;
+}
