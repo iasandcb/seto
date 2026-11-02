@@ -636,6 +636,13 @@ public final class Session {
             return changed
         }
 
+        return selectBestPath(previous: previous, wordFinal: wordFinal)
+    }
+
+    /// Selects a scored path while preserving a still-plausible live reading.
+    /// Keeping this stage separate from the ordered priority rules makes the
+    /// fallback decision easier to inspect without changing rule precedence.
+    private func selectBestPath(previous: [Segment]?, wordFinal: Bool) -> Bool {
         let chosen = bestPath(wordFinal: wordFinal) ?? [Segment(start: 0, end: keys.count, lang: mode)]
         if let previous, let extended = extend(previous, to: keys.count) {
             let extendedScore = score(extended, wordFinal: wordFinal)
