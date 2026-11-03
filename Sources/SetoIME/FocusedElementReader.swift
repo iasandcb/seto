@@ -5,23 +5,67 @@ import SetoCore
 /// Reads the system-wide focused element through Accessibility. Without the
 /// Accessibility permission this returns nil and nothing changes.
 enum FocusedElementReader {
-    nonisolated(unsafe) private static var prompted = false
     nonisolated(unsafe) private static var enabledPID: pid_t = 0
 
     static func addressBarFocused(bundleIdentifier: String?) -> Bool {
         guard AddressBar.isBrowser(bundleIdentifier) else { return false }
         if !AXIsProcessTrusted() {
-            // Ask once per launch, and only when a browser is in use.
-            if !prompted {
-                prompted = true
-                // The value of kAXTrustedCheckOptionPrompt, which Swift 6
-                // treats as shared mutable state.
-                _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
-            }
             return false
         }
         guard let element = focused(bundleIdentifier: bundleIdentifier) else { return false }
         return AddressBar.contains(element, bundleIdentifier: bundleIdentifier)
+    }
+
+    static func textContext() -> AccessibilityTextContext? {
+        guard AXIsProcessTrusted() else { return nil }
+        let system = AXUIElementCreateSystemWide()
+        guard let applicationValue = attribute(system, kAXFocusedApplicationAttribute) else { return nil }
+        let application = applicationValue as! AXUIElement
+        guard let elementValue = attribute(application, kAXFocusedUIElementAttribute),
+              let selectionValue = attribute(elementValue as! AXUIElement, kAXSelectedTextRangeAttribute) else { return nil }
+        let element = elementValue as! AXUIElement
+        var selection = CFRange()
+        guard AXValueGetValue(selectionValue as! AXValue, .cfRange, &selection),
+              selection.location >= 0, selection.length >= 0 else { return nil }
+        if let text = attribute(element, kAXValueAttribute) as? String {
+            return AccessibilityTextContext(
+                element: element,
+                document: text,
+                selection: NSRange(location: selection.location, length: selection.length),
+                documentStart: 0
+            )
+        }
+        guard let number = attribute(element, kAXNumberOfCharactersAttribute) as? NSNumber else { return nil }
+        let count = number.intValue
+        let start = max(0, selection.location - 2_048)
+        let end = min(count, selection.location + selection.length + 2_048)
+        let range = NSRange(location: start, length: end - start)
+        guard let text = string(for: range, in: element), (text as NSString).length == range.length else { return nil }
+        return AccessibilityTextContext(
+            element: element,
+            document: text,
+            selection: NSRange(location: selection.location - start, length: selection.length),
+            documentStart: start
+        )
+    }
+
+    static func select(_ range: NSRange, in element: AXUIElement) -> Bool {
+        var value = CFRange(location: range.location, length: range.length)
+        guard let selection = AXValueCreate(.cfRange, &value) else { return false }
+        return AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, selection) == .success
+    }
+
+    private static func string(for range: NSRange, in element: AXUIElement) -> String? {
+        var value = CFRange(location: range.location, length: range.length)
+        guard let parameter = AXValueCreate(.cfRange, &value) else { return nil }
+        var result: CFTypeRef?
+        guard AXUIElementCopyParameterizedAttributeValue(
+            element,
+            kAXStringForRangeParameterizedAttribute as CFString,
+            parameter,
+            &result
+        ) == .success else { return nil }
+        return result as? String
     }
 
     private static func focused(bundleIdentifier: String?) -> FocusedElement? {
@@ -77,4 +121,11 @@ enum FocusedElementReader {
         guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success else { return nil }
         return value
     }
+}
+
+struct AccessibilityTextContext {
+    let element: AXUIElement
+    let document: String
+    let selection: NSRange
+    let documentStart: Int
 }
