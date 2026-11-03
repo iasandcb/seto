@@ -45,6 +45,7 @@ final class KeyboardView: UIView {
     private var keys: [(UIButton, Character)] = []
     private let keyPreview = KeyPreviewView()
     private var alternates: [ObjectIdentifier: Character] = [:]
+    private var suppressedAlternateActions: Set<ObjectIdentifier> = []
     private weak var previewedButton: UIButton?
     private var previewText: [ObjectIdentifier: () -> String] = [:]
 
@@ -491,10 +492,14 @@ final class KeyboardView: UIView {
     @objc private func holdAlternate(_ hold: UILongPressGestureRecognizer) {
         guard let button = hold.view as? UIButton, let alternate = alternates[ObjectIdentifier(button)] else { return }
         switch hold.state {
+        case .began:
+            suppressedAlternateActions.insert(ObjectIdentifier(button))
         case .ended:
             dismissPreview()
             emitLiteral(alternate)
             if shifted { shifted = false; refresh() }
+        case .cancelled, .failed:
+            suppressedAlternateActions.remove(ObjectIdentifier(button))
         default:
             break
         }
@@ -528,8 +533,15 @@ final class KeyboardView: UIView {
         let button = ImmediateKeyboardButton(type: .custom)
         style(button)
         button.setTitle(title, for: .normal)
-        button.addAction(UIAction { _ in action() }, for: event)
+        button.addAction(UIAction { [weak self, weak button] _ in
+            guard let self, let button, !self.consumeSuppressedAlternateAction(for: button) else { return }
+            action()
+        }, for: event)
         return button
+    }
+
+    private func consumeSuppressedAlternateAction(for button: UIButton) -> Bool {
+        suppressedAlternateActions.remove(ObjectIdentifier(button)) != nil
     }
 }
 

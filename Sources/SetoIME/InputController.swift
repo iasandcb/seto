@@ -35,8 +35,8 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
 
     override func activateServer(_ sender: Any!) {
         super.activateServer(sender)
-        // Terminal and browser address bars start in English; other input
-        // contexts start in Korean.
+        // Browser address bars always start in English. Terminal behavior is
+        // configurable; other input contexts start in Korean.
         // A fresh session
         // also drops the previous field's English context and undo history.
         if !active {
@@ -65,8 +65,9 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     // mock client without an InputMethodKit server connection.
     func beginInputContext(bundleIdentifier: String? = nil, addressBar: Bool = false) {
         let isTerminal = bundleIdentifier == "com.apple.Terminal"
-        let mode: Language = isTerminal || addressBar ? .english : .korean
-        contextAutoSwitchOverride = isTerminal || addressBar ? false : nil
+        let terminalUsesEnglishDefaults = isTerminal && Preferences.terminalUsesEnglishDefaults
+        let mode: Language = terminalUsesEnglishDefaults || addressBar ? .english : .korean
+        contextAutoSwitchOverride = terminalUsesEnglishDefaults || addressBar ? false : nil
         contextCorrectsTyposOverride = addressBar ? false : nil
         pendingAddressBarCheck = !addressBar && AddressBar.isBrowser(bundleIdentifier) ? bundleIdentifier : nil
         session = Self.makeSession(mode: mode)
@@ -122,6 +123,11 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         let isAutoSwitchHotkeyKey = event.keyCode == 0x28 // Physical K
         if isAutoSwitchHotkey, isAutoSwitchHotkeyKey {
             toggleAutoSwitch()
+            return true
+        }
+        let isTerminalDefaultsHotkeyKey = event.keyCode == 0x11 // Physical T
+        if isAutoSwitchHotkey, isTerminalDefaultsHotkeyKey {
+            toggleTerminalDefaults()
             return true
         }
         if shortcutFlags == .control {
@@ -268,6 +274,9 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         let typos = menu.addItem(withTitle: "오타 자동 교정", action: #selector(toggleTypoCorrection(_:)), keyEquivalent: "")
         typos.state = session.correctsTypos ? .on : .off
         typos.target = self
+        let terminal = menu.addItem(withTitle: "터미널: 영문 시작 및 자동 한/영 전환 끄기 (⌃⇧T)", action: #selector(toggleTerminalDefaults(_:)), keyEquivalent: "")
+        terminal.state = Preferences.terminalUsesEnglishDefaults ? .on : .off
+        terminal.target = self
         menu.addItem(.separator())
         let korean = menu.addItem(withTitle: "한글 (\(session.layout.title))", action: #selector(selectKorean(_:)), keyEquivalent: "")
         korean.state = session.mode == .korean ? .on : .off
@@ -388,6 +397,18 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         } else {
             Preferences.correctsTypos = session.correctsTypos
         }
+    }
+
+    @objc private func toggleTerminalDefaults(_ sender: Any?) {
+        toggleTerminalDefaults()
+    }
+
+    private func toggleTerminalDefaults() {
+        Preferences.terminalUsesEnglishDefaults.toggle()
+        guard let client = client(), client.bundleIdentifier() == "com.apple.Terminal" else { return }
+        apply(session.commitDisplayed(), client: client)
+        beginInputContext(bundleIdentifier: "com.apple.Terminal")
+        updateModeStatus()
     }
 
     @objc private func selectLayout(_ sender: NSMenuItem) {
@@ -620,6 +641,7 @@ enum Preferences {
 
     private static let autoSwitchKey = "autoSwitch"
     private static let correctTyposKey = "correctTypos"
+    private static let terminalUsesEnglishDefaultsKey = "terminalUsesEnglishDefaults"
 
     static var autoSwitch: Bool {
         get { stored(autoSwitchKey, default: true) }
@@ -629,6 +651,11 @@ enum Preferences {
     static var correctsTypos: Bool {
         get { stored(correctTyposKey, default: true) }
         set { UserDefaults.standard.set(newValue, forKey: correctTyposKey) }
+    }
+
+    static var terminalUsesEnglishDefaults: Bool {
+        get { stored(terminalUsesEnglishDefaultsKey, default: true) }
+        set { UserDefaults.standard.set(newValue, forKey: terminalUsesEnglishDefaultsKey) }
     }
 
     private static func stored(_ key: String, default fallback: Bool) -> Bool {
