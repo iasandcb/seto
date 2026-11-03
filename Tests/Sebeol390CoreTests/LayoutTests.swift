@@ -1,5 +1,5 @@
 import Testing
-@testable import Sebeol390Core
+@testable import SetoCore
 
 @Test func choseongKeys() {
     expectJamo("k", .choseong, "ㄱ")

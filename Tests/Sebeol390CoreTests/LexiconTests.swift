@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import Sebeol390Core
+@testable import SetoCore
 
 @Test func unixCommandsAreInBundledLexicon() throws {
     let resources = URL(fileURLWithPath: #filePath)

@@ -193,7 +193,7 @@ def format_project(object_values):
     return '\n'.join(lines) + '\n'
 def file(path, kind):
     return obj(path, f'{{isa = PBXFileReference; lastKnownFileType = {kind}; path = {quote(path)}; sourceTree = SOURCE_ROOT;}}')
-core = sorted('../' + str(p.relative_to(repo)) for p in (repo / 'Sources/Sebeol390Core').glob('*.swift'))
+core = sorted('../' + str(p.relative_to(repo)) for p in (repo / 'Sources/SetoCore').glob('*.swift'))
 resources = ['../Resources/' + name for name in ['english-words.txt', 'english-extra.txt', 'korean-words.txt', 'korean-valid.txt', 'korean-valid.LICENSE', '../LICENSE', '../NOTICE']]
 # LICENSE and NOTICE live in the repository root.
 resources = [p.replace('Resources/../', '') for p in resources]

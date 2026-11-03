@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import Sebeol390Core
+@testable import SetoCore
 
 @Test func convertsAnEligibleSecondSpaceWithinFourTenthsOfASecond() {
     let first = Date(timeIntervalSince1970: 100)

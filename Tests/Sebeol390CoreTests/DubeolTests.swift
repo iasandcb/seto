@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import Sebeol390Core
+@testable import SetoCore
 
 @Test func dubeolComposition() {
     for (keys, expected) in [("gksrmf", "한글"), ("dkssudgktpdy", "안녕하세요"), ("rkqt", "값"), ("rkqtdl", "값이"), ("rkrk", "가가"), ("rhk", "과"), ("Rk", "까"), ("rhkr", "곽")] {

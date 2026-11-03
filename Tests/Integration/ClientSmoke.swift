@@ -1,7 +1,7 @@
 import AppKit
 import Carbon
 import InputMethodKit
-import Sebeol390Core
+import SetoCore
 
 final class SmokeClient: NSObject, IMKTextInput {
     var text = ""

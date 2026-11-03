@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import Sebeol390Core
+@testable import SetoCore
 
 private func isolatedStore(capacity: Int = LearnedWords.defaultCapacity) throws -> (LearnedWords, UserDefaults, String) {
     let suite = "Sebeol390.LearnedWords.\(UUID())"

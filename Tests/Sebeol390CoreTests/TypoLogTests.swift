@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import Sebeol390Core
+@testable import SetoCore
 
 @Test func typoLogStoresJsonlAndKeepsTheTail() {
     let directory = FileManager.default.temporaryDirectory

@@ -1,7 +1,7 @@
 # 세토 iPhone 앱
 
 iOS 16 이상을 위한 SwiftUI 안내·연습 앱과 UIKit 키보드 확장입니다.
-`Sources/Sebeol390Core`를 macOS 입력기와 공유합니다. SSH 터미널은 SwiftTerm과 SwiftNIO SSH를 사용합니다.
+`Sources/SetoCore`를 macOS 입력기와 공유합니다. SSH 터미널은 SwiftTerm과 SwiftNIO SSH를 사용합니다.
 
 ## 실행
 
@@ -138,7 +138,7 @@ URLSessionWebSocketTask에 전달합니다. 비밀번호나 별도의 API 토큰
 
 ## macOS 코어 반영
 
-아이폰 앱과 키보드 확장은 `Sources/Sebeol390Core/*.swift`를 직접 빌드하고,
+아이폰 앱과 키보드 확장은 `Sources/SetoCore/*.swift`를 직접 빌드하고,
 macOS와 같은 `Resources` 사전 파일을 번들에 포함합니다. 별도 복사본이나 이전 버전 엔진을
 두지 않으므로 확정 모드 유지·구두점 자모·짧은 셸 명령 인식 등 현재 맥 코어의 개선이
 아이폰 빌드에도 그대로 적용됩니다. 코어 파일 추가 시 프로젝트 재생성을 실행합니다.

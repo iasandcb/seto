@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import Sebeol390Core
+@testable import SetoCore
 
 @Test func suggestionsCompleteOpenKoreanSyllablesAndCorrectTypos() {
     let engine = WordSuggestions(lexicon: Lexicon(english: [], korean: ["안녕", "안녕하세요", "가방", "감사합니다"]))
