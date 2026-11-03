@@ -484,7 +484,7 @@ final class KeyboardView: UIView {
         button.accessibilityHint = "길게 눌러 \(alternate) 입력"
         let hold = UILongPressGestureRecognizer(target: self, action: #selector(holdAlternate(_:)))
         hold.minimumPressDuration = 0.4
-        hold.cancelsTouchesInView = true
+        hold.cancelsTouchesInView = false
         button.addGestureRecognizer(hold)
     }
 
