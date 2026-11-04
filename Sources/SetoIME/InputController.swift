@@ -32,8 +32,9 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     /// browser may move accessibility focus after IMK activates, so the first
     /// typed key checks once more.
     private var pendingAddressBarCheck: String?
-    /// ⇧⌘L sentence refinement and its panel.
-    private lazy var refinement = SentenceRefinementController(owner: self)
+    /// ⇧⌘L sentence refinement and its panel, shared by every controller so
+    /// whichever one receives a panel key handles it.
+    private var refinement: SentenceRefinementController { .shared }
 
     override func activateServer(_ sender: Any!) {
         super.activateServer(sender)
@@ -134,7 +135,7 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         // ⇧⌘L must be checked before Command shortcuts pass through below.
         if shortcutFlags == [.shift, .command], event.keyCode == 0x25 { // Physical L
             apply(session.commitDisplayed(), client: client)
-            return refinement.begin(client: client)
+            return refinement.begin(client: client, owner: self)
         }
         if shortcutFlags == .control {
             let arrow: Character?
@@ -191,7 +192,7 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         // edit, not a new boundary: clearing keys here loses Latin prefixes
         // before they can be recognized as Hangul (lfw → 잘).
         guard clientUpdateDepth == 0 else { return }
-        refinement.closeAfterCommit()
+        refinement.closeAfterCommit(owner: self)
         guard let client = sender as? IMKTextInput else { return }
         reconcileComposition(client: client)
         apply(session.commitDisplayed(), client: client)
@@ -243,7 +244,7 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
 
     override func deactivateServer(_ sender: Any!) {
         commitComposition(sender)
-        refinement.close()
+        refinement.close(ownedBy: self)
         active = false
         let owner = ObjectIdentifier(self)
         MainActor.assumeIsolated {
@@ -360,7 +361,7 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     @objc private func refineInput(_ sender: Any?) {
         guard let client = client() else { return }
         apply(session.commitDisplayed(), client: client)
-        _ = refinement.begin(client: client)
+        _ = refinement.begin(client: client, owner: self)
     }
 
     @objc private func editDictionary(_ sender: NSMenuItem) {

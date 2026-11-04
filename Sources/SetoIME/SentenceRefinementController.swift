@@ -12,7 +12,15 @@ import SetoCore
 ///
 /// IMK calls in on the main thread; panel access goes through
 /// MainActor.assumeIsolated like the rest of the input method.
+///
+/// There is one panel for the whole input method. IMK creates an input
+/// controller per client context, and a key meant for the panel may arrive
+/// at a controller other than the one that opened it, so every controller
+/// uses `shared`.
 final class SentenceRefinementController {
+    // IMK callbacks, the event tap and panel updates all run on the main thread.
+    nonisolated(unsafe) static let shared = SentenceRefinementController()
+
     /// Where the selected sentence lives, and how to replace it.
     private enum Target {
         /// A range in client coordinates; insertText replaces it directly.
@@ -42,7 +50,7 @@ final class SentenceRefinementController {
     /// Some editors end composition right after the selection changes. That
     /// echo of our own selection must not close the panel it opens.
     private static let commitGracePeriod: TimeInterval = 0.3
-    private static let permissionMessage = "손쉬운 사용 권한이 필요합니다 (시스템 설정 > 개인정보 보호 및 보안 > 손쉬운 사용)"
+    private static let permissionMessage = "손쉬운 사용 권한이 필요합니다 (시스템 설정 > 개인정보 보호 및 보안 > 기기 제어 및 데이터 접근)"
     private static let noSentenceMessage = "다듬을 문장이 없습니다"
     private static let unreadableMessage = "현재 앱에서 문장을 가져올 수 없습니다"
 
@@ -58,12 +66,14 @@ final class SentenceRefinementController {
     /// Bumped on every request and on close; older results are dropped.
     private var generation = 0
     private lazy var reference = WeakRefinementController(self)
+    /// Consumes the panel keys before clients that ignore handle()'s result
+    /// (Chromium, Electron) see them. nil without Accessibility.
+    private var keyTap: RefinementKeyTap?
 
-    init(owner: IMKInputController) {
-        self.owner = owner
-    }
+    private init() {}
 
     deinit {
+        keyTap?.invalidate()
         guard let panel else { return }
         if Thread.isMainThread {
             MainActor.assumeIsolated { panel.close() }
@@ -74,11 +84,13 @@ final class SentenceRefinementController {
 
     // MARK: - Hooks for the input controller
 
-    /// Starts a refinement. Compose state must already be committed. Returns
-    /// false when the key should pass through (secure input).
-    func begin(client: IMKTextInput) -> Bool {
+    /// Starts a refinement for `owner`'s client. Compose state must already
+    /// be committed. Returns false when the key should pass through (secure
+    /// input).
+    func begin(client: IMKTextInput, owner: IMKInputController) -> Bool {
         guard !IsSecureEventInputEnabled() else { return false }
         close()
+        self.owner = owner
         switch clientSelection(client) {
         case .found(let text, let target):
             present(text, target: target, client: client)
@@ -89,7 +101,7 @@ final class SentenceRefinementController {
         case .unavailable:
             break
         }
-        guard AXIsProcessTrusted() else {
+        guard FocusedElementReader.isTrusted() else {
             FocusedElementReader.requestTrustIfNeeded()
             showMessage(Self.permissionMessage, client: client)
             return true
@@ -106,36 +118,64 @@ final class SentenceRefinementController {
     }
 
     /// Handles a keyDown while the panel is open. nil lets the key continue
-    /// through normal input handling.
+    /// through normal input handling. A panel key never touches the client,
+    /// except Return inserting the suggestion.
     func handleKey(_ event: NSEvent, client: IMKTextInput) -> Bool? {
-        guard isOpen, event.type == .keyDown else { return nil }
+        guard event.type == .keyDown else { return nil }
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let action = RefinementPanelKey.action(
+            keyCode: event.keyCode,
+            command: flags.contains(.command),
+            control: flags.contains(.control),
+            option: flags.contains(.option),
+            shift: flags.contains(.shift)
+        )
+        // The event tap already acted on this very keyDown.
+        if action != .other, let timestamp = event.cgEvent?.timestamp,
+           timestamp == keyTap?.lastConsumedKeyDown {
+            return true
+        }
+        guard isOpen else { return nil }
         if IsSecureEventInputEnabled() {
             close()
             return nil
         }
-        switch event.keyCode {
-        case 0x24, 0x4C: // Return, Enter
-            if !loading, index < suggestions.count, let problem = replace(client: client) {
+        guard action != .other else {
+            close()
+            return nil
+        }
+        perform(action, client: client)
+        return true
+    }
+
+    /// Return accepts, Tab asks again, Esc closes. `client` is needed only
+    /// to replace the sentence.
+    private func perform(_ action: RefinementPanelKey, client: IMKTextInput?) {
+        guard isOpen else { return }
+        switch action {
+        case .accept:
+            if !loading, index < suggestions.count, let client, let problem = replace(client: client) {
                 showMessage(problem, client: nil)
             } else {
                 close()
             }
-            return true
-        case 0x35: // Escape
-            close()
-            return true
-        case 0x30: // Tab
+        case .next:
             nextSuggestion()
-            return true
-        default:
+        case .cancel, .other:
             close()
-            return nil
         }
     }
 
     /// The client committed composition, e.g. after a click elsewhere.
-    func closeAfterCommit() {
-        guard isOpen, Date().timeIntervalSince(openedAt) > Self.commitGracePeriod else { return }
+    func closeAfterCommit(owner: IMKInputController) {
+        guard isOpen, self.owner === owner,
+              Date().timeIntervalSince(openedAt) > Self.commitGracePeriod else { return }
+        close()
+    }
+
+    /// `owner` lost its client; the panel it opened goes with it.
+    func close(ownedBy owner: IMKInputController) {
+        guard self.owner == nil || self.owner === owner else { return }
         close()
     }
 
@@ -148,9 +188,33 @@ final class SentenceRefinementController {
         index = 0
         guard isOpen else { return }
         isOpen = false
+        keyTap?.finish()
         if let panel {
             MainActor.assumeIsolated { panel.close() }
         }
+    }
+
+    // MARK: - Event tap
+
+    /// While the panel is open, also take Return, Enter, Esc and Tab at the
+    /// session level. Without the permission (checked again every time)
+    /// only the IMK path handles them.
+    private func installKeyTap() {
+        if let keyTap, keyTap.isInstalled {
+            keyTap.resume()
+            return
+        }
+        keyTap = nil
+        guard FocusedElementReader.isTrusted() else { return }
+        let reference = reference
+        keyTap = RefinementKeyTap.install { action in
+            reference.value?.tapped(action)
+        }
+    }
+
+    private func tapped(_ action: RefinementPanelKey) {
+        guard isOpen else { return }
+        perform(action, client: owner?.client())
     }
 
     // MARK: - Selecting the sentence
@@ -371,8 +435,11 @@ final class SentenceRefinementController {
     private func show(_ content: RefinementPanel.Content, anchor: NSRect?) {
         let panel = panel ?? MainActor.assumeIsolated { RefinementPanel() }
         self.panel = panel
-        if !isOpen { openedAt = Date() }
-        isOpen = true
+        if !isOpen {
+            openedAt = Date()
+            isOpen = true
+            installKeyTap()
+        }
         MainActor.assumeIsolated {
             panel.show(content, below: anchor ?? (panel.isVisible ? nil : .zero))
         }

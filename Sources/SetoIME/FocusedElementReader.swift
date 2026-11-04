@@ -10,7 +10,7 @@ enum FocusedElementReader {
 
     static func addressBarFocused(bundleIdentifier: String?) -> Bool {
         guard AddressBar.isBrowser(bundleIdentifier) else { return false }
-        if !AXIsProcessTrusted() {
+        if !isTrusted() {
             // Ask once per launch, and only when a browser is in use.
             requestTrustIfNeeded()
             return false
@@ -19,9 +19,21 @@ enum FocusedElementReader {
         return AddressBar.contains(element, bundleIdentifier: bundleIdentifier)
     }
 
+    /// Whether this process may use Accessibility. Asked again on every call:
+    /// the permission can be granted while the input method keeps running.
+    /// AXIsProcessTrusted() can keep answering false in a process that
+    /// started without the permission, so a live query is the fallback.
+    static func isTrusted() -> Bool {
+        if AXIsProcessTrusted() { return true }
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(
+            AXUIElementCreateSystemWide(), kAXFocusedApplicationAttribute as CFString, &value)
+        return result == .success
+    }
+
     /// Shows the system Accessibility prompt at most once per launch.
     static func requestTrustIfNeeded() {
-        guard !prompted, !AXIsProcessTrusted() else { return }
+        guard !prompted, !isTrusted() else { return }
         prompted = true
         // The value of kAXTrustedCheckOptionPrompt, which Swift 6
         // treats as shared mutable state.
@@ -30,7 +42,7 @@ enum FocusedElementReader {
 
     /// The focused element's selected text, if Accessibility exposes it.
     static func selectedText() -> String? {
-        guard AXIsProcessTrusted() else { return nil }
+        guard isTrusted() else { return nil }
         let system = AXUIElementCreateSystemWide()
         guard let application = attribute(system, kAXFocusedApplicationAttribute),
               let element = attribute(application as! AXUIElement, kAXFocusedUIElementAttribute) else { return nil }
@@ -38,7 +50,7 @@ enum FocusedElementReader {
     }
 
     static func textContext() -> AccessibilityTextContext? {
-        guard AXIsProcessTrusted() else { return nil }
+        guard isTrusted() else { return nil }
         let system = AXUIElementCreateSystemWide()
         guard let applicationValue = attribute(system, kAXFocusedApplicationAttribute) else { return nil }
         let application = applicationValue as! AXUIElement
