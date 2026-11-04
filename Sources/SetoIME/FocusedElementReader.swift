@@ -5,15 +5,36 @@ import SetoCore
 /// Reads the system-wide focused element through Accessibility. Without the
 /// Accessibility permission this returns nil and nothing changes.
 enum FocusedElementReader {
+    nonisolated(unsafe) private static var prompted = false
     nonisolated(unsafe) private static var enabledPID: pid_t = 0
 
     static func addressBarFocused(bundleIdentifier: String?) -> Bool {
         guard AddressBar.isBrowser(bundleIdentifier) else { return false }
         if !AXIsProcessTrusted() {
+            // Ask once per launch, and only when a browser is in use.
+            requestTrustIfNeeded()
             return false
         }
         guard let element = focused(bundleIdentifier: bundleIdentifier) else { return false }
         return AddressBar.contains(element, bundleIdentifier: bundleIdentifier)
+    }
+
+    /// Shows the system Accessibility prompt at most once per launch.
+    static func requestTrustIfNeeded() {
+        guard !prompted, !AXIsProcessTrusted() else { return }
+        prompted = true
+        // The value of kAXTrustedCheckOptionPrompt, which Swift 6
+        // treats as shared mutable state.
+        _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
+    }
+
+    /// The focused element's selected text, if Accessibility exposes it.
+    static func selectedText() -> String? {
+        guard AXIsProcessTrusted() else { return nil }
+        let system = AXUIElementCreateSystemWide()
+        guard let application = attribute(system, kAXFocusedApplicationAttribute),
+              let element = attribute(application as! AXUIElement, kAXFocusedUIElementAttribute) else { return nil }
+        return attribute(element as! AXUIElement, kAXSelectedTextAttribute) as? String
     }
 
     static func textContext() -> AccessibilityTextContext? {

@@ -32,7 +32,8 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     /// browser may move accessibility focus after IMK activates, so the first
     /// typed key checks once more.
     private var pendingAddressBarCheck: String?
-    private lazy var asyncReference = InputControllerReference(self)
+    /// ⌃⇧L sentence refinement and its panel.
+    private lazy var refinement = SentenceRefinementController(owner: self)
 
     override func activateServer(_ sender: Any!) {
         super.activateServer(sender)
@@ -85,6 +86,11 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
 
     override func handle(_ event: NSEvent!, client sender: Any!) -> Bool {
         guard let event, let client = sender as? IMKTextInput else { return false }
+        // The refinement panel takes Return, Tab and Esc; other keys close it
+        // and continue below.
+        if event.type == .keyDown, let handled = refinement.handleKey(event, client: client) {
+            return handled
+        }
         reconcileComposition(client: client)
         if event.type == .flagsChanged {
             if IsSecureEventInputEnabled() {
@@ -127,8 +133,8 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         }
         let isRefineHotkeyKey = event.keyCode == 0x25 // Physical L
         if isControlShiftHotkey, isRefineHotkeyKey {
-            refineCurrentSentence(client: client)
-            return true
+            apply(session.commitDisplayed(), client: client)
+            return refinement.begin(client: client)
         }
         if shortcutFlags == .control {
             let arrow: Character?
@@ -185,6 +191,7 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         // edit, not a new boundary: clearing keys here loses Latin prefixes
         // before they can be recognized as Hangul (lfw → 잘).
         guard clientUpdateDepth == 0 else { return }
+        refinement.closeAfterCommit()
         guard let client = sender as? IMKTextInput else { return }
         reconcileComposition(client: client)
         apply(session.commitDisplayed(), client: client)
@@ -236,6 +243,7 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
 
     override func deactivateServer(_ sender: Any!) {
         commitComposition(sender)
+        refinement.close()
         active = false
         let owner = ObjectIdentifier(self)
         MainActor.assumeIsolated {
@@ -258,6 +266,7 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
 
     func menuNeedsUpdate(_ statusMenu: NSMenu) {
         statusMenu.removeAllItems()
+        statusMenu.autoenablesItems = false
         guard let current = menu() else { return }
         for entry in current.items {
             current.removeItem(entry)
@@ -268,6 +277,8 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     override func menu() -> NSMenu! {
         syncPreferences()
         let menu = NSMenu(title: "세토")
+        // Keep the refine item's isEnabled; every other item is always enabled.
+        menu.autoenablesItems = false
         let auto = menu.addItem(withTitle: "자동 한/영 전환 (⌃⇧K)", action: #selector(toggleAutoSwitch(_:)), keyEquivalent: "")
         auto.state = session.autoSwitch ? .on : .off
         auto.target = self
@@ -278,7 +289,7 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         let refine = menu.addItem(withTitle: "현재 문장 다듬기 (⌃⇧L)", action: #selector(refineInput(_:)), keyEquivalent: "")
         refine.target = self
         if #available(macOS 26.0, *) {
-            refine.isEnabled = !session.document.isEmpty && SentenceRefiner.isAvailable
+            refine.isEnabled = SentenceRefiner.unavailableReason == nil
         } else {
             refine.isEnabled = false
         }
@@ -348,124 +359,8 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
 
     @objc private func refineInput(_ sender: Any?) {
         guard let client = client() else { return }
-        refineCurrentSentence(client: client)
-    }
-
-    private func refineCurrentSentence(client: IMKTextInput) {
-        guard #available(macOS 26.0, *), !IsSecureEventInputEnabled() else { return }
         apply(session.commitDisplayed(), client: client)
-        guard let target = currentSentence(in: client) else {
-            showRefinementUnavailable()
-            return
-        }
-        let reference = asyncReference
-        Task.detached {
-            do {
-                let refined = try await SentenceRefiner.shared.refine(target.sentence)
-                DispatchQueue.main.async {
-                    reference.value?.applyRefinement(refined, target: target)
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    reference.value?.showRefinementError(error)
-                }
-            }
-        }
-    }
-
-    private func currentSentence(in client: IMKTextInput) -> SentenceTarget? {
-        if let target = documentSentence(in: client) { return target }
-        guard let context = FocusedElementReader.textContext() else { return nil }
-        return sentenceTarget(
-            in: context.document,
-            containing: context.selection,
-            source: .accessibility,
-            documentStart: context.documentStart
-        )
-    }
-
-    private func documentSentence(in client: IMKTextInput) -> SentenceTarget? {
-        let length = client.length()
-        guard length > 0 else { return nil }
-        let documentRange = NSRange(location: 0, length: length)
-        guard let attributed = client.attributedSubstring(from: documentRange) else { return nil }
-        let document = attributed.string
-        guard (document as NSString).length == length else { return nil }
-        let selection = client.selectedRange()
-        return sentenceTarget(in: document, containing: selection, source: .documentAccess)
-    }
-
-    private func sentenceTarget(in document: String, containing selection: NSRange,
-                                source: SentenceTarget.Source, documentStart: Int = 0) -> SentenceTarget? {
-        guard selection.location != NSNotFound,
-              NSMaxRange(selection) <= (document as NSString).length else { return nil }
-        let range = sentenceRange(in: document, containing: selection)
-        guard range.length > 0 else { return nil }
-        return SentenceTarget(
-            sentence: (document as NSString).substring(with: range),
-            range: NSRange(location: documentStart + range.location, length: range.length),
-            document: document,
-            source: source
-        )
-    }
-
-    private func sentenceRange(in text: String, containing selection: NSRange) -> NSRange {
-        let text = text as NSString
-        let boundaries = CharacterSet(charactersIn: ".!?。！？\n")
-        var start = selection.location
-        while start > 0 {
-            let previous = text.character(at: start - 1)
-            if characterSet(boundaries, contains: previous) { break }
-            start -= 1
-        }
-        while start < text.length,
-              characterSet(.whitespacesAndNewlines, contains: text.character(at: start)) {
-            start += 1
-        }
-        var end = NSMaxRange(selection)
-        while end < text.length {
-            let character = text.character(at: end)
-            end += 1
-            if characterSet(boundaries, contains: character) { break }
-        }
-        return NSRange(location: start, length: end - start)
-    }
-
-    private func characterSet(_ set: CharacterSet, contains codeUnit: unichar) -> Bool {
-        guard let scalar = UnicodeScalar(codeUnit) else { return false }
-        return set.contains(scalar)
-    }
-
-    private func applyRefinement(_ refined: String, target: SentenceTarget) {
-        guard let client = client() else { return }
-        switch target.source {
-        case .documentAccess:
-            guard let attributed = client.attributedSubstring(from: NSRange(location: 0, length: client.length())),
-                  attributed.string == target.document else { return }
-        case .accessibility:
-            guard let context = FocusedElementReader.textContext(),
-                  context.document == target.document,
-                  FocusedElementReader.select(target.range, in: context.element) else { return }
-        }
-        client.insertText(refined, replacementRange: target.range)
-    }
-
-    private func showRefinementUnavailable() {
-        MainActor.assumeIsolated {
-            let alert = NSAlert()
-            alert.messageText = "현재 앱에서 문장을 가져올 수 없습니다"
-            alert.informativeText = "텍스트 편집기를 클릭한 뒤 다시 시도하세요."
-            alert.runModal()
-        }
-    }
-
-    private func showRefinementError(_ error: Error) {
-        MainActor.assumeIsolated {
-            let alert = NSAlert()
-            alert.messageText = "현재 입력을 다듬지 못했습니다"
-            alert.informativeText = error.localizedDescription
-            alert.runModal()
-        }
+        _ = refinement.begin(client: client)
     }
 
     @objc private func editDictionary(_ sender: NSMenuItem) {
@@ -733,26 +628,6 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         }
         return string
     }
-}
-
-private final class InputControllerReference: @unchecked Sendable {
-    weak var value: SebeolInputController?
-
-    init(_ value: SebeolInputController) {
-        self.value = value
-    }
-}
-
-private struct SentenceTarget: Sendable {
-    enum Source: Sendable {
-        case documentAccess
-        case accessibility
-    }
-
-    let sentence: String
-    let range: NSRange
-    let document: String
-    let source: Source
 }
 
 enum SharedTypoLog {
