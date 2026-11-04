@@ -32,7 +32,7 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     /// browser may move accessibility focus after IMK activates, so the first
     /// typed key checks once more.
     private var pendingAddressBarCheck: String?
-    /// ⌃⇧L sentence refinement and its panel.
+    /// ⇧⌘L sentence refinement and its panel.
     private lazy var refinement = SentenceRefinementController(owner: self)
 
     override func activateServer(_ sender: Any!) {
@@ -131,8 +131,8 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
             toggleAutoSwitch()
             return true
         }
-        let isRefineHotkeyKey = event.keyCode == 0x25 // Physical L
-        if isControlShiftHotkey, isRefineHotkeyKey {
+        // ⇧⌘L must be checked before Command shortcuts pass through below.
+        if shortcutFlags == [.shift, .command], event.keyCode == 0x25 { // Physical L
             apply(session.commitDisplayed(), client: client)
             return refinement.begin(client: client)
         }
@@ -286,7 +286,7 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         typos.state = session.correctsTypos ? .on : .off
         typos.target = self
         menu.addItem(.separator())
-        let refine = menu.addItem(withTitle: "현재 문장 다듬기 (⌃⇧L)", action: #selector(refineInput(_:)), keyEquivalent: "")
+        let refine = menu.addItem(withTitle: "현재 문장 다듬기 (⇧⌘L)", action: #selector(refineInput(_:)), keyEquivalent: "")
         refine.target = self
         if #available(macOS 26.0, *) {
             refine.isEnabled = SentenceRefiner.unavailableReason == nil

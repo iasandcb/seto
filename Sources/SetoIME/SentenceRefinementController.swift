@@ -3,7 +3,8 @@ import Carbon
 import InputMethodKit
 import SetoCore
 
-/// ⌃⇧L: select back to the start of the sentence before the caret, ask the
+/// ⇧⌘L: select the sentence before the caret (or the one that just ended
+/// there, including its final punctuation and closing quotes), ask the
 /// on-device model for a refinement and show it in a panel below the caret.
 /// While the panel is open, Return replaces the selection, Tab asks for
 /// another wording, Esc keeps the original, and any other key closes the
@@ -25,7 +26,7 @@ final class SentenceRefinementController {
 
     private enum Selection {
         case found(String, Target)
-        /// Text was readable, but the caret directly follows a boundary.
+        /// Text was readable, but there is no sentence before the caret.
         case empty
         /// This route could not read the text.
         case unavailable
@@ -168,10 +169,9 @@ final class SentenceRefinementController {
         // Nothing before the caret, or a client that cannot say: let
         // Accessibility decide.
         guard window.length > 0, let text = read(client, window) else { return .unavailable }
-        let start = sentenceStart(in: text, before: window.length, cut: windowStart > 0)
-        let local = NSRange(location: start, length: window.length - start)
+        let local = sentenceRange(in: text, before: window.length, cut: windowStart > 0)
         guard local.length > 0 else { return .empty }
-        let range = NSRange(location: windowStart + start, length: local.length)
+        let range = NSRange(location: windowStart + local.location, length: local.length)
         let sentence = (text as NSString).substring(with: local)
 
         // IMKTextInput cannot set the selection, so show it through
@@ -192,11 +192,10 @@ final class SentenceRefinementController {
             let range = NSRange(location: context.documentStart + selection.location, length: selection.length)
             return .found(document.substring(with: selection), .accessibility(context.element, range))
         }
-        let start = sentenceStart(in: context.document, before: selection.location,
+        let local = sentenceRange(in: context.document, before: selection.location,
                                   cut: context.documentStart > 0)
-        let local = NSRange(location: start, length: selection.location - start)
         guard local.length > 0 else { return .empty }
-        let range = NSRange(location: context.documentStart + start, length: local.length)
+        let range = NSRange(location: context.documentStart + local.location, length: local.length)
         _ = FocusedElementReader.select(range, in: context.element)
         return .found(document.substring(with: local), .accessibility(context.element, range))
     }
@@ -229,15 +228,17 @@ final class SentenceRefinementController {
         }
     }
 
-    private func sentenceStart(in text: String, before caret: Int, cut: Bool) -> Int {
-        var start = SentenceBoundary.start(in: text, before: caret)
+    /// The sentence to select, local to `text`; empty when there is none.
+    private func sentenceRange(in text: String, before caret: Int, cut: Bool) -> NSRange {
+        let range = SentenceBoundary.range(in: text, before: caret)
+        var start = range.lowerBound
         // A window cut from a longer document can begin with half a
         // surrogate pair, which arrives as U+FFFD. Do not select it.
-        if cut, start == 0, start < caret, let first = text.utf16.first,
+        if cut, start == 0, start < range.upperBound, let first = text.utf16.first,
            first == 0xFFFD || UTF16.isTrailSurrogate(first) {
             start = 1
         }
-        return start
+        return NSRange(location: start, length: range.upperBound - start)
     }
 
     /// The client's text in `range`, if it returns exactly that much.
