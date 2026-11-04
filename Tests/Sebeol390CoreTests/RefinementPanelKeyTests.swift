@@ -20,9 +20,13 @@ private func action(_ keyCode: UInt16, command: Bool = false, control: Bool = fa
     #expect(action(0x30) == .next)
 }
 
-@Test func shiftIsIgnored() {
-    #expect(action(0x30, shift: true) == .next)
+@Test func shiftTabShowsPrevious() {
+    #expect(action(0x30, shift: true) == .previous)
+}
+
+@Test func shiftIsIgnoredOtherwise() {
     #expect(action(0x24, shift: true) == .accept)
+    #expect(action(0x4C, shift: true) == .accept)
     #expect(action(0x35, shift: true) == .cancel)
 }
 

@@ -6,9 +6,10 @@ import SetoCore
 /// ⇧⌘L: select the sentence before the caret (or the one that just ended
 /// there, including its final punctuation and closing quotes), ask the
 /// on-device model for a refinement and show it in a panel below the caret.
-/// While the panel is open, Return replaces the selection, Tab asks for
-/// another wording, Esc keeps the original, and any other key closes the
-/// panel and types normally.
+/// While the panel is open, Return replaces the selection, Tab shows the
+/// next suggestion (asking for another wording only past the last cached
+/// one), ⇧⇥ the previous one, Esc keeps the original, and any other key
+/// closes the panel and types normally.
 ///
 /// IMK calls in on the main thread; panel access goes through
 /// MainActor.assumeIsolated like the rest of the input method.
@@ -63,6 +64,10 @@ final class SentenceRefinementController {
     private var suggestions: [String] = []
     private var index = 0
     private var loading = false
+    /// Generation cannot produce more suggestions for this sentence: the
+    /// model is unavailable, a request failed, or it repeated a suggestion
+    /// (or the original). Tab then only cycles the cache.
+    private var stopped = false
     /// Bumped on every request and on close; older results are dropped.
     private var generation = 0
     private lazy var reference = WeakRefinementController(self)
@@ -148,7 +153,7 @@ final class SentenceRefinementController {
         return true
     }
 
-    /// Return accepts, Tab asks again, Esc closes. `client` is needed only
+    /// Return accepts, Tab/⇧⇥ move through suggestions, Esc closes. `client` is needed only
     /// to replace the sentence.
     private func perform(_ action: RefinementPanelKey, client: IMKTextInput?) {
         guard isOpen else { return }
@@ -161,6 +166,8 @@ final class SentenceRefinementController {
             }
         case .next:
             nextSuggestion()
+        case .previous:
+            previousSuggestion()
         case .cancel, .other:
             close()
         }
@@ -186,6 +193,7 @@ final class SentenceRefinementController {
         original = ""
         suggestions = []
         index = 0
+        stopped = false
         guard isOpen else { return }
         isOpen = false
         keyTap?.finish()
@@ -319,6 +327,7 @@ final class SentenceRefinementController {
         original = text
         suggestions = []
         index = 0
+        stopped = false
         let anchor = caretRect(client, target: target)
         guard #available(macOS 26.0, *) else {
             show(.message("문장 다듬기는 macOS 26 이상에서 Apple Intelligence로 동작합니다"), anchor: anchor)
@@ -358,13 +367,16 @@ final class SentenceRefinementController {
         loading = false
         switch outcome {
         case .refined(let suggestion) where !suggestion.isEmpty:
-            if let existing = suggestions.firstIndex(of: suggestion) {
-                index = existing
+            // A repeat means the model has run out of wordings; asking again
+            // tends to repeat too, so stop rather than retry. The first
+            // suggestion may equal the original ("nothing to fix").
+            if suggestions.contains(suggestion) || (!suggestions.isEmpty && suggestion == original) {
+                stopGenerating()
             } else {
                 suggestions.append(suggestion)
                 index = suggestions.count - 1
+                showSuggestion()
             }
-            showSuggestion()
         case .refined:
             failed("빈 결과를 받았습니다")
         case .failed(let message):
@@ -376,19 +388,42 @@ final class SentenceRefinementController {
         if suggestions.isEmpty {
             show(.message("다듬지 못했습니다: \(message)"), anchor: nil)
         } else {
-            showSuggestion()
+            stopGenerating()
         }
+    }
+
+    /// Generation is over for this sentence. The Tab that asked for more
+    /// wraps to the first suggestion, as it would at the maximum.
+    private func stopGenerating() {
+        stopped = true
+        index = 0
+        showSuggestion()
+    }
+
+    private var canGenerate: Bool {
+        guard !stopped, #available(macOS 26.0, *) else { return false }
+        return SentenceRefiner.unavailableReason == nil
     }
 
     private func nextSuggestion() {
         guard !loading, !suggestions.isEmpty else { return }
-        guard suggestions.count < Self.maximumSuggestions, #available(macOS 26.0, *) else {
-            index = (index + 1) % suggestions.count
+        switch SuggestionCursor.next(index: index, count: suggestions.count,
+                                     maximum: Self.maximumSuggestions, canGenerate: canGenerate) {
+        case .show(let next):
+            index = next
             showSuggestion()
-            return
+        case .generate:
+            guard #available(macOS 26.0, *) else { return }
+            show(.loading(original: original), anchor: nil)
+            request()
         }
-        show(.loading(original: original), anchor: nil)
-        request()
+    }
+
+    /// ⇧⇥ only moves through the cache; it never asks the model.
+    private func previousSuggestion() {
+        guard !loading, !suggestions.isEmpty else { return }
+        index = SuggestionCursor.previous(index: index, count: suggestions.count)
+        showSuggestion()
     }
 
     /// Replaces the target with the shown suggestion. Returns a message when

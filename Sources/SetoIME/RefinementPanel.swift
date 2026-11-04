@@ -105,8 +105,8 @@ final class RefinementPanel {
             add(caption(count > 1 ? "제안 \(index + 1)/\(count)" : "제안"))
             add(body(Self.highlighted(segments, showing: .added)))
             add(hint(original == suggestion
-                ? "고칠 곳이 없습니다   ⇥ 다른 제안  esc 닫기"
-                : "↩ 바꾸기  ⇥ 다른 제안  esc 취소"))
+                ? "고칠 곳이 없습니다   ⇥ 다음  ⇧⇥ 이전  esc 닫기"
+                : "↩ 바꾸기  ⇥ 다음  ⇧⇥ 이전  esc 취소"))
         case .message(let message):
             add(body(NSAttributedString(string: message, attributes: Self.bodyAttributes)))
             add(hint("esc 닫기"))

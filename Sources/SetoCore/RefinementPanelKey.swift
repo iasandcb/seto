@@ -1,13 +1,14 @@
 /// What a key does while the sentence refinement panel is open.
 ///
 /// Return and Enter accept the shown suggestion, Esc keeps the original and
-/// Tab asks for another wording. Shift is ignored, so ⇧⇥ also shows the next
-/// suggestion (and ⇧↩ accepts). With Command, Control or Option held the key
-/// is a shortcut for the app: it closes the panel and passes through.
+/// Tab shows the next suggestion, ⇧⇥ the previous one. Otherwise Shift is
+/// ignored (⇧↩ accepts, ⇧esc cancels). With Command, Control or Option held
+/// the key is a shortcut for the app: it closes the panel and passes through.
 public enum RefinementPanelKey: Equatable, Sendable {
     case accept
     case cancel
     case next
+    case previous
     case other
 
     public static func action(keyCode: UInt16, command: Bool, control: Bool,
@@ -16,7 +17,7 @@ public enum RefinementPanelKey: Equatable, Sendable {
         switch keyCode {
         case Keymap.return, keypadEnter: return .accept
         case Keymap.escape: return .cancel
-        case Keymap.tab: return .next
+        case Keymap.tab: return shift ? .previous : .next
         default: return .other
         }
     }

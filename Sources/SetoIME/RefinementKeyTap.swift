@@ -2,8 +2,8 @@ import AppKit
 import Carbon
 import SetoCore
 
-/// A session event tap that keeps Return, Enter, Esc and Tab away from the
-/// client while the refinement panel is open.
+/// A session event tap that keeps Return, Enter, Esc, Tab and ⇧⇥ away from
+/// the client while the refinement panel is open.
 ///
 /// Chromium-based clients (Chrome, Electron) forward a keyDown to the page
 /// even when the input method returns true from handle(_:client:), unless the
