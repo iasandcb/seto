@@ -18,6 +18,7 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
     }
     private var session = SebeolInputController.makeSession()
     private var sawCapsLockDown = false
+    private var shiftSpaceTracker = ShiftSpaceToggleTracker()
     private var active = false
     private var clientUpdateDepth = 0
     private var unmarkedSelection: NSRange?
@@ -91,6 +92,7 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
                 apply(session.discard(), client: client)
                 return false
             }
+            shiftSpaceTracker.shiftChanged(isDown: event.modifierFlags.contains(.shift))
             syncPreferences(client: client)
             return handleFlags(event, client: client)
         }
@@ -167,7 +169,8 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         }
 
         let shift = flags.contains(.shift)
-        if event.keyCode == Keymap.space && shift {
+        let isSpace = event.keyCode == Keymap.space
+        if shiftSpaceTracker.keyDown(isSpace: isSpace, shift: shift) {
             apply(session.toggle(), client: client)
             return true
         }
