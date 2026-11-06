@@ -6,3 +6,5 @@ xcuserdata/
 SetoMacIcon.png
 signing/*
 !signing/README.md
+
+.vscode/
