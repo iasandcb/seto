@@ -150,6 +150,14 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         }
 
         if event.keyCode == Keymap.delete {
+            if let completion = inlineCompletion(client: client) {
+                // The app deletes only the selected completion. Dropping the
+                // last key here would leave the token one key short of the
+                // text on screen.
+                unmarkedSelection = NSRange(location: completion.location, length: 0)
+                unmarkedSelectionAdvance = 0
+                return false
+            }
             let update = session.backspace()
             updateModeStatus()
             guard update.field != .none else {
@@ -227,7 +235,12 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
             let selectionIsOwnEdit = selection.location != NSNotFound
                 && expected.length == 0 && selection.length == 0
                 && abs(selection.location - expected.location) <= unmarkedSelectionAdvance
-            guard selection.location != NSNotFound, selection != expected, !selectionIsOwnEdit else { return }
+            // Safari's address bar inserts an inline completion after our
+            // caret and selects it (dr → dr[ive.google.com]). The token before
+            // the caret is unchanged and the next key replaces the selection,
+            // so this is not a move. Restarting here split drive into dr모e.
+            guard selection.location != NSNotFound, selection != expected, !selectionIsOwnEdit,
+                  inlineCompletion(client: client) == nil else { return }
         } else {
             let mark = client.markedRange()
             guard mark.location == NSNotFound || mark.length == 0 else { return }
@@ -235,6 +248,16 @@ final class SebeolInputController: IMKInputController, NSMenuDelegate {
         session = Self.makeSession(mode: session.mode)
         unmarkedSelection = nil
         unmarkedSelectionAdvance = 0
+    }
+
+    /// A selection the app made right after our caret while no Hangul is
+    /// marked: a browser's inline completion. Our caret is its start.
+    private func inlineCompletion(client: IMKTextInput) -> NSRange? {
+        guard session.preedit.isEmpty, let expected = unmarkedSelection else { return nil }
+        let selection = client.selectedRange()
+        guard selection.location != NSNotFound, selection.length > 0,
+              selection.location == expected.location else { return nil }
+        return selection
     }
 
     override func deactivateServer(_ sender: Any!) {

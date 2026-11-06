@@ -12,6 +12,10 @@ final class SmokeClient: NSObject, IMKTextInput {
     var placeholderEditor = false
     private var cachedSelection = NSRange(location: 0, length: 0)
     private var optimisticSelection: NSRange?
+    /// Safari's address bar: after plain text is inserted, the next event
+    /// loop appends the rest of a matching URL and selects it.
+    var inlineCompletion: String?
+    private(set) var completionSelection: NSRange?
     var onInsert: (() -> Void)?
     var onMark: (() -> Void)?
     private func value(_ input: Any?) -> String {
@@ -24,7 +28,21 @@ final class SmokeClient: NSObject, IMKTextInput {
         if range.location != NSNotFound && !(ignoresReplacementOutsideMark && mark.location == NSNotFound) { return range }
         return mark.location != NSNotFound ? mark : NSRange(location: (text as NSString).length, length: 0)
     }
+    /// Typing replaces a selected completion; an edit elsewhere drops it and
+    /// the field completes again later.
+    private func dropCompletion() {
+        guard let selection = completionSelection else { return }
+        completionSelection = nil
+        text = (text as NSString).replacingCharacters(in: selection, with: "")
+    }
+    /// The app's own Backspace while a completion is selected deletes it.
+    func deleteSelectedCompletion() -> Bool {
+        guard completionSelection != nil else { return false }
+        dropCompletion()
+        return true
+    }
     func insertText(_ input: Any?, replacementRange: NSRange) {
+        dropCompletion()
         let optimisticLocation = (text as NSString).length + (value(input) as NSString).length
         let replacement = target(replacementRange)
         text = (text as NSString).replacingCharacters(in: replacement, with: value(input))
@@ -33,6 +51,7 @@ final class SmokeClient: NSObject, IMKTextInput {
         onInsert?()
     }
     func setMarkedText(_ input: Any?, selectionRange: NSRange, replacementRange: NSRange) {
+        dropCompletion()
         let optimisticLocation = (text as NSString).length + (value(input) as NSString).length
         let replacement = target(replacementRange)
         let string = value(input)
@@ -42,10 +61,17 @@ final class SmokeClient: NSObject, IMKTextInput {
         onMark?()
     }
     func syncSelection() {
+        if let inlineCompletion, completionSelection == nil, mark.location == NSNotFound,
+           !text.isEmpty, inlineCompletion.hasPrefix(text), inlineCompletion != text {
+            let typed = (text as NSString).length
+            completionSelection = NSRange(location: typed, length: (inlineCompletion as NSString).length - typed)
+            text = inlineCompletion
+        }
         cachedSelection = NSRange(location: (text as NSString).length, length: 0)
         optimisticSelection = nil
     }
     func selectedRange() -> NSRange {
+        if let completionSelection { return completionSelection }
         if let optimisticSelection { return optimisticSelection }
         return lagsSelection ? cachedSelection : NSRange(location: (text as NSString).length, length: 0)
     }
@@ -79,7 +105,7 @@ private func press(_ raw: Character, modifiers: NSEvent.ModifierFlags = [], cont
 private func backspace(controller: SebeolInputController, client: SmokeClient) {
     client.syncSelection()
     let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, characters: "\u{8}", charactersIgnoringModifiers: "\u{8}", isARepeat: false, keyCode: Keymap.delete)!
-    if !controller.handle(event, client: client), !client.text.isEmpty {
+    if !controller.handle(event, client: client), !client.deleteSelectedCompletion(), !client.text.isEmpty {
         client.text.removeLast()
         client.mark = NSRange(location: NSNotFound, length: 0)
     }
@@ -547,6 +573,43 @@ private func backspace(controller: SebeolInputController, client: SmokeClient) {
             }
             Preferences.autoSwitch = savedAutoSwitch
             Preferences.correctsTypos = savedTypos
+        }
+        // Safari's address bar completes dr to dr[ive.google.com] and selects
+        // the tail between key events. That selection is not a caret move:
+        // restarting the token there read the rest as 390 Hangul (dr모e).
+        // Korean with automatic conversion is the field when the address bar
+        // was not recognized; the recognized English field must not regress.
+        do {
+            let savedAutoSwitch = Preferences.autoSwitch
+            Preferences.autoSwitch = true
+            for (addressBar, keys, expected) in [
+                (false, "drive", "drive"),
+                (true, "drive", "drive"),
+                // Backspace deletes only the selected completion.
+                (false, "dr\u{8}ive", "drive"),
+                // Toggling twice rewrites the whole token, which must still be d-r-i-v-e.
+                (false, "drive\u{1}\u{1}", "drive"),
+            ] {
+                cases += 1
+                let client = SmokeClient()
+                client.clientBundleIdentifier = "com.apple.Safari"
+                client.inlineCompletion = "drive.google.com"
+                let controller = SebeolInputController()
+                controller.beginInputContext(bundleIdentifier: client.clientBundleIdentifier, addressBar: addressBar)
+                for raw in keys {
+                    switch raw {
+                    case "\u{8}": backspace(controller: controller, client: client)
+                    case "\u{1}": precondition(press(" ", modifiers: [.shift], controller: controller, client: client))
+                    default: precondition(press(raw, controller: controller, client: client))
+                    }
+                }
+                controller.commitComposition(client)
+                if client.text != expected || client.mark.length != 0 {
+                    print("FAIL Safari inline completion addressBar=\(addressBar) \(keys.debugDescription): \(client.text), expected \(expected)")
+                    failures += 1
+                }
+            }
+            Preferences.autoSwitch = savedAutoSwitch
         }
         // Each controller reads the persisted layout, and menu selections retain
         // the current language. Reentrant editor callbacks also apply here.
