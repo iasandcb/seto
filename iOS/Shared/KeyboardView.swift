@@ -414,14 +414,11 @@ final class KeyboardView: UIView {
 
     private func refreshKeyLabels() {
         for (button, digit, symbol) in numberKeys {
-            let label = NSMutableAttributedString(string: String(digit), attributes: [
-                .font: UIFont.systemFont(ofSize: shifted ? 16 : 21, weight: shifted ? .regular : .semibold),
-                .foregroundColor: shifted ? UIColor.secondaryLabel : UIColor.label
-            ])
-            label.append(NSAttributedString(string: " " + String(symbol), attributes: [
-                .font: UIFont.systemFont(ofSize: 14, weight: shifted ? .semibold : .regular),
-                .foregroundColor: shifted ? UIColor.label : UIColor.secondaryLabel
-            ]))
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 17, weight: .semibold),
+                .foregroundColor: UIColor.label
+            ]
+            let label = NSAttributedString(string: String(digit) + " " + String(symbol), attributes: attributes)
             button.setAttributedTitle(label, for: .normal)
             button.accessibilityLabel = "숫자 \(digit), Shift \(symbol), 현재 \(shifted ? symbol : digit)"
         }
@@ -435,16 +432,12 @@ final class KeyboardView: UIView {
             }
             title = english || symbols ? String(key) : korean
             let secondary = english ? korean : String(key)
-            let label = NSMutableAttributedString(string: title, attributes: [
-                .font: UIFont.systemFont(ofSize: 21, weight: .semibold),
+            let stacked = !symbols && secondary != title
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: stacked ? 17 : 21, weight: .semibold),
                 .foregroundColor: UIColor.label
-            ])
-            if !symbols && secondary != title {
-                label.append(NSAttributedString(string: "\n" + secondary, attributes: [
-                    .font: UIFont.systemFont(ofSize: 14, weight: .regular),
-                    .foregroundColor: UIColor.secondaryLabel
-                ]))
-            }
+            ]
+            let label = NSAttributedString(string: stacked ? title + "\n" + secondary : title, attributes: attributes)
             button.setAttributedTitle(label, for: .normal)
             button.accessibilityLabel = symbols ? title : "한글 \(korean), 영문 \(key), 현재 \(title)"
         }
