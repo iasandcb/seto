@@ -22,6 +22,9 @@ final class KeyboardView: UIView {
     var onNext: ((UIButton, UIEvent) -> Void)?
     var onAutoSwitch: (() -> Void)?
     var onCancelPendingDoubleSpace: (() -> Void)?
+    /// Moves the insertion point by whole characters and lines; negative is
+    /// left or up. Takes and returns the column kept across vertical steps.
+    var onMoveCursor: ((CursorStep, Int?) -> Int?)?
     var showsInputModeSwitch = true { didSet { globe.isHidden = !showsInputModeSwitch; refreshPhrases() } }
     private let globe = UIButton(type: .system)
     private var languageButton: UIButton?
@@ -45,7 +48,7 @@ final class KeyboardView: UIView {
     private var keys: [(UIButton, Character)] = []
     private let keyPreview = KeyPreviewView()
     private var alternates: [ObjectIdentifier: () -> HoldAlternate?] = [:]
-    private var activeHolds: [ObjectIdentifier: HoldAlternate] = [:]
+    private var activeHolds: [ObjectIdentifier: (alternate: HoldAlternate, drag: CursorDrag)] = [:]
     private var suppressedAlternateActions: Set<ObjectIdentifier> = []
     private weak var previewedButton: UIButton?
     private var previewText: [ObjectIdentifier: () -> String] = [:]
@@ -166,9 +169,15 @@ final class KeyboardView: UIView {
         arrowKey.accessibilityLabel = "오른쪽 화살표 입력"
         controls.addArrangedSubview(arrowKey)
         let space = makeButton("간격") { [weak self] in self?.emitKey(" ") }
-        space.accessibilityHint = "길게 눌러 탭 입력"
+        space.accessibilityHint = "길게 눌러 탭 입력, 길게 누른 채 끌어 커서 이동"
         addHold(to: space) { [weak self] in
-            HoldAlternate(preview: "⇥") { self?.emitLiteral("\t") }
+            // Like the system keyboard, a hold that then slides moves the cursor
+            // instead of typing: sideways by characters, up and down by lines.
+            // Releasing without sliding still types a tab.
+            // The phrase draft has no cursor, so there the hold stays tab-only.
+            let moves = self?.phraseSession == nil && self?.onMoveCursor != nil
+            return HoldAlternate(preview: "⇥", perform: { self?.emitLiteral("\t") },
+                                 drag: moves ? { self?.onMoveCursor?($0, $1) } : nil)
         }
         space.widthAnchor.constraint(greaterThanOrEqualToConstant: 80).isActive = true
         controls.addArrangedSubview(space)
@@ -520,6 +529,13 @@ final class KeyboardView: UIView {
         hold.minimumPressDuration = 0.4
         hold.cancelsTouchesInView = false
         button.addGestureRecognizer(hold)
+        // A drag can end outside the key, where .touchUpInside never fires to
+        // consume the suppression; clear it so the next tap is not swallowed.
+        button.addTarget(self, action: #selector(clearSuppressedAlternateAction(_:)), for: [.touchUpOutside, .touchCancel])
+    }
+
+    @objc private func clearSuppressedAlternateAction(_ button: UIButton) {
+        suppressedAlternateActions.remove(ObjectIdentifier(button))
     }
 
     @objc private func holdAlternate(_ hold: UILongPressGestureRecognizer) {
@@ -528,13 +544,20 @@ final class KeyboardView: UIView {
         switch hold.state {
         case .began:
             guard let alternate = alternates[id]?() else { return }
-            activeHolds[id] = alternate
+            activeHolds[id] = (alternate, CursorDrag(start: hold.location(in: self)))
             suppressedAlternateActions.insert(id)
             if previewedButton === button { showPreview(button, text: alternate.preview) }
+        case .changed:
+            guard var active = activeHolds[id], let move = active.alternate.drag else { return }
+            let wasDragging = active.drag.isDragging
+            let delta = active.drag.update(to: hold.location(in: self))
+            if !wasDragging, active.drag.isDragging { dismissPreview() }
+            if !delta.isZero { active.drag.goalColumn = move(delta, active.drag.goalColumn) }
+            activeHolds[id] = active
         case .ended:
-            guard let alternate = activeHolds.removeValue(forKey: id) else { return }
+            guard let active = activeHolds.removeValue(forKey: id) else { return }
             dismissPreview()
-            alternate.perform()
+            if !active.drag.isDragging { active.alternate.perform() }
         case .cancelled, .failed:
             activeHolds.removeValue(forKey: id)
             suppressedAlternateActions.remove(id)
@@ -584,9 +607,154 @@ final class KeyboardView: UIView {
 }
 
 /// What a held key emits on release, and the glyph its preview shows meanwhile.
+/// A key with `drag` turns a slide during the hold into cursor steps, and then
+/// releasing emits nothing. The handler returns the column to keep for the
+/// next vertical step of the same drag.
 private struct HoldAlternate {
     let preview: String
     let perform: () -> Void
+    var drag: ((CursorStep, Int?) -> Int?)? = nil
+}
+
+/// Cursor movement since the previous drag update. Negative is left or up.
+struct CursorStep: Equatable {
+    var characters = 0
+    var lines = 0
+    var isZero: Bool { characters == 0 && lines == 0 }
+}
+
+/// Converts a held finger's travel into whole cursor steps: characters
+/// sideways and lines vertically. A line step needs more travel than a
+/// character so a sideways slide does not drift across lines.
+struct CursorDrag {
+    static let stepWidth: CGFloat = 10
+    static let stepHeight: CGFloat = 24
+    let start: CGPoint
+    private(set) var steps = CursorStep()
+    private(set) var isDragging = false
+    /// The column a run of vertical steps aims for, reset by a sideways step.
+    var goalColumn: Int?
+
+    init(start: CGPoint) { self.start = start }
+
+    /// Returns how far to move since the previous update.
+    mutating func update(to point: CGPoint) -> CursorStep {
+        let target = CursorStep(characters: Int((point.x - start.x) / Self.stepWidth),
+                                lines: Int((point.y - start.y) / Self.stepHeight))
+        let delta = CursorStep(characters: target.characters - steps.characters,
+                               lines: target.lines - steps.lines)
+        steps = target
+        if !delta.isZero { isDragging = true }
+        return delta
+    }
+}
+
+/// Where a space-drag step puts the caret, computed from the text known on
+/// either side of it (`documentContextBeforeInput`/`AfterInput` in the
+/// keyboard extension, the whole text in the app editor).
+///
+/// Sideways steps move by whole characters. A vertical step goes to the
+/// previous or next hard line (soft wrapping is not visible to a keyboard)
+/// and lands on the boundary whose visual column is nearest to the caret's
+/// column on its current line. Wide characters (Hangul, CJK, emoji) count as
+/// two columns and a tab as four. Vertical steps stop when the context does
+/// not reach the adjacent line.
+struct CursorMotion: Equatable {
+    /// Signed caret move in UTF-16 units, as `adjustTextPosition` expects.
+    var utf16Offset: Int
+    /// Column for the next vertical step; nil after a sideways step.
+    var goalColumn: Int?
+
+    /// `extendsBeyondContext` moves one UTF-16 unit per sideways step the
+    /// context cannot cover, for a proxy that hides the rest of the text.
+    static func resolve(before: String, after: String, step: CursorStep, goalColumn: Int? = nil,
+                        extendsBeyondContext: Bool = false) -> CursorMotion {
+        let text = Array(before) + Array(after)
+        let caret = before.count
+        var index = caret
+        var goal = goalColumn
+        for _ in 0..<abs(step.lines) {
+            let start = lineStart(text, before: index)
+            let column = goal ?? width(text[start..<index])
+            let target: Int?
+            if step.lines < 0 {
+                // The line above ends at the newline just before this line.
+                target = start > 0
+                    ? nearest(column, in: text, from: lineStart(text, before: start - 1), to: start - 1)
+                    : nil
+            } else {
+                let end = lineEnd(text, from: index)
+                target = end < text.count
+                    ? nearest(column, in: text, from: end + 1, to: lineEnd(text, from: end + 1))
+                    : nil
+            }
+            guard let target else { break }
+            index = target
+            goal = column
+        }
+        var overflow = 0
+        if step.characters != 0 {
+            let moved = min(max(index + step.characters, 0), text.count)
+            overflow = step.characters - (moved - index)
+            index = moved
+            goal = nil
+        }
+        let units = index >= caret
+            ? text[caret..<index].reduce(0) { $0 + $1.utf16.count }
+            : -text[index..<caret].reduce(0) { $0 + $1.utf16.count }
+        return CursorMotion(utf16Offset: units + (extendsBeyondContext ? overflow : 0), goalColumn: goal)
+    }
+
+    private static func lineStart(_ text: [Character], before index: Int) -> Int {
+        var start = index
+        while start > 0, !text[start - 1].isNewline { start -= 1 }
+        return start
+    }
+
+    private static func lineEnd(_ text: [Character], from index: Int) -> Int {
+        var end = index
+        while end < text.count, !text[end].isNewline { end += 1 }
+        return end
+    }
+
+    /// The boundary in `start...end` closest to `column`; ties go left.
+    private static func nearest(_ column: Int, in text: [Character], from start: Int, to end: Int) -> Int {
+        var best = start
+        var bestDistance = column
+        var position = 0
+        for index in start..<end {
+            position += width(text[index])
+            let distance = abs(position - column)
+            if distance < bestDistance {
+                best = index + 1
+                bestDistance = distance
+            }
+            if position >= column { break }
+        }
+        return best
+    }
+
+    private static func width(_ characters: ArraySlice<Character>) -> Int {
+        characters.reduce(0) { $0 + width($1) }
+    }
+
+    static func width(_ character: Character) -> Int {
+        if character == "\t" { return 4 }
+        guard let first = character.unicodeScalars.first else { return 0 }
+        if character.unicodeScalars.count > 1, character.unicodeScalars.contains(where: \.properties.isEmoji),
+           character.unicodeScalars.contains(where: { $0.properties.isEmojiPresentation || $0.value == 0xFE0F || $0.value == 0x200D }) {
+            return 2
+        }
+        if first.properties.isEmojiPresentation { return 2 }
+        switch first.value {
+        case 0x1100...0x115F, 0x2E80...0x303E, 0x3041...0x33FF, 0x3400...0x4DBF, 0x4E00...0x9FFF,
+             0xA000...0xA4CF, 0xA960...0xA97F, 0xAC00...0xD7A3, 0xF900...0xFAFF, 0xFE30...0xFE4F,
+             0xFF00...0xFF60, 0xFFE0...0xFFE6, 0x20000...0x3FFFD:
+            return 2
+        default:
+            return 1
+        }
+    }
 }
 
 /// Keyboard feedback must follow touch-down without UIButton.system's title fades.

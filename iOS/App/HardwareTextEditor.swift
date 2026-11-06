@@ -97,6 +97,9 @@ final class HardwareTextView: UITextView, UITextViewDelegate {
             self.onText?(self.text ?? "")
         }
         touchKeyboard.onDelete = { [weak self] in self?.handleKey(usage: 42) }
+        touchKeyboard.onMoveCursor = { [weak self] step, goal in
+            self?.moveCursor(by: step.characters, lines: step.lines, goalColumn: goal)
+        }
         touchKeyboard.onSuggestion = { [weak self] context, candidate in self?.accept(context, candidate: candidate) }
         touchKeyboard.onToggle = { [weak self] in self?.toggleLanguage() }
         touchKeyboard.onAutoSwitch = { [weak self] in
@@ -258,6 +261,30 @@ final class HardwareTextView: UITextView, UITextViewDelegate {
         applying = false
         resetSession()
         onText?(text ?? "")
+    }
+
+    /// Space-drag cursor movement: steps over composed characters sideways and
+    /// to the visually nearest column on the adjacent line vertically, using
+    /// the same rule as the keyboard extension. Collapses any selection and
+    /// commits the current composition by starting a new session.
+    @discardableResult
+    func moveCursor(by characters: Int, lines: Int = 0, goalColumn: Int? = nil) -> Int? {
+        let source = (text ?? "") as NSString
+        let selection = selectedRange
+        let step = CursorStep(characters: characters, lines: lines)
+        guard !step.isZero, selection.location != NSNotFound,
+              selection.location + selection.length <= source.length else { return goalColumn }
+        unmarkText()
+        let backward = lines < 0 || (lines == 0 && characters < 0)
+        let anchor = backward ? selection.location : selection.location + selection.length
+        let motion = CursorMotion.resolve(
+            before: source.substring(to: anchor), after: source.substring(from: anchor),
+            step: step, goalColumn: goalColumn
+        )
+        selectedRange = NSRange(location: anchor + motion.utf16Offset, length: 0)
+        resetSession()
+        scrollRangeToVisible(selectedRange)
+        return motion.goalColumn
     }
 
     func resetSession() {

@@ -43,6 +43,135 @@ final class HardwareTextEditorTests: XCTestCase {
         view.handleKey(usage: 42)
         XCTAssertEqual(view.text, "b")
     }
+
+    @MainActor func testSpaceDragCursorStepsAndCommitsComposition() async {
+        var drag = CursorDrag(start: CGPoint(x: 100, y: 50))
+        // Jitter under one step stays a plain hold, which still types a tab.
+        XCTAssertEqual(drag.update(to: CGPoint(x: 105, y: 60)), CursorStep())
+        XCTAssertFalse(drag.isDragging)
+        XCTAssertEqual(drag.update(to: CGPoint(x: 79, y: 50)).characters, -2)
+        XCTAssertTrue(drag.isDragging)
+        XCTAssertEqual(drag.update(to: CGPoint(x: 111, y: 50)).characters, 3)
+        XCTAssertEqual(drag.update(to: CGPoint(x: 100, y: 50)).characters, -1)
+        XCTAssertTrue(drag.isDragging) // Returning to the start does not revert to a tab.
+
+        let view = HardwareTextView()
+        view.text = "앞👨‍👩‍👧‍👦뒤"
+        view.selectedRange = NSRange(location: (view.text as NSString).length, length: 0)
+        view.resetSession()
+        for usage in [14, 9] { view.handleKey(usage: usage) }
+        XCTAssertEqual(view.text, "앞👨‍👩‍👧‍👦뒤가")
+        view.moveCursor(by: -2)
+        XCTAssertEqual(view.selectedRange, NSRange(location: ("앞👨‍👩‍👧‍👦" as NSString).length, length: 0))
+        view.moveCursor(by: -5)
+        XCTAssertEqual(view.selectedRange, NSRange(location: 0, length: 0))
+        view.moveCursor(by: 2)
+        // The moved-away composition is committed: new input does not edit 가.
+        for usage in [14, 9] { view.handleKey(usage: usage) }
+        XCTAssertEqual(view.text, "앞👨‍👩‍👧‍👦가뒤가")
+        view.moveCursor(by: 9)
+        XCTAssertEqual(view.selectedRange.location, (view.text as NSString).length)
+    }
+
+    func testSpaceDragVerticalTravelBecomesLineSteps() {
+        var drag = CursorDrag(start: CGPoint(x: 100, y: 100))
+        // A sideways slide with a little vertical drift stays on the line.
+        XCTAssertEqual(drag.update(to: CGPoint(x: 130, y: 115)), CursorStep(characters: 3, lines: 0))
+        XCTAssertEqual(drag.update(to: CGPoint(x: 130, y: 75)), CursorStep(characters: 0, lines: -1))
+        XCTAssertTrue(drag.isDragging)
+        XCTAssertEqual(drag.update(to: CGPoint(x: 130, y: 51)), CursorStep(characters: 0, lines: -1))
+        XCTAssertEqual(drag.update(to: CGPoint(x: 130, y: 125)), CursorStep(characters: 0, lines: 3))
+
+        // Vertical travel alone is a drag too, so release does not type a tab.
+        var vertical = CursorDrag(start: CGPoint(x: 100, y: 100))
+        XCTAssertEqual(vertical.update(to: CGPoint(x: 104, y: 70)), CursorStep(characters: 0, lines: -1))
+        XCTAssertTrue(vertical.isDragging)
+    }
+
+    func testCursorMotionKeepsVisualColumnAcrossLines() {
+        func up(_ before: String, _ after: String = "", lines: Int = -1, goal: Int? = nil) -> CursorMotion {
+            CursorMotion.resolve(before: before, after: after, step: CursorStep(lines: lines), goalColumn: goal)
+        }
+        // Same width: the same column on the line above.
+        XCTAssertEqual(up("abcdef\nabc"), CursorMotion(utf16Offset: -7, goalColumn: 3))
+        // Hangul is two columns wide: after "ab" (column 2) is after 가.
+        XCTAssertEqual(up("가나다\nab"), CursorMotion(utf16Offset: -5, goalColumn: 2))
+        // Column 3 is between 가 (2) and 가나 (4); the tie goes left.
+        XCTAssertEqual(up("가나다\nabc"), CursorMotion(utf16Offset: -6, goalColumn: 3))
+        // A short line above clamps to its end, still before the newline.
+        XCTAssertEqual(up("ab\nabcdef"), CursorMotion(utf16Offset: -7, goalColumn: 6))
+        // An emoji is one character (11 UTF-16 units here), two columns.
+        let family = "👨‍👩‍👧‍👦"
+        XCTAssertEqual(up("\(family)x\nabc"), CursorMotion(utf16Offset: -4, goalColumn: 3))
+        XCTAssertEqual(up("\(family)x\nab"), CursorMotion(utf16Offset: -3 - 1, goalColumn: 2))
+
+        // Down uses the text after the caret.
+        let down = CursorMotion.resolve(before: "x\nabc", after: "def\n가나다라\nz",
+                                        step: CursorStep(lines: 1))
+        // Column 3 on "가나다라" is a tie between 2 and 4: after 가.
+        XCTAssertEqual(down, CursorMotion(utf16Offset: 3 + 1 + 1, goalColumn: 3))
+        // Two lines down in one step passes through the middle line with the goal kept.
+        let twoDown = CursorMotion.resolve(before: "abcdef", after: "\nab\nabcdefgh",
+                                           step: CursorStep(lines: 2))
+        XCTAssertEqual(twoDown, CursorMotion(utf16Offset: 1 + 2 + 1 + 6, goalColumn: 6))
+        // The goal column from an earlier step wins over the current column.
+        XCTAssertEqual(up("abcdefgh\nab", goal: 6), CursorMotion(utf16Offset: -5, goalColumn: 6))
+
+        // No adjacent line in the known context: stay put.
+        XCTAssertEqual(up("abc"), CursorMotion(utf16Offset: 0, goalColumn: nil))
+        XCTAssertEqual(CursorMotion.resolve(before: "ab", after: "c", step: CursorStep(lines: 1)),
+                       CursorMotion(utf16Offset: 0, goalColumn: nil))
+        // A line step stops at the first missing line but keeps what it did.
+        XCTAssertEqual(up("abc\nabc", lines: -3), CursorMotion(utf16Offset: -4, goalColumn: 3))
+
+        // Sideways steps are whole characters and clear the goal column.
+        XCTAssertEqual(CursorMotion.resolve(before: "a\(family)", after: "가b", step: CursorStep(characters: -1), goalColumn: 4),
+                       CursorMotion(utf16Offset: -11, goalColumn: nil))
+        XCTAssertEqual(CursorMotion.resolve(before: "a", after: "가b", step: CursorStep(characters: 2)),
+                       CursorMotion(utf16Offset: 2, goalColumn: nil))
+        // Beyond the known context the extension falls back to one unit per step.
+        XCTAssertEqual(CursorMotion.resolve(before: "", after: "ab", step: CursorStep(characters: 4),
+                                            extendsBeyondContext: true),
+                       CursorMotion(utf16Offset: 4, goalColumn: nil))
+        XCTAssertEqual(CursorMotion.resolve(before: "", after: "ab", step: CursorStep(characters: 4)),
+                       CursorMotion(utf16Offset: 2, goalColumn: nil))
+        XCTAssertEqual(CursorMotion.width("\t"), 4)
+    }
+
+    @MainActor func testSpaceDragMovesBetweenLinesAndCommitsComposition() async {
+        let view = HardwareTextView()
+        view.text = "가나다라\nab\nabcdefgh"
+        let source = view.text as NSString
+        view.selectedRange = NSRange(location: source.length, length: 0)
+        view.resetSession()
+        // Column 8 at the end of "abcdefgh"; the middle line is shorter.
+        XCTAssertEqual(view.moveCursor(by: 0, lines: -1), 8)
+        XCTAssertEqual(view.selectedRange, NSRange(location: 7, length: 0)) // End of "ab".
+        // The kept goal brings the caret back to column 8: the end of 가나다라.
+        XCTAssertEqual(view.moveCursor(by: 0, lines: -1, goalColumn: 8), 8)
+        XCTAssertEqual(view.selectedRange, NSRange(location: 4, length: 0))
+        // Nothing above the first line.
+        view.moveCursor(by: 0, lines: -1, goalColumn: 8)
+        XCTAssertEqual(view.selectedRange, NSRange(location: 4, length: 0))
+        // From after 가 (column 2) down to after "ab".
+        view.selectedRange = NSRange(location: 1, length: 0)
+        XCTAssertEqual(view.moveCursor(by: 0, lines: 1), 2)
+        XCTAssertEqual(view.selectedRange, NSRange(location: 7, length: 0))
+        // Moving down starts from a selection's end ("a|b") and collapses it.
+        view.selectedRange = NSRange(location: 0, length: 6)
+        view.moveCursor(by: 0, lines: 1)
+        XCTAssertEqual(view.selectedRange, NSRange(location: 9, length: 0)) // "a|bcdefgh"
+
+        // A composition is committed before the caret leaves its line.
+        view.selectedRange = NSRange(location: (view.text as NSString).length, length: 0)
+        view.resetSession()
+        for usage in [14, 9] { view.handleKey(usage: usage) }
+        XCTAssertEqual(view.text, "가나다라\nab\nabcdefgh가")
+        view.moveCursor(by: 0, lines: -2)
+        XCTAssertEqual(view.selectedRange, NSRange(location: 4, length: 0))
+        for usage in [14, 9] { view.handleKey(usage: usage) }
+        XCTAssertEqual(view.text, "가나다라가\nab\nabcdefgh가")
+    }
 }
 
 @MainActor
