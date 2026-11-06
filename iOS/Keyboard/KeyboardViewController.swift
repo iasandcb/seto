@@ -48,6 +48,7 @@ final class KeyboardViewController: UIInputViewController {
             self.reset()
         }
         keyboard.onDelete = { [weak self] in self?.delete() }
+        keyboard.onMoveCursor = { [weak self] step, goal in self?.moveCursor(step, goalColumn: goal) }
         keyboard.onSuggestion = { [weak self] context, candidate in self?.accept(context, candidate: candidate) }
         keyboard.onToggle = { [weak self] in
             self?.doubleSpacePeriod.clear()
@@ -160,6 +161,23 @@ final class KeyboardViewController: UIInputViewController {
         } else {
             edit { $0.backspace() }
         }
+    }
+
+    /// The proxy offset is counted in UTF-16 units, so step over whole visible
+    /// characters from the known context; beyond it a sideways step falls back
+    /// to one unit each. A vertical step needs the adjacent line in context.
+    private func moveCursor(_ step: CursorStep, goalColumn: Int?) -> Int? {
+        guard !step.isZero else { return goalColumn }
+        let motion = CursorMotion.resolve(
+            before: textDocumentProxy.documentContextBeforeInput ?? "",
+            after: textDocumentProxy.documentContextAfterInput ?? "",
+            step: step, goalColumn: goalColumn, extendsBeyondContext: true
+        )
+        guard motion.utf16Offset != 0 else { return motion.goalColumn }
+        textDocumentProxy.adjustTextPosition(byCharacterOffset: motion.utf16Offset)
+        // The composing syllable is already in the host text; moving away commits it.
+        reset()
+        return motion.goalColumn
     }
 
     private func edit(_ operation: (Session) -> SessionUpdate) {
