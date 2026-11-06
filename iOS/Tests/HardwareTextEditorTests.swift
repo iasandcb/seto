@@ -593,6 +593,60 @@ final class TouchKeyboardLayoutTests: XCTestCase {
         XCTAssertEqual(editor.text, "한그")
     }
 
+    @MainActor private final class SimulatedHold: UILongPressGestureRecognizer {
+        var simulatedState: UIGestureRecognizer.State = .possible
+        override var state: UIGestureRecognizer.State { simulatedState }
+    }
+
+    @MainActor func testHyphenBesideSpaceAndExistingHoldAlternates() throws {
+        let keyboard = KeyboardView(frame: CGRect(x: 0, y: 0, width: 320, height: KeyboardView.preferredHeight))
+        keyboard.layoutIfNeeded()
+        let keys = suggestionButtons(in: keyboard)
+        let space = try XCTUnwrap(keys.first { $0.title(for: .normal) == "간격" })
+        let controls = try XCTUnwrap(space.superview as? UIStackView)
+        let spaceIndex = try XCTUnwrap(controls.arrangedSubviews.firstIndex(of: space))
+        XCTAssertGreaterThan(spaceIndex, 0)
+        let hyphen = try XCTUnwrap(controls.arrangedSubviews[spaceIndex - 1] as? UIButton)
+        XCTAssertEqual(hyphen.title(for: .normal), "-")
+        XCTAssertEqual(hyphen.accessibilityLabel, "하이픈 입력")
+        XCTAssertEqual(hyphen.accessibilityHint, "길게 눌러 → 입력")
+        var inserted: [Character] = []
+        keyboard.onLiteral = { inserted.append($0) }
+        keyboard.onKey = { _ in XCTFail("Punctuation must use literal input") }
+
+        // Exercise the same Objective-C handler as the installed recognizer,
+        // including suppression of the ordinary tap after a completed hold.
+        func hold(_ button: UIButton) throws {
+            let installed = try XCTUnwrap(button.gestureRecognizers?.compactMap { $0 as? UILongPressGestureRecognizer }.first)
+            XCTAssertEqual(installed.minimumPressDuration, 0.4)
+            let gesture = SimulatedHold()
+            button.addGestureRecognizer(gesture)
+            defer { button.removeGestureRecognizer(gesture) }
+            gesture.simulatedState = .began
+            keyboard.perform(NSSelectorFromString("holdAlternate:"), with: gesture)
+            gesture.simulatedState = .ended
+            keyboard.perform(NSSelectorFromString("holdAlternate:"), with: gesture)
+            button.sendActions(for: .touchUpInside)
+        }
+
+        for mode in [Language.korean, .english] {
+            keyboard.update(mode: mode, automatic: true)
+            hyphen.sendActions(for: .touchUpInside)
+            try hold(hyphen)
+            hyphen.sendActions(for: .touchUpInside)
+        }
+        XCTAssertEqual(inserted, ["-", "→", "-", "-", "→", "-"])
+        inserted.removeAll()
+        let punctuationAlternates: [(String, Character)] = [(".", ","), ("?", "!")]
+        for (title, alternate) in punctuationAlternates {
+            let key = try XCTUnwrap(keys.first { $0.title(for: .normal) == title })
+            XCTAssertEqual(key.accessibilityHint, "길게 눌러 \(alternate) 입력")
+            try hold(key)
+        }
+        try hold(space)
+        XCTAssertEqual(inserted, [",", "!", "\t"])
+    }
+
     @MainActor func testNumberShiftAndPunctuationAtNarrowWidth() {
         let keyboard = KeyboardView(frame: CGRect(x: 0, y: 0, width: 320, height: KeyboardView.preferredHeight))
         keyboard.update(mode: .korean, automatic: true)

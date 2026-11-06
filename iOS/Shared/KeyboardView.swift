@@ -163,11 +163,11 @@ final class KeyboardView: UIView {
         languageKey.accessibilityLabel = "한영 전환 및 자동 변환 되돌리기"
         languageKey.accessibilityHint = "길게 눌러 자동 한영 전환 설정"
         controls.addArrangedSubview(languageKey)
-        let arrowKey = makeButton("→") { [weak self] in self?.emitLiteral("→") }
-        addPreview(to: arrowKey) { "→" }
-        addAlternate(to: arrowKey, primary: "→", alternate: "←")
-        arrowKey.accessibilityLabel = "오른쪽 화살표 입력"
-        controls.addArrangedSubview(arrowKey)
+        let hyphenKey = makeButton("-") { [weak self] in self?.emitLiteral("-") }
+        addPreview(to: hyphenKey) { "-" }
+        addAlternate(to: hyphenKey, primary: "-", alternate: "→")
+        hyphenKey.accessibilityLabel = "하이픈 입력"
+        controls.addArrangedSubview(hyphenKey)
         let space = makeButton("간격") { [weak self] in self?.emitKey(" ") }
         space.accessibilityHint = "길게 눌러 탭 입력, 길게 누른 채 끌어 커서 이동"
         addHold(to: space) { [weak self] in
