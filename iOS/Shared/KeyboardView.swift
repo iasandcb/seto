@@ -44,7 +44,8 @@ final class KeyboardView: UIView {
     private var numberKeys: [(UIButton, Character, Character)] = []
     private var keys: [(UIButton, Character)] = []
     private let keyPreview = KeyPreviewView()
-    private var alternates: [ObjectIdentifier: Character] = [:]
+    private var alternates: [ObjectIdentifier: () -> HoldAlternate?] = [:]
+    private var activeHolds: [ObjectIdentifier: HoldAlternate] = [:]
     private var suppressedAlternateActions: Set<ObjectIdentifier> = []
     private weak var previewedButton: UIButton?
     private var previewText: [ObjectIdentifier: () -> String] = [:]
@@ -96,6 +97,18 @@ final class KeyboardView: UIView {
                 button.titleLabel?.textAlignment = .center
                 addPreview(to: button) { [weak button] in
                     button?.attributedTitle(for: .normal)?.string.components(separatedBy: "\n").first ?? ""
+                }
+                // Holding a letter types its Shift form (쌍자음·ㅒ·ㅖ or uppercase)
+                // through the same composing path as a tap. Symbols have no Shift layer.
+                button.accessibilityHint = "길게 눌러 Shift 글자 입력"
+                addHold(to: button) { [weak self] in
+                    guard let self, !self.symbols else { return nil }
+                    let key = self.output(character, shifted: true)
+                    return HoldAlternate(preview: self.english ? String(key) : self.koreanLabel(for: key)) { [weak self] in
+                        guard let self else { return }
+                        self.emitKey(key)
+                        if self.shifted { self.shifted = false; self.refresh() }
+                    }
                 }
                 keys.append((button, character))
                 row.addArrangedSubview(button)
@@ -153,6 +166,10 @@ final class KeyboardView: UIView {
         arrowKey.accessibilityLabel = "오른쪽 화살표 입력"
         controls.addArrangedSubview(arrowKey)
         let space = makeButton("간격") { [weak self] in self?.emitKey(" ") }
+        space.accessibilityHint = "길게 눌러 탭 입력"
+        addHold(to: space) { [weak self] in
+            HoldAlternate(preview: "⇥") { self?.emitLiteral("\t") }
+        }
         space.widthAnchor.constraint(greaterThanOrEqualToConstant: 80).isActive = true
         controls.addArrangedSubview(space)
         for punctuation: Character in [".", "?"] {
@@ -396,6 +413,10 @@ final class KeyboardView: UIView {
     @objc private func nextKeyboard(_ sender: UIButton, event: UIEvent) { onNext?(sender, event) }
 
     private func output(_ character: Character) -> Character {
+        output(character, shifted: shifted)
+    }
+
+    private func output(_ character: Character, shifted: Bool) -> Character {
         if symbols {
             let positions = Array("1234567890qwertyuiopasdfghjkl;zxcvbnm,./")
             let values = Array("1234567890-/:;()₩&@.,?!'\"[]{}+=_*%<>\\|~`#")
@@ -424,13 +445,8 @@ final class KeyboardView: UIView {
         }
         for (button, character) in keys {
             let key = output(character)
-            let title: String
-            let korean: String
-            switch LayoutDubeol.atom(for: key).korean {
-            case .jamo(let jamo): korean = String(jamo.compat)
-            case .character(let value): korean = String(value)
-            }
-            title = english || symbols ? String(key) : korean
+            let korean = koreanLabel(for: key)
+            let title = english || symbols ? String(key) : korean
             let secondary = english ? korean : String(key)
             let stacked = !symbols && secondary != title
             let attributes: [NSAttributedString.Key: Any] = [
@@ -443,6 +459,13 @@ final class KeyboardView: UIView {
         }
     }
 
+    private func koreanLabel(for key: Character) -> String {
+        switch LayoutDubeol.atom(for: key).korean {
+        case .jamo(let jamo): return String(jamo.compat)
+        case .character(let value): return String(value)
+        }
+    }
+
     private func addPreview(to button: UIButton, text: @escaping () -> String) {
         previewText[ObjectIdentifier(button)] = text
         button.addTarget(self, action: #selector(showPreview(_:)), for: [.touchDown, .touchDragEnter])
@@ -451,6 +474,10 @@ final class KeyboardView: UIView {
 
     @objc private func showPreview(_ button: UIButton) {
         guard let text = previewText[ObjectIdentifier(button)]?() else { return }
+        showPreview(button, text: text)
+    }
+
+    private func showPreview(_ button: UIButton, text: String) {
         layoutIfNeeded()
         let key = button.convert(button.bounds, to: self)
         let width = min(bounds.width, max(60, key.width + 24))
@@ -474,8 +501,21 @@ final class KeyboardView: UIView {
     }
 
     private func addAlternate(to button: UIButton, primary: Character, alternate: Character) {
-        alternates[ObjectIdentifier(button)] = alternate
         button.accessibilityHint = "길게 눌러 \(alternate) 입력"
+        addHold(to: button) { [weak self] in
+            HoldAlternate(preview: String(alternate)) {
+                guard let self else { return }
+                self.emitLiteral(alternate)
+                if self.shifted { self.shifted = false; self.refresh() }
+            }
+        }
+    }
+
+    /// Every long-press key shares one path: the alternate is resolved when the
+    /// hold begins, the button's tap action is suppressed, and release emits it.
+    /// A resolver returning nil leaves the hold as an ordinary tap.
+    private func addHold(to button: UIButton, resolve: @escaping () -> HoldAlternate?) {
+        alternates[ObjectIdentifier(button)] = resolve
         let hold = UILongPressGestureRecognizer(target: self, action: #selector(holdAlternate(_:)))
         hold.minimumPressDuration = 0.4
         hold.cancelsTouchesInView = false
@@ -483,16 +523,21 @@ final class KeyboardView: UIView {
     }
 
     @objc private func holdAlternate(_ hold: UILongPressGestureRecognizer) {
-        guard let button = hold.view as? UIButton, let alternate = alternates[ObjectIdentifier(button)] else { return }
+        guard let button = hold.view as? UIButton else { return }
+        let id = ObjectIdentifier(button)
         switch hold.state {
         case .began:
-            suppressedAlternateActions.insert(ObjectIdentifier(button))
+            guard let alternate = alternates[id]?() else { return }
+            activeHolds[id] = alternate
+            suppressedAlternateActions.insert(id)
+            if previewedButton === button { showPreview(button, text: alternate.preview) }
         case .ended:
+            guard let alternate = activeHolds.removeValue(forKey: id) else { return }
             dismissPreview()
-            emitLiteral(alternate)
-            if shifted { shifted = false; refresh() }
+            alternate.perform()
         case .cancelled, .failed:
-            suppressedAlternateActions.remove(ObjectIdentifier(button))
+            activeHolds.removeValue(forKey: id)
+            suppressedAlternateActions.remove(id)
         default:
             break
         }
@@ -536,6 +581,12 @@ final class KeyboardView: UIView {
     private func consumeSuppressedAlternateAction(for button: UIButton) -> Bool {
         suppressedAlternateActions.remove(ObjectIdentifier(button)) != nil
     }
+}
+
+/// What a held key emits on release, and the glyph its preview shows meanwhile.
+private struct HoldAlternate {
+    let preview: String
+    let perform: () -> Void
 }
 
 /// Keyboard feedback must follow touch-down without UIButton.system's title fades.
