@@ -487,7 +487,7 @@ final class TouchKeyboardLayoutTests: XCTestCase {
         let keys = buttons(in: keyboard)
         let letter = try XCTUnwrap(keys.first { $0.accessibilityLabel?.contains("영문 q,") == true })
         // The key left of space is "-", which inserts "-" and long-presses to "→".
-        let titles = ["#", "↔", "-", ".", "?", "↵"]
+        let titles = ["※", "↔", "-", ".", "?", "↵"]
         let bottom = try titles.map { title in
             try XCTUnwrap(keys.first { $0.title(for: .normal) == title }, "Missing bottom-row key \(title)")
         }
@@ -692,7 +692,7 @@ final class TouchKeyboardLayoutTests: XCTestCase {
         keyboard.update(mode: .korean, automatic: true)
         keyboard.layoutIfNeeded()
         let keys = suggestionButtons(in: keyboard)
-        let symbolToggle = try XCTUnwrap(keys.first { $0.title(for: .normal) == "#" })
+        let symbolToggle = try XCTUnwrap(keys.first { $0.title(for: .normal) == "※" })
         let bottomPeriod = try XCTUnwrap(keys.first { $0.title(for: .normal) == "." })
         let bottomQuestion = try XCTUnwrap(keys.first { $0.title(for: .normal) == "?" })
         let positions = Array("1234567890qwertyuiopasdfghjkl;zxcvbnm,./")
