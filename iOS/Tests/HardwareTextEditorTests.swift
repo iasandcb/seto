@@ -675,6 +675,60 @@ final class TouchKeyboardLayoutTests: XCTestCase {
         }
         XCTAssertEqual(inserted, ["!", "1", ".", "?"])
     }
+
+    @MainActor func testSymbolModeRemapsTildeAndPlusWithoutChangingBottomPunctuation() throws {
+        let keyboard = KeyboardView(frame: CGRect(x: 0, y: 0, width: 320, height: KeyboardView.preferredHeight))
+        keyboard.update(mode: .korean, automatic: true)
+        keyboard.layoutIfNeeded()
+        let keys = suggestionButtons(in: keyboard)
+        let symbolToggle = try XCTUnwrap(keys.first { $0.title(for: .normal) == "#" })
+        let aKey = try XCTUnwrap(keys.first { $0.accessibilityLabel?.contains("영문 a,") == true })
+        let commaKey = try XCTUnwrap(keys.first { $0.accessibilityLabel?.contains("영문 ,,") == true })
+        let rightOfComma = try XCTUnwrap(keys.first { $0.accessibilityLabel?.contains("영문 .,") == true })
+        let bottomPeriod = try XCTUnwrap(keys.first { $0.title(for: .normal) == "." })
+        let bottomQuestion = try XCTUnwrap(keys.first { $0.title(for: .normal) == "?" })
+
+        func descendants(_ view: UIView) -> [UIView] { view.subviews.flatMap { [$0] + descendants($0) } }
+        let previewBubble = try XCTUnwrap(descendants(keyboard).first { $0.accessibilityIdentifier == "keyPreview" })
+        let previewText = try XCTUnwrap(descendants(previewBubble).first { $0.accessibilityIdentifier == "keyPreviewText" } as? UILabel)
+        var inserted: [Character] = []
+        keyboard.onLiteral = { inserted.append($0) }
+        keyboard.onKey = { _ in XCTFail("Symbols and punctuation should use literal input") }
+
+        symbolToggle.sendActions(for: .touchUpInside)
+        XCTAssertEqual(aKey.accessibilityLabel, "~")
+        XCTAssertEqual(rightOfComma.accessibilityLabel, "+")
+        XCTAssertEqual(bottomPeriod.title(for: .normal), ".")
+        XCTAssertEqual(bottomQuestion.title(for: .normal), "?")
+
+        aKey.sendActions(for: .touchDown)
+        XCTAssertEqual(previewText.text, "~")
+        XCTAssertTrue(inserted.isEmpty)
+        aKey.sendActions(for: .touchUpInside)
+        XCTAssertEqual(inserted, ["~"])
+        inserted.removeAll()
+
+        // A long press on symbol-layer keys has no alternate and must not
+        // suppress or duplicate the eventual tap emission.
+        func holdThenTap(_ button: UIButton) throws {
+            let gesture = SimulatedHold()
+            button.addGestureRecognizer(gesture)
+            defer { button.removeGestureRecognizer(gesture) }
+            gesture.simulatedState = .began
+            keyboard.perform(NSSelectorFromString("holdAlternate:"), with: gesture)
+            gesture.simulatedState = .ended
+            keyboard.perform(NSSelectorFromString("holdAlternate:"), with: gesture)
+            button.sendActions(for: .touchUpInside)
+        }
+        try holdThenTap(rightOfComma)
+        XCTAssertEqual(inserted, ["+"])
+        inserted.removeAll()
+
+        bottomPeriod.sendActions(for: .touchUpInside)
+        bottomQuestion.sendActions(for: .touchUpInside)
+        XCTAssertEqual(inserted, [".", "?"])
+        XCTAssertEqual(rightOfComma.frame.minX, commaKey.frame.maxX, accuracy: 1.0)
+    }
 }
 
 final class PresentedKeyboardTests: XCTestCase {
