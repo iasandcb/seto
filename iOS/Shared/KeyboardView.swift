@@ -428,7 +428,7 @@ final class KeyboardView: UIView {
     private func output(_ character: Character, shifted: Bool) -> Character {
         if symbols {
             let positions = Array("1234567890qwertyuiopasdfghjkl;zxcvbnm,./")
-            let values = Array("1234567890-/:;()₩&@.~?!'\"[]{}+=_*%<>\\|+`#")
+            let values = Array("1234567890-/:;()₩&@~,+!'\"[]{}+=_*%<>\\|~`#")
             if let index = positions.firstIndex(of: character), index < values.count { return values[index] }
         }
         guard shifted else { return character }

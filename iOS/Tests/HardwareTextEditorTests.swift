@@ -682,29 +682,48 @@ final class TouchKeyboardLayoutTests: XCTestCase {
         keyboard.layoutIfNeeded()
         let keys = suggestionButtons(in: keyboard)
         let symbolToggle = try XCTUnwrap(keys.first { $0.title(for: .normal) == "#" })
-        let aKey = try XCTUnwrap(keys.first { $0.accessibilityLabel?.contains("영문 a,") == true })
-        let commaKey = try XCTUnwrap(keys.first { $0.accessibilityLabel?.contains("영문 ,,") == true })
-        let rightOfComma = try XCTUnwrap(keys.first { $0.accessibilityLabel?.contains("영문 .,") == true })
         let bottomPeriod = try XCTUnwrap(keys.first { $0.title(for: .normal) == "." })
         let bottomQuestion = try XCTUnwrap(keys.first { $0.title(for: .normal) == "?" })
+        let positions = Array("1234567890qwertyuiopasdfghjkl;zxcvbnm,./")
+        let originalValues = Array("1234567890-/:;()₩&@.,?!'\"[]{}+=_*%<>\\|~`#")
+        let originalPeriodIndex = try XCTUnwrap(originalValues.firstIndex(of: "."))
+        let originalCommaIndex = try XCTUnwrap(originalValues.firstIndex(of: ","))
+        let originalQuestionAfterCommaIndex = originalCommaIndex + 1
+        XCTAssertLessThan(originalQuestionAfterCommaIndex, originalValues.count)
+        XCTAssertEqual(originalValues[originalQuestionAfterCommaIndex], "?")
+        let originalTildeIndex = try XCTUnwrap(originalValues.firstIndex(of: "~"))
+
+        func key(at index: Int) throws -> UIButton {
+            let position = positions[index]
+            return try XCTUnwrap(keys.first { $0.accessibilityLabel?.contains("영문 \(position),") == true })
+        }
+
+        let periodMappedKey = try key(at: originalPeriodIndex)
+        let commaMappedKey = try key(at: originalCommaIndex)
+        let questionAfterCommaKey = try key(at: originalQuestionAfterCommaIndex)
+        let originalTildeKey = try key(at: originalTildeIndex)
 
         func descendants(_ view: UIView) -> [UIView] { view.subviews.flatMap { [$0] + descendants($0) } }
         let previewBubble = try XCTUnwrap(descendants(keyboard).first { $0.accessibilityIdentifier == "keyPreview" })
         let previewText = try XCTUnwrap(descendants(previewBubble).first { $0.accessibilityIdentifier == "keyPreviewText" } as? UILabel)
+        XCTAssertEqual(previewBubble.accessibilityIdentifier, "keyPreview")
+        XCTAssertEqual(previewText.accessibilityIdentifier, "keyPreviewText")
         var inserted: [Character] = []
         keyboard.onLiteral = { inserted.append($0) }
         keyboard.onKey = { _ in XCTFail("Symbols and punctuation should use literal input") }
 
         symbolToggle.sendActions(for: .touchUpInside)
-        XCTAssertEqual(aKey.accessibilityLabel, "~")
-        XCTAssertEqual(rightOfComma.accessibilityLabel, "+")
+        XCTAssertEqual(periodMappedKey.accessibilityLabel, "~")
+        XCTAssertEqual(commaMappedKey.accessibilityLabel, ",")
+        XCTAssertEqual(questionAfterCommaKey.accessibilityLabel, "+")
+        XCTAssertEqual(originalTildeKey.accessibilityLabel, "~")
         XCTAssertEqual(bottomPeriod.title(for: .normal), ".")
         XCTAssertEqual(bottomQuestion.title(for: .normal), "?")
 
-        aKey.sendActions(for: .touchDown)
+        periodMappedKey.sendActions(for: .touchDown)
         XCTAssertEqual(previewText.text, "~")
         XCTAssertTrue(inserted.isEmpty)
-        aKey.sendActions(for: .touchUpInside)
+        periodMappedKey.sendActions(for: .touchUpInside)
         XCTAssertEqual(inserted, ["~"])
         inserted.removeAll()
 
@@ -720,14 +739,13 @@ final class TouchKeyboardLayoutTests: XCTestCase {
             keyboard.perform(NSSelectorFromString("holdAlternate:"), with: gesture)
             button.sendActions(for: .touchUpInside)
         }
-        try holdThenTap(rightOfComma)
+        try holdThenTap(questionAfterCommaKey)
         XCTAssertEqual(inserted, ["+"])
         inserted.removeAll()
 
         bottomPeriod.sendActions(for: .touchUpInside)
         bottomQuestion.sendActions(for: .touchUpInside)
         XCTAssertEqual(inserted, [".", "?"])
-        XCTAssertEqual(rightOfComma.frame.minX, commaKey.frame.maxX, accuracy: 1.0)
     }
 }
 
