@@ -162,7 +162,7 @@ final class KeyboardView: UIView {
         globe.accessibilityLabel = "다음 키보드"
         globe.addTarget(self, action: #selector(nextKeyboard(_:event:)), for: .allTouchEvents)
         globe.widthAnchor.constraint(equalToConstant: 32).isActive = true
-        let symbolKey = makeButton("#") { [weak self] in
+        let symbolKey = makeButton("※") { [weak self] in
             guard let self else { return }
             self.onCancelPendingDoubleSpace?()
             self.symbols.toggle(); self.refresh()
@@ -210,6 +210,7 @@ final class KeyboardView: UIView {
                 button.widthAnchor.constraint(equalTo: numbers.arrangedSubviews[0].widthAnchor).isActive = true
             }
         }
+        symbolKey.titleLabel?.font = .systemFont(ofSize: 22, weight: .semibold)
         for row in rows.arrangedSubviews.dropFirst() {
             row.heightAnchor.constraint(equalToConstant: 42).isActive = true
         }
