@@ -246,10 +246,12 @@ public final class Session {
     }
 
     /// Touch-keyboard long-press of ※. Re-read the open word, including an
-    /// in-progress syllable, with the same keys in the other input mode and
+    /// in-progress syllable, as if the word had started in the other mode, and
     /// hold that choice so automatic conversion does not flip it back.
-    /// `syncClient` commits the old composition into the replacement. A
-    /// finished word is left alone: with no open keys, only the mode changes.
+    /// Automatic switching can already have moved `mode` (English "sk" is the
+    /// word 나, so "skt" is already 낫 in Korean). Flipping the live mode would
+    /// undo that. The next hold sees the updated start mode and goes the other
+    /// way. A finished word is left alone: with no open keys, only the mode changes.
     public func convertOpenWord() -> SessionUpdate {
         guard !keys.isEmpty else {
             mode = mode.flipped
@@ -257,7 +259,9 @@ public final class Session {
             locked = nil
             return make(.none, marked: preedit, didAutoConvert: false)
         }
-        return holdWord(in: mode.flipped)
+        let target = wordMode.flipped
+        wordMode = target
+        return holdWord(in: target)
     }
 
     /// One language for every key of the open word, kept against auto-switch.
