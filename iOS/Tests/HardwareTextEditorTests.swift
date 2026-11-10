@@ -1478,12 +1478,15 @@ final class SymbolLongPressTests: XCTestCase {
 
         let english = makeEditor(automatic: true, mode: Language.english)
         type("skt", on: english)
-        longPressSymbol(on: keyboardView(of: english))
+        // "sk" is the word 나, so automatic switching has already shown 낫.
         XCTAssertEqual(english.text, "낫")
         XCTAssertEqual(english.session.mode, Language.korean)
-        type("hello", on: english)
-        XCTAssertFalse(english.text?.contains("hello") == true)
-        XCTAssertEqual(english.session.mode, Language.korean)
+        longPressSymbol(on: keyboardView(of: english))
+        XCTAssertEqual(english.text, "skt")
+        XCTAssertEqual(english.session.mode, Language.english)
+        type("gksrmf", on: english)
+        XCTAssertEqual(english.text, "sktgksrmf")
+        XCTAssertEqual(english.session.mode, Language.english)
     }
 
     @MainActor func testSymbolTapStillTogglesAndOtherHoldsStay() throws {
