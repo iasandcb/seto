@@ -108,6 +108,7 @@ final class HardwareTextView: UITextView, UITextViewDelegate {
         }
         touchKeyboard.onSuggestion = { [weak self] context, candidate in self?.accept(context, candidate: candidate) }
         touchKeyboard.onToggle = { [weak self] in self?.toggleLanguage() }
+        touchKeyboard.onReinterpretWord = { [weak self] in self?.convertOpenWord() }
         touchKeyboard.onAutoSwitch = { [weak self] in
             guard let self else { return }
             self.session.autoSwitch.toggle()
@@ -160,6 +161,10 @@ final class HardwareTextView: UITextView, UITextViewDelegate {
     }
 
     @objc private func toggleLanguage() { apply { $0.toggle() } }
+
+    /// ※ long-press. Same replacement path as a key, so an open syllable is
+    /// rewritten in place and the session's composition matches the field.
+    private func convertOpenWord() { apply { $0.convertOpenWord() } }
 
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
         if presses.contains(where: { $0.key != nil }) { setHardwareKeyboardConnected(true) }

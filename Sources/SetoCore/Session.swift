@@ -214,12 +214,7 @@ public final class Session {
         if !keys.isEmpty,
            let first = segments.first,
            segments.dropFirst().contains(where: { $0.lang != first.lang }) {
-            pendingUndo = nil
-            let flipped = wordMode.flipped
-            locked = flipped
-            mode = flipped
-            segments = [Segment(start: 0, end: keys.count, lang: flipped)]
-            return syncClient(didAutoConvert: false)
+            return holdWord(in: wordMode.flipped)
         }
 
         if let undo = pendingUndo {
@@ -241,17 +236,37 @@ public final class Session {
         }
 
         if !keys.isEmpty {
-            let flipped = (segments.last?.lang ?? mode).flipped
-            locked = flipped
-            mode = flipped
-            segments = [Segment(start: 0, end: keys.count, lang: flipped)]
-            return syncClient(didAutoConvert: false)
+            return holdWord(in: (segments.last?.lang ?? mode).flipped)
         }
 
         mode = mode.flipped
         wordMode = mode
         locked = nil
         return make(.none, marked: preedit, didAutoConvert: false)
+    }
+
+    /// Touch-keyboard long-press of ※. Re-read the open word, including an
+    /// in-progress syllable, with the same keys in the other input mode and
+    /// hold that choice so automatic conversion does not flip it back.
+    /// `syncClient` commits the old composition into the replacement. A
+    /// finished word is left alone: with no open keys, only the mode changes.
+    public func convertOpenWord() -> SessionUpdate {
+        guard !keys.isEmpty else {
+            mode = mode.flipped
+            wordMode = mode
+            locked = nil
+            return make(.none, marked: preedit, didAutoConvert: false)
+        }
+        return holdWord(in: mode.flipped)
+    }
+
+    /// One language for every key of the open word, kept against auto-switch.
+    private func holdWord(in language: Language) -> SessionUpdate {
+        pendingUndo = nil
+        locked = language
+        mode = language
+        segments = [Segment(start: 0, end: keys.count, lang: language)]
+        return syncClient(didAutoConvert: false)
     }
 
     /// Hand the caret back to the app without rewriting characters. English

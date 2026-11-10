@@ -24,6 +24,8 @@ final class KeyboardView: UIView {
     /// the field, which is what the system keyboard does.
     var backspaceHasMoreText: (() -> Bool)?
     var onToggle: (() -> Void)?
+    /// Long-press of ※. The host re-reads the open word in the other language.
+    var onReinterpretWord: (() -> Void)?
     var onNext: ((UIButton, UIEvent) -> Void)?
     var onAutoSwitch: (() -> Void)?
     var onCancelPendingDoubleSpace: (() -> Void)?
@@ -168,6 +170,15 @@ final class KeyboardView: UIView {
             self.symbols.toggle(); self.refresh()
         }
         symbolKey.accessibilityLabel = "기호 자판 전환"
+        symbolKey.accessibilityHint = "길게 눌러 방금 입력한 단어를 반대 자판으로 바꿉니다"
+        addPreview(to: symbolKey) { "※" }
+        // Tap still toggles the symbol layer. The hold re-reads the open word
+        // and must not also run that tap.
+        addHold(to: symbolKey) { [weak self] in
+            HoldAlternate(preview: "한/영") { [weak self] in
+                self?.reinterpretCurrentWord()
+            }
+        }
         controls.addArrangedSubview(symbolKey)
         let languageKey = makeButton("↔") { [weak self] in self?.toggleLanguage() }
         languageButton = languageKey
@@ -424,6 +435,19 @@ final class KeyboardView: UIView {
         english.toggle()
         _ = phraseSession.forceMode(english ? .english : .korean)
         refresh()
+    }
+
+    /// ※ long-press. Phrase entry has its own session; the field is the host's.
+    private func reinterpretCurrentWord() {
+        onCancelPendingDoubleSpace?()
+        if let phraseSession {
+            _ = phraseSession.convertOpenWord()
+            english = phraseSession.mode == .english
+            refresh()
+            refreshPhrases()
+            return
+        }
+        onReinterpretWord?()
     }
 
     private func beginPhrase(at index: Int? = nil) {
