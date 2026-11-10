@@ -18,6 +18,11 @@ final class KeyboardView: UIView {
     var onSuggestion: ((WordSuggestionContext, String) -> Void)?
     var onLiteral: ((Character) -> Void)?
     var onDelete: (() -> Void)?
+    /// One accelerated wave. The system keyboard deletes two word-units per wave.
+    var onDeleteWord: (() -> Void)?
+    /// Nil keeps repeating. False stops the hold after the deletion that emptied
+    /// the field, which is what the system keyboard does.
+    var backspaceHasMoreText: (() -> Bool)?
     var onToggle: (() -> Void)?
     var onNext: ((UIButton, UIEvent) -> Void)?
     var onAutoSwitch: (() -> Void)?
@@ -50,6 +55,12 @@ final class KeyboardView: UIView {
     private var alternates: [ObjectIdentifier: () -> HoldAlternate?] = [:]
     private var activeHolds: [ObjectIdentifier: (alternate: HoldAlternate, drag: CursorDrag)] = [:]
     private var suppressedAlternateActions: Set<ObjectIdentifier> = []
+    private var backspaceRepeat = BackspaceRepeat()
+    private var backspaceTimer: Timer?
+    private var backspaceTouchDownDelete = false
+    /// Tests replace the clock and turn the timer off, then call `advanceBackspaceRepeat()`.
+    var backspaceClock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    var backspaceRepeatUsesTimer = true
     private weak var previewedButton: UIButton?
     private var previewText: [ObjectIdentifier: () -> String] = [:]
 
@@ -122,7 +133,7 @@ final class KeyboardView: UIView {
                 let trailing: UIView
                 if letters.count == 7 {
                     leading = makeButton("⇧", event: .touchDown) { [weak self] in self?.shifted.toggle(); self?.refresh() }
-                    trailing = makeButton("⌫") { [weak self] in self?.emitDelete() }
+                    trailing = makeBackspaceButton()
                     inset.spacing = 14
                 } else {
                     leading = UIView()
@@ -281,6 +292,130 @@ final class KeyboardView: UIView {
         guard let phraseSession else { onDelete?(); return }
         _ = phraseSession.backspace()
         refreshPhrases()
+    }
+
+    /// Held backspace is not an alternate-character hold. Those emit once on
+    /// release. This key deletes on contact and keeps deleting until the finger
+    /// lifts, so a tap is exactly one ordinary deletion and release adds none.
+    private func makeBackspaceButton() -> UIButton {
+        let backspace = makeButton("⌫", event: .touchDown) { [weak self] in
+            self?.beginBackspaceHold()
+        }
+        backspace.accessibilityLabel = "삭제"
+        backspace.accessibilityHint = "길게 누르면 글자를 반복해서 지우고, 더 오래 누르면 단어 단위로 지웁니다"
+        backspace.addTarget(self, action: #selector(endBackspaceHold), for: .touchUpInside)
+        backspace.addTarget(self, action: #selector(cancelBackspaceTouch), for: [.touchUpOutside, .touchCancel])
+        return backspace
+    }
+
+    private func beginBackspaceHold() {
+        guard !backspaceTouchDownDelete else { return }
+        backspaceTouchDownDelete = true
+        let started = backspaceClock()
+        emitDelete()
+        guard backspaceShouldContinue() else { return }
+        backspaceRepeat.begin(at: started)
+        scheduleBackspaceTimer()
+    }
+
+    /// A control activation without a touch-down (VoiceOver) still deletes once.
+    /// A real press already deleted on contact, so lifting must not delete again.
+    @objc private func endBackspaceHold() {
+        let fromTouch = backspaceTouchDownDelete
+        cancelBackspaceHold()
+        if !fromTouch { emitDelete() }
+    }
+
+    @objc private func cancelBackspaceTouch() {
+        cancelBackspaceHold()
+    }
+
+    func cancelBackspaceHold() {
+        backspaceTouchDownDelete = false
+        stopBackspaceRepeat()
+    }
+
+    private func stopBackspaceRepeat() {
+        backspaceRepeat.end()
+        backspaceTimer?.invalidate()
+        backspaceTimer = nil
+    }
+
+    func backspaceNextDeadline() -> TimeInterval? {
+        backspaceRepeat.nextDeadline()
+    }
+
+    func advanceBackspaceRepeat() {
+        let actions = backspaceRepeat.dueActions(at: backspaceClock())
+        for action in actions {
+            performBackspaceRepeatAction(action)
+            if !backspaceShouldContinue() {
+                // The finger may still be down. Stopping the timer must not
+                // look like a touch-up, or release would delete once more.
+                stopBackspaceRepeat()
+                return
+            }
+        }
+        scheduleBackspaceTimer()
+    }
+
+    func performBackspaceRepeatAction(_ action: BackspaceRepeat.Action) {
+        switch action {
+        case .character:
+            emitDelete()
+        case .word:
+            emitDeleteWord()
+        }
+    }
+
+    private func emitDeleteWord() {
+        if let phraseSession {
+            if phraseSession.preedit.isEmpty {
+                let pieces = WordDeletion.units(in: phraseSession.document, count: BackspaceRepeat.wordsPerTick)
+                let suffixCount = pieces.reduce(0) { $0 + $1.count }
+                let goal = max(0, phraseSession.document.count - suffixCount)
+                var steps = 0
+                while phraseSession.document.count > goal, steps < suffixCount * 4 + 2 {
+                    steps += 1
+                    if !phraseSession.preedit.isEmpty {
+                        _ = phraseSession.backspace()
+                        break
+                    }
+                    let before = phraseSession.document
+                    _ = phraseSession.backspace()
+                    if phraseSession.document == before { break }
+                }
+            } else {
+                // An open syllable still loses one jamo, same as a tap.
+                _ = phraseSession.backspace()
+            }
+            refreshPhrases()
+            return
+        }
+        if let onDeleteWord {
+            onDeleteWord()
+        } else {
+            onDelete?()
+        }
+    }
+
+    private func backspaceShouldContinue() -> Bool {
+        if let phraseSession { return !phraseSession.document.isEmpty }
+        return backspaceHasMoreText?() ?? true
+    }
+
+    private func scheduleBackspaceTimer() {
+        backspaceTimer?.invalidate()
+        backspaceTimer = nil
+        guard backspaceRepeatUsesTimer, let deadline = backspaceRepeat.nextDeadline() else { return }
+        let delay = max(0, deadline - backspaceClock())
+        let timer = Timer(timeInterval: delay, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.advanceBackspaceRepeat()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        backspaceTimer = timer
     }
 
     private func toggleLanguage() {
@@ -580,7 +715,10 @@ final class KeyboardView: UIView {
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        if window == nil { dismissPreview() }
+        if window == nil {
+            dismissPreview()
+            cancelBackspaceHold()
+        }
     }
 
     private func style(_ button: UIButton) {
@@ -603,6 +741,151 @@ final class KeyboardView: UIView {
 
     private func consumeSuppressedAlternateAction(for button: UIButton) -> Bool {
         suppressedAlternateActions.remove(ObjectIdentifier(button)) != nil
+    }
+}
+
+/// Cadence of a held backspace on the system iPhone keyboard.
+///
+/// One deletion happens on contact, outside this schedule. Then a 500 ms pause,
+/// twenty character deletions every 100 ms, then a word wave every 350 ms.
+/// The first wave is one character-interval after the last character, and later
+/// waves are 350 ms apart. Releasing makes `dueActions` empty.
+///
+/// Those intervals match the iOS 26 software keyboard: character deletion does
+/// not speed up, and each word wave removes two word-units about 350 ms apart.
+struct BackspaceRepeat: Equatable {
+    static let initialDelay: TimeInterval = 0.5
+    static let characterInterval: TimeInterval = 0.1
+    static let characterRepeatCount = 20
+    static let wordInterval: TimeInterval = 0.35
+    /// The system keyboard removes two word-units on each wave.
+    static let wordsPerTick = 2
+
+    enum Action: Equatable {
+        case character
+        case word
+    }
+
+    private(set) var isPressing = false
+    private var start: TimeInterval = 0
+    private var ticks = 0
+
+    mutating func begin(at now: TimeInterval) {
+        isPressing = true
+        start = now
+        ticks = 0
+    }
+
+    mutating func end() {
+        isPressing = false
+    }
+
+    func nextDeadline() -> TimeInterval? {
+        guard isPressing else { return nil }
+        return time(of: ticks)
+    }
+
+    mutating func dueActions(at now: TimeInterval) -> [Action] {
+        guard isPressing else { return [] }
+        var actions: [Action] = []
+        var steps = 0
+        while let deadline = nextDeadline(), deadline <= now, steps < 10_000 {
+            steps += 1
+            if ticks < Self.characterRepeatCount {
+                actions.append(.character)
+            } else {
+                actions.append(.word)
+            }
+            ticks += 1
+        }
+        return actions
+    }
+
+    private func time(of tick: Int) -> TimeInterval {
+        if tick < Self.characterRepeatCount {
+            return start + Self.initialDelay + TimeInterval(tick) * Self.characterInterval
+        }
+        let wordIndex = tick - Self.characterRepeatCount
+        let wordStart = start + Self.initialDelay + TimeInterval(Self.characterRepeatCount) * Self.characterInterval
+        return wordStart + TimeInterval(wordIndex) * Self.wordInterval
+    }
+}
+
+/// Backward word-units, matching the system keyboard's held-delete waves.
+///
+/// A unit is the trailing whitespace run plus the word before it. Inside a
+/// word, it is just that word. Hyphens are boundaries and are deleted with the
+/// word they follow. Other punctuation stays attached to the word.
+enum WordDeletion {
+    struct Plan: Equatable {
+        /// One ordinary backspace. Used for an open syllable, a selection,
+        /// or a host that is not showing the text before the caret.
+        var single: Bool
+        var sessionBackspaces: Int
+        var hostBackspaces: Int
+
+        static let one = Plan(single: true, sessionBackspaces: 0, hostBackspaces: 0)
+    }
+
+    static func plan(contextBefore: String?, sessionDocument: String, composing: Bool, selection: Bool) -> Plan {
+        if composing || selection { return .one }
+        guard let contextBefore else { return .one }
+        let suffix = units(in: contextBefore, count: BackspaceRepeat.wordsPerTick).reversed().joined()
+        guard !suffix.isEmpty, contextBefore.hasSuffix(suffix) else { return .one }
+        let owned = sharedSuffixCount(sessionDocument, suffix)
+        // The session is not a suffix of the visible word. One backspace keeps
+        // the two buffers from being edited in opposite directions.
+        if !sessionDocument.isEmpty, owned == 0 { return .one }
+        return Plan(single: false, sessionBackspaces: owned, hostBackspaces: suffix.count - owned)
+    }
+
+    static func units(in text: String, count: Int) -> [String] {
+        var remaining = text
+        var result: [String] = []
+        for _ in 0..<count {
+            let piece = unit(in: remaining)
+            if piece.isEmpty { break }
+            result.append(piece)
+            remaining.removeLast(piece.count)
+        }
+        return result
+    }
+
+    static func unit(in text: String) -> String {
+        let characters = Array(text)
+        guard !characters.isEmpty else { return "" }
+        var index = characters.count
+        if characters[index - 1].isWhitespace {
+            while index > 0, characters[index - 1].isWhitespace { index -= 1 }
+        }
+        if index > 0, isHyphen(characters[index - 1]) {
+            while index > 0, isHyphen(characters[index - 1]) { index -= 1 }
+        }
+        while index > 0, isWordBody(characters[index - 1]) { index -= 1 }
+        return String(characters[index...])
+    }
+
+    static func sharedSuffixCount(_ text: String, _ suffix: String) -> Int {
+        let left = Array(text)
+        let right = Array(suffix)
+        var count = 0
+        while count < left.count, count < right.count, left[left.count - 1 - count] == right[right.count - 1 - count] {
+            count += 1
+        }
+        return count
+    }
+
+    private static func isHyphen(_ character: Character) -> Bool {
+        switch character {
+        case "-", "‐", "‑", "–", "—":
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func isWordBody(_ character: Character) -> Bool {
+        !character.isWhitespace && !isHyphen(character)
     }
 }
 

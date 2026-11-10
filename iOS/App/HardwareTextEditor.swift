@@ -97,6 +97,12 @@ final class HardwareTextView: UITextView, UITextViewDelegate {
             self.onText?(self.text ?? "")
         }
         touchKeyboard.onDelete = { [weak self] in self?.handleKey(usage: 42) }
+        touchKeyboard.onDeleteWord = { [weak self] in self?.deleteWordWave() }
+        touchKeyboard.backspaceHasMoreText = { [weak self] in
+            guard let self else { return false }
+            if self.selectedRange.length > 0 { return true }
+            return !(self.text ?? "").isEmpty
+        }
         touchKeyboard.onMoveCursor = { [weak self] step, goal in
             self?.moveCursor(by: step.characters, lines: step.lines, goalColumn: goal)
         }
@@ -287,6 +293,54 @@ final class HardwareTextView: UITextView, UITextViewDelegate {
         return motion.goalColumn
     }
 
+    /// One held-backspace word wave. An open syllable stays on the single
+    /// backspace path, so it still loses one jamo instead of the whole syllable.
+    private func deleteWordWave() {
+        synchronize()
+        let selection = selectedRange
+        let source = (text ?? "") as NSString
+        let context: String?
+        if selection.length == 0, selection.location != NSNotFound, selection.location <= source.length {
+            context = source.substring(to: selection.location)
+        } else {
+            context = nil
+        }
+        let plan = WordDeletion.plan(
+            contextBefore: context,
+            sessionDocument: session.document,
+            composing: !session.preedit.isEmpty,
+            selection: selection.length > 0
+        )
+        guard !plan.single else {
+            handleKey(usage: 42)
+            return
+        }
+        let suffixCount = plan.sessionBackspaces + plan.hostBackspaces
+        let beforeCaretCount = context?.count ?? 0
+        if plan.sessionBackspaces > 0 {
+            apply { session in
+                var update = session.backspace()
+                var steps = 1
+                while steps < plan.sessionBackspaces, session.preedit.isEmpty {
+                    let mid = session.document
+                    let next = session.backspace()
+                    guard session.document != mid else { break }
+                    update = next
+                    steps += 1
+                }
+                return update
+            }
+        }
+        guard session.preedit.isEmpty, let afterContext = caretPrefix() else { return }
+        let removed = max(0, beforeCaretCount - afterContext.count)
+        guard removed > 0 || plan.sessionBackspaces == 0 else { return }
+        let hostDeletes = suffixCount - removed
+        guard hostDeletes > 0, session.document.isEmpty else { return }
+        for _ in 0..<hostDeletes { deleteBackward() }
+        resetSession()
+        onText?(text ?? "")
+    }
+
     func resetSession() {
         let correctsTypos = session.correctsTypos
         session = Session(lexicon: Self.lexicon, autoSwitch: session.autoSwitch, mode: session.mode, layout: session.layout)
@@ -343,7 +397,10 @@ final class HardwareTextView: UITextView, UITextViewDelegate {
         if !applying { resetSession() }
     }
     func textViewDidBeginEditing(_ textView: UITextView) { resetSession(); onFocus?(true) }
-    func textViewDidEndEditing(_ textView: UITextView) { resetSession(); consumed.removeAll(); onFocus?(false) }
+    func textViewDidEndEditing(_ textView: UITextView) {
+        touchKeyboard.cancelBackspaceHold()
+        resetSession(); consumed.removeAll(); onFocus?(false)
+    }
 }
 
 /// UIKit must reserve the full key height plus the home-indicator safe area.

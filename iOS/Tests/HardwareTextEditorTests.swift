@@ -1067,3 +1067,287 @@ final class SSHTabShortcutTests: XCTestCase {
         }
     }
 }
+
+final class BackspaceRepeatTests: XCTestCase {
+    func testHeldBackspaceMatchesSystemKeyboardCadence() {
+        var repeatState = BackspaceRepeat()
+        repeatState.begin(at: 1_000)
+        XCTAssertEqual(repeatState.dueActions(at: 1_000.49), [])
+
+        var actions: [BackspaceRepeat.Action] = []
+        var gaps: [TimeInterval] = []
+        var previous = 1_000.0
+        for _ in 0..<23 {
+            let deadline = try? XCTUnwrap(repeatState.nextDeadline())
+            guard let deadline else { XCTFail("repeat ended early"); return }
+            gaps.append(deadline - previous)
+            previous = deadline
+            actions.append(contentsOf: repeatState.dueActions(at: deadline))
+        }
+        XCTAssertEqual(actions.prefix(20).filter { $0 == .character }.count, 20)
+        XCTAssertEqual(actions.dropFirst(20).prefix(3).filter { $0 == .word }.count, 3)
+        XCTAssertEqual(gaps[0], 0.5, accuracy: 0.000_001)
+        for gap in gaps[1...20] {
+            XCTAssertEqual(gap, 0.1, accuracy: 0.000_001)
+        }
+        XCTAssertEqual(gaps[21], 0.35, accuracy: 0.000_001)
+        XCTAssertEqual(gaps[22], 0.35, accuracy: 0.000_001)
+
+        repeatState.end()
+        XCTAssertEqual(repeatState.dueActions(at: previous + 10), [])
+        XCTAssertNil(repeatState.nextDeadline())
+    }
+
+    func testWordWaveTakesWhitespacePunctuationAndHyphenBoundary() {
+        XCTAssertEqual(WordDeletion.unit(in: "delta  "), "delta  ")
+        XCTAssertEqual(WordDeletion.unit(in: "charlie. "), "charlie. ")
+        XCTAssertEqual(WordDeletion.units(in: "foxtrot-golf", count: 2), ["golf", "foxtrot-"])
+        XCTAssertEqual(WordDeletion.units(in: "twelve ZZZZ", count: 2), ["ZZZZ", "twelve "])
+        XCTAssertEqual(WordDeletion.units(in: "ab cd ef ", count: 2), ["ef ", "cd "])
+        XCTAssertEqual(WordDeletion.unit(in: "안녕 하세요"), "하세요")
+        XCTAssertEqual(WordDeletion.units(in: "안녕 하세요 ", count: 2), ["하세요 ", "안녕 "])
+        XCTAssertEqual(WordDeletion.unit(in: ""), "")
+
+        let owned = WordDeletion.plan(contextBefore: "ab cd ef ", sessionDocument: "ab cd ef ", composing: false, selection: false)
+        XCTAssertFalse(owned.single)
+        XCTAssertEqual(owned.sessionBackspaces, "cd ef ".count)
+        XCTAssertEqual(owned.hostBackspaces, 0)
+
+        let tail = WordDeletion.plan(contextBefore: "ab cd ef ", sessionDocument: "ef ", composing: false, selection: false)
+        XCTAssertFalse(tail.single)
+        XCTAssertEqual(tail.sessionBackspaces, "ef ".count)
+        XCTAssertEqual(tail.hostBackspaces, "cd ".count)
+
+        XCTAssertTrue(WordDeletion.plan(contextBefore: "각", sessionDocument: "각", composing: true, selection: false).single)
+        XCTAssertTrue(WordDeletion.plan(contextBefore: "abc", sessionDocument: "", composing: false, selection: true).single)
+        XCTAssertTrue(WordDeletion.plan(contextBefore: nil, sessionDocument: "secret", composing: false, selection: false).single)
+        XCTAssertTrue(WordDeletion.plan(contextBefore: "hello", sessionDocument: "other", composing: false, selection: false).single)
+    }
+
+    @MainActor func testPressDeletesOnceAndReleaseAddsNothing() {
+        let keyboard = preparedKeyboard()
+        var characters = 0
+        var words = 0
+        keyboard.onDelete = { characters += 1 }
+        keyboard.onDeleteWord = { words += 1 }
+        let backspace = backspaceKey(in: keyboard)
+
+        backspace.sendActions(for: .touchUpInside)
+        XCTAssertEqual(characters, 1)
+        XCTAssertEqual(words, 0)
+
+        backspace.sendActions(for: .touchDown)
+        backspace.sendActions(for: .touchUpInside)
+        XCTAssertEqual(characters, 2)
+        XCTAssertEqual(words, 0)
+        now += 10
+        keyboard.advanceBackspaceRepeat()
+        XCTAssertEqual(characters, 2)
+        XCTAssertEqual(words, 0)
+    }
+
+    @MainActor func testHoldRepeatsCharactersThenWordsAndStopsWhenEmptyOrCancelled() {
+        let keyboard = preparedKeyboard()
+        var characters = 0
+        var words = 0
+        var allow = true
+        keyboard.onDelete = { characters += 1 }
+        keyboard.onDeleteWord = { words += 1 }
+        keyboard.backspaceHasMoreText = { allow }
+        let backspace = backspaceKey(in: keyboard)
+
+        backspace.sendActions(for: .touchDown)
+        XCTAssertEqual(characters, 1)
+        for _ in 0..<BackspaceRepeat.characterRepeatCount {
+            now = try! XCTUnwrap(keyboard.backspaceNextDeadline())
+            keyboard.advanceBackspaceRepeat()
+        }
+        XCTAssertEqual(characters, 1 + BackspaceRepeat.characterRepeatCount)
+        XCTAssertEqual(words, 0)
+
+        now = try! XCTUnwrap(keyboard.backspaceNextDeadline())
+        keyboard.advanceBackspaceRepeat()
+        XCTAssertEqual(words, 1)
+        XCTAssertEqual(characters, 21)
+
+        backspace.sendActions(for: .touchCancel)
+        now += 10
+        keyboard.advanceBackspaceRepeat()
+        XCTAssertEqual(words, 1)
+        XCTAssertEqual(characters, 21)
+
+        allow = true
+        backspace.sendActions(for: .touchDown)
+        XCTAssertEqual(characters, 22)
+        allow = false
+        now = try! XCTUnwrap(keyboard.backspaceNextDeadline())
+        keyboard.advanceBackspaceRepeat()
+        XCTAssertEqual(characters, 23)
+        backspace.sendActions(for: .touchUpInside)
+        XCTAssertEqual(characters, 23)
+        keyboard.advanceBackspaceRepeat()
+        XCTAssertEqual(characters, 23)
+    }
+
+    @MainActor func testBackspaceHoldDoesNotReplaceOtherLongPresses() {
+        let keyboard = KeyboardView(frame: CGRect(x: 0, y: 0, width: 320, height: KeyboardView.preferredHeight))
+        let keys = buttons(in: keyboard)
+        let backspace = backspaceKey(in: keyboard)
+        XCTAssertNil(backspace.gestureRecognizers?.first { $0 is UILongPressGestureRecognizer })
+        for title in ["간격", "q"] {
+            let key: UIButton
+            if title == "q" {
+                key = try! XCTUnwrap(keys.first { $0.accessibilityLabel?.contains("영문 q,") == true })
+            } else {
+                key = try! XCTUnwrap(keys.first { $0.title(for: .normal) == title })
+            }
+            let hold = try! XCTUnwrap(key.gestureRecognizers?.first { $0 is UILongPressGestureRecognizer } as? UILongPressGestureRecognizer)
+            XCTAssertEqual(hold.minimumPressDuration, 0.4)
+        }
+        let hyphen = try! XCTUnwrap(keys.first { $0.accessibilityLabel == "하이픈 입력" })
+        XCTAssertEqual(hyphen.accessibilityHint, "길게 눌러 → 입력")
+        XCTAssertNotNil(hyphen.gestureRecognizers?.first { $0 is UILongPressGestureRecognizer })
+    }
+
+    @MainActor func testCompositionHoldDeletesOneJamoAndATapAfterSpaceDeletesOneCharacter() {
+        let editor = HardwareTextView()
+        editor.hardwareKeyboardIsConnected = { false }
+        editor.setHardwareKeyboardConnected(false)
+        editor.configure(automatic: false, mode: .korean)
+        let keyboard = (editor.inputView as! TouchKeyboardInputView).keyboard
+        keyboard.backspaceRepeatUsesTimer = false
+        keyboard.backspaceClock = { self.now }
+        type("rkr", on: editor)
+        XCTAssertEqual(editor.text, "각")
+
+        let backspace = backspaceKey(in: keyboard)
+        backspace.sendActions(for: .touchDown)
+        backspace.sendActions(for: .touchUpInside)
+        XCTAssertEqual(editor.text, "가")
+        now += 10
+        keyboard.advanceBackspaceRepeat()
+        XCTAssertEqual(editor.text, "가")
+
+        type("r", on: editor)
+        XCTAssertEqual(editor.text, "각")
+        keyboard.performBackspaceRepeatAction(.word)
+        XCTAssertEqual(editor.text, "가")
+
+        backspace.sendActions(for: .touchDown)
+        now = keyboard.backspaceNextDeadline() ?? now
+        keyboard.advanceBackspaceRepeat()
+        backspace.sendActions(for: .touchUpInside)
+        XCTAssertEqual(editor.text, "")
+        now += 10
+        keyboard.advanceBackspaceRepeat()
+        XCTAssertEqual(editor.text, "")
+    }
+
+    @MainActor func testSingleTapAfterCommittedWordDoesNotDeleteTheWord() {
+        let editor = HardwareTextView()
+        editor.hardwareKeyboardIsConnected = { false }
+        editor.setHardwareKeyboardConnected(false)
+        editor.configure(automatic: true, mode: .english)
+        let keyboard = (editor.inputView as! TouchKeyboardInputView).keyboard
+        keyboard.backspaceRepeatUsesTimer = false
+        keyboard.backspaceClock = { self.now }
+        type("gksrmf ", on: editor)
+        let committed = editor.text ?? ""
+        XCTAssertTrue(committed.hasSuffix(" "), "space should commit the word, got \(committed)")
+        backspaceKey(in: keyboard).sendActions(for: .touchDown)
+        backspaceKey(in: keyboard).sendActions(for: .touchUpInside)
+        XCTAssertEqual(editor.text, String(committed.dropLast()))
+        now += 10
+        keyboard.advanceBackspaceRepeat()
+        XCTAssertEqual(editor.text, String(committed.dropLast()))
+    }
+
+    @MainActor func testWordWaveDeletesTwoCommittedWords() {
+        let editor = HardwareTextView()
+        editor.hardwareKeyboardIsConnected = { false }
+        editor.setHardwareKeyboardConnected(false)
+        editor.configure(automatic: false, mode: .english)
+        let keyboard = (editor.inputView as! TouchKeyboardInputView).keyboard
+        type("ab cd ef ", on: editor)
+        XCTAssertEqual(editor.text, "ab cd ef ")
+        keyboard.performBackspaceRepeatAction(.word)
+        XCTAssertEqual(editor.text, "ab ")
+    }
+
+    @MainActor func testPhraseHoldDeletesJamoThenStops() {
+        let previous = UserDefaults.standard.object(forKey: "quickPhrases")
+        defer { UserDefaults.standard.set(previous, forKey: "quickPhrases") }
+        UserDefaults.standard.removeObject(forKey: "quickPhrases")
+        let keyboard = preparedKeyboard()
+        keyboard.update(mode: .korean, automatic: false)
+        buttons(in: keyboard).first { $0.accessibilityLabel == "문구 등록" }!.sendActions(for: .touchUpInside)
+        type("rkr", on: keyboard)
+        XCTAssertEqual(draft(in: keyboard), "각")
+        keyboard.performBackspaceRepeatAction(.word)
+        XCTAssertEqual(draft(in: keyboard), "가")
+
+        let backspace = backspaceKey(in: keyboard)
+        backspace.sendActions(for: .touchDown)
+        XCTAssertEqual(draft(in: keyboard), "ㄱ")
+        now = try! XCTUnwrap(keyboard.backspaceNextDeadline())
+        keyboard.advanceBackspaceRepeat()
+        backspace.sendActions(for: .touchUpInside)
+        XCTAssertEqual(draft(in: keyboard), "저장할 문구를 입력하세요")
+        now += 10
+        keyboard.advanceBackspaceRepeat()
+        XCTAssertEqual(draft(in: keyboard), "저장할 문구를 입력하세요")
+    }
+
+    @MainActor func testPhraseWordWaveDeletesTwoCommittedWords() {
+        let previous = UserDefaults.standard.object(forKey: "quickPhrases")
+        defer { UserDefaults.standard.set(previous, forKey: "quickPhrases") }
+        UserDefaults.standard.removeObject(forKey: "quickPhrases")
+        let keyboard = preparedKeyboard()
+        keyboard.update(mode: .english, automatic: false)
+        buttons(in: keyboard).first { $0.accessibilityLabel == "문구 등록" }!.sendActions(for: .touchUpInside)
+        type("ab cd ef ", on: keyboard)
+        XCTAssertEqual(draft(in: keyboard), "ab cd ef ")
+        keyboard.performBackspaceRepeatAction(.word)
+        XCTAssertEqual(draft(in: keyboard), "ab ")
+    }
+
+    private var now: TimeInterval = 0
+
+    @MainActor private func preparedKeyboard() -> KeyboardView {
+        now = 0
+        let keyboard = KeyboardView(frame: CGRect(x: 0, y: 0, width: 320, height: KeyboardView.preferredHeight))
+        keyboard.backspaceRepeatUsesTimer = false
+        keyboard.backspaceClock = { self.now }
+        return keyboard
+    }
+
+    @MainActor private func backspaceKey(in keyboard: KeyboardView) -> UIButton {
+        buttons(in: keyboard).first { $0.accessibilityLabel == "삭제" }!
+    }
+
+    @MainActor private func buttons(in view: UIView) -> [UIButton] {
+        view.subviews.flatMap { ($0 as? UIButton).map { [$0] } ?? buttons(in: $0) }
+    }
+
+    @MainActor private func draft(in keyboard: KeyboardView) -> String? {
+        func labels(in view: UIView) -> [UILabel] {
+            view.subviews.flatMap { ($0 as? UILabel).map { [$0] } ?? labels(in: $0) }
+        }
+        return labels(in: keyboard).first { $0.accessibilityIdentifier == "phraseDraft" }?.text
+    }
+
+    @MainActor private func type(_ spelling: String, on editor: HardwareTextView) {
+        type(spelling, on: (editor.inputView as! TouchKeyboardInputView).keyboard)
+    }
+
+    @MainActor private func type(_ spelling: String, on keyboard: KeyboardView) {
+        let keys = buttons(in: keyboard)
+        for character in spelling {
+            if character == " " {
+                keys.first { $0.title(for: .normal) == "간격" }!.sendActions(for: .touchUpInside)
+            } else {
+                keys.first { $0.accessibilityLabel?.contains("영문 \(character),") == true }!.sendActions(for: .touchUpInside)
+            }
+        }
+    }
+}

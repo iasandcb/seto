@@ -48,6 +48,13 @@ final class KeyboardViewController: UIInputViewController {
             self.reset()
         }
         keyboard.onDelete = { [weak self] in self?.delete() }
+        keyboard.onDeleteWord = { [weak self] in self?.deleteWordWave() }
+        keyboard.backspaceHasMoreText = { [weak self] in
+            guard let self else { return false }
+            if self.textDocumentProxy.hasText { return true }
+            if !(self.textDocumentProxy.selectedText ?? "").isEmpty { return true }
+            return !self.session.document.isEmpty || !self.session.preedit.isEmpty
+        }
         keyboard.onMoveCursor = { [weak self] step, goal in self?.moveCursor(step, goalColumn: goal) }
         keyboard.onSuggestion = { [weak self] context, candidate in self?.accept(context, candidate: candidate) }
         keyboard.onToggle = { [weak self] in
@@ -76,6 +83,7 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        keyboard.cancelBackspaceHold()
         reset()
     }
 
@@ -152,6 +160,10 @@ final class KeyboardViewController: UIInputViewController {
         reset()
     }
 
+    /// One ordinary backspace. A tap, each character repeat, and an open
+    /// syllable all come through here, so a composing syllable still loses one
+    /// jamo and a single press after a space-committed conversion still does
+    /// only this deletion.
     private func delete() {
         doubleSpacePeriod.clear()
         synchronize()
@@ -161,6 +173,49 @@ final class KeyboardViewController: UIInputViewController {
         } else {
             edit { $0.backspace() }
         }
+    }
+
+    /// One system-keyboard word wave: two word-units, unless a syllable is
+    /// still open or the host is not showing the text before the caret.
+    private func deleteWordWave() {
+        doubleSpacePeriod.clear()
+        synchronize()
+        let plan = WordDeletion.plan(
+            contextBefore: textDocumentProxy.documentContextBeforeInput,
+            sessionDocument: session.document,
+            composing: !session.preedit.isEmpty,
+            selection: !(textDocumentProxy.selectedText ?? "").isEmpty
+        )
+        guard !plan.single else {
+            delete()
+            return
+        }
+        let suffixCount = plan.sessionBackspaces + plan.hostBackspaces
+        let beforeCount = session.document.count
+        if plan.sessionBackspaces > 0 {
+            let applied = edit { session in
+                var update = session.backspace()
+                var steps = 1
+                while steps < plan.sessionBackspaces, session.preedit.isEmpty {
+                    let mid = session.document
+                    let next = session.backspace()
+                    guard session.document != mid else { break }
+                    update = next
+                    steps += 1
+                }
+                return update
+            }
+            if !applied { return }
+        }
+        guard session.preedit.isEmpty else { return }
+        let removed = max(0, beforeCount - session.document.count)
+        guard removed > 0 || plan.sessionBackspaces == 0 else { return }
+        let hostDeletes = suffixCount - removed
+        // Leave a session-owned prefix in place. Deleting past it on the proxy
+        // would drop characters the session still thinks are there.
+        guard hostDeletes > 0, session.document.isEmpty else { return }
+        for _ in 0..<hostDeletes { textDocumentProxy.deleteBackward() }
+        reset()
     }
 
     /// The proxy offset is counted in UTF-16 units, so step over whole visible
@@ -180,7 +235,8 @@ final class KeyboardViewController: UIInputViewController {
         return motion.goalColumn
     }
 
-    private func edit(_ operation: (Session) -> SessionUpdate) {
+    @discardableResult
+    private func edit(_ operation: (Session) -> SessionUpdate) -> Bool {
         synchronize()
         let before = session.document
         let oldContext = textDocumentProxy.documentContextBeforeInput
@@ -193,7 +249,7 @@ final class KeyboardViewController: UIInputViewController {
         if change.deleteCount > 0 {
             guard let context, context.hasSuffix(change.removed) else {
                 reset()
-                return
+                return false
             }
             for _ in 0..<change.deleteCount { textDocumentProxy.deleteBackward() }
         }
@@ -218,5 +274,6 @@ final class KeyboardViewController: UIInputViewController {
             : nil)
         // Bound memory to the current word and its undo window.
         if after.count > 512, session.preedit.isEmpty { reset() }
+        return true
     }
 }
