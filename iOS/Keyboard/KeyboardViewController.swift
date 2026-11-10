@@ -61,6 +61,10 @@ final class KeyboardViewController: UIInputViewController {
             self?.doubleSpacePeriod.clear()
             self?.edit { $0.toggle() }
         }
+        keyboard.onReinterpretWord = { [weak self] in
+            self?.doubleSpacePeriod.clear()
+            self?.edit { $0.convertOpenWord() }
+        }
         keyboard.onNext = { [weak self] button, event in
             self?.doubleSpacePeriod.clear()
             self?.handleInputModeList(from: button, with: event)
