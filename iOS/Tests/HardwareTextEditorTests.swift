@@ -472,7 +472,7 @@ final class TouchKeyboardLayoutTests: XCTestCase {
         }
     }
 
-    @MainActor func testBottomKeyWidthsAndDubeolAutoSwitch() {
+    @MainActor func testBottomKeyWidthsAndDubeolAutoSwitch() throws {
         let editor = HardwareTextView()
         editor.hardwareKeyboardIsConnected = { false }
         editor.setHardwareKeyboardConnected(false)
@@ -485,22 +485,30 @@ final class TouchKeyboardLayoutTests: XCTestCase {
             view.subviews.flatMap { ($0 as? UIButton).map { [$0] } ?? buttons(in: $0) }
         }
         let keys = buttons(in: keyboard)
-        let letter = keys.first { $0.accessibilityLabel?.contains("영문 q,") == true }!
-        let titles = ["#", "↔", "→", ".", "?", "↵"]
-        let bottom = titles.map { title in keys.first { $0.title(for: .normal) == title }! }
+        let letter = try XCTUnwrap(keys.first { $0.accessibilityLabel?.contains("영문 q,") == true })
+        // The key left of space is "-", which inserts "-" and long-presses to "→".
+        let titles = ["#", "↔", "-", ".", "?", "↵"]
+        let bottom = try titles.map { title in
+            try XCTUnwrap(keys.first { $0.title(for: .normal) == title }, "Missing bottom-row key \(title)")
+        }
         // Stack views align frames to display pixels; equal constraints can
         // differ by one pixel after distributing a fractional key width.
         let pixel = 1 / input.traitCollection.displayScale
         for key in bottom { XCTAssertEqual(key.bounds.width, letter.bounds.width, accuracy: pixel + 0.001) }
-        let space = keys.first { $0.title(for: .normal) == "간격" }!
-        XCTAssertLessThan(bottom[2].convert(bottom[2].bounds, to: keyboard).maxX, space.convert(space.bounds, to: keyboard).minX)
+        let space = try XCTUnwrap(keys.first { $0.title(for: .normal) == "간격" })
+        let hyphen = bottom[2]
+        XCTAssertEqual(hyphen.title(for: .normal), "-")
+        XCTAssertLessThan(hyphen.convert(hyphen.bounds, to: keyboard).maxX, space.convert(space.bounds, to: keyboard).minX)
         for character in "world dkssudgktpdy " {
             if character == " " { space.sendActions(for: .touchUpInside) }
-            else { keys.first { $0.accessibilityLabel?.contains("영문 \(character),") == true }!.sendActions(for: .touchUpInside) }
+            else {
+                let key = try XCTUnwrap(keys.first { $0.accessibilityLabel?.contains("영문 \(character),") == true })
+                key.sendActions(for: .touchUpInside)
+            }
         }
         XCTAssertEqual(editor.text, "world 안녕하세요 ")
-        bottom[2].sendActions(for: .touchUpInside)
-        XCTAssertEqual(editor.text, "world 안녕하세요 →")
+        hyphen.sendActions(for: .touchUpInside)
+        XCTAssertEqual(editor.text, "world 안녕하세요 -")
     }
 
     @MainActor func testHardwareConnectionHidesTouchKeyboardWithoutLosingComposition() {
@@ -595,7 +603,10 @@ final class TouchKeyboardLayoutTests: XCTestCase {
 
     @MainActor private final class SimulatedHold: UILongPressGestureRecognizer {
         var simulatedState: UIGestureRecognizer.State = .possible
-        override var state: UIGestureRecognizer.State { simulatedState }
+        override var state: UIGestureRecognizer.State {
+            get { simulatedState }
+            set { simulatedState = newValue }
+        }
     }
 
     @MainActor func testHyphenBesideSpaceAndExistingHoldAlternates() throws {
@@ -686,22 +697,47 @@ final class TouchKeyboardLayoutTests: XCTestCase {
         let bottomQuestion = try XCTUnwrap(keys.first { $0.title(for: .normal) == "?" })
         let positions = Array("1234567890qwertyuiopasdfghjkl;zxcvbnm,./")
         let originalValues = Array("1234567890-/:;()₩&@.,?!'\"[]{}+=_*%<>\\|~`#")
+        let symbolValues = Array("1234567890-/:;()₩&@~,+!'\"[]{}+=_*%<>\\|~`#")
         let originalPeriodIndex = try XCTUnwrap(originalValues.firstIndex(of: "."))
         let originalCommaIndex = try XCTUnwrap(originalValues.firstIndex(of: ","))
         let originalQuestionAfterCommaIndex = originalCommaIndex + 1
         XCTAssertLessThan(originalQuestionAfterCommaIndex, originalValues.count)
         XCTAssertEqual(originalValues[originalQuestionAfterCommaIndex], "?")
         let originalTildeIndex = try XCTUnwrap(originalValues.firstIndex(of: "~"))
+        // Only the period slot and the key after comma change. Comma and the
+        // original "~" stay "~"/"," in the map.
+        let changed = originalValues.indices.filter { originalValues[$0] != symbolValues[$0] }
+        XCTAssertEqual(changed, [originalPeriodIndex, originalQuestionAfterCommaIndex])
+        XCTAssertEqual(symbolValues[originalPeriodIndex], "~")
+        XCTAssertEqual(symbolValues[originalCommaIndex], ",")
+        XCTAssertEqual(symbolValues[originalQuestionAfterCommaIndex], "+")
+        XCTAssertEqual(symbolValues[originalTildeIndex], "~")
 
+        let letters = Set("qwertyuiopasdfghjklzxcvbnm")
+        let digits = Set("1234567890")
+        // Before symbol mode, letter keys read "한글 …, 영문 q, 현재 …" and
+        // number keys read "숫자 1, Shift …". Symbol mode replaces a letter
+        // key's label with the glyph alone. ";,. /" are map slots, not keys.
         func key(at index: Int) throws -> UIButton {
             let position = positions[index]
-            return try XCTUnwrap(keys.first { $0.accessibilityLabel?.contains("영문 \(position),") == true })
+            let match = keys.first { button in
+                guard let label = button.accessibilityLabel else { return false }
+                if letters.contains(position) { return label.contains("영문 \(position),") }
+                if digits.contains(position) { return label.hasPrefix("숫자 \(position),") }
+                return false
+            }
+            return try XCTUnwrap(match, "No symbol-layer key for position \(position)")
         }
 
         let periodMappedKey = try key(at: originalPeriodIndex)
         let commaMappedKey = try key(at: originalCommaIndex)
         let questionAfterCommaKey = try key(at: originalQuestionAfterCommaIndex)
-        let originalTildeKey = try key(at: originalTildeIndex)
+        let originalTildePosition = positions[originalTildeIndex]
+        XCTAssertFalse(letters.contains(originalTildePosition) || digits.contains(originalTildePosition))
+        let originalTildeKey = keys.first { button in
+            guard let label = button.accessibilityLabel else { return false }
+            return label.contains("영문 \(originalTildePosition),") || label.hasPrefix("숫자 \(originalTildePosition),")
+        }
 
         func descendants(_ view: UIView) -> [UIView] { view.subviews.flatMap { [$0] + descendants($0) } }
         let previewBubble = try XCTUnwrap(descendants(keyboard).first { $0.accessibilityIdentifier == "keyPreview" })
@@ -716,7 +752,14 @@ final class TouchKeyboardLayoutTests: XCTestCase {
         XCTAssertEqual(periodMappedKey.accessibilityLabel, "~")
         XCTAssertEqual(commaMappedKey.accessibilityLabel, ",")
         XCTAssertEqual(questionAfterCommaKey.accessibilityLabel, "+")
-        XCTAssertEqual(originalTildeKey.accessibilityLabel, "~")
+        // The original "~" is the QWERTY "." map slot. That slot is not a letter
+        // or number key, so it has no "영문 ." / "숫자 ." label. The fixed
+        // bottom "." stays "." and is not that slot. When a key does exist
+        // for the slot, symbol mode must still show "~".
+        if let originalTildeKey {
+            XCTAssertEqual(originalTildeKey.accessibilityLabel, "~")
+        }
+        XCTAssertFalse(bottomPeriod === periodMappedKey)
         XCTAssertEqual(bottomPeriod.title(for: .normal), ".")
         XCTAssertEqual(bottomQuestion.title(for: .normal), "?")
 
