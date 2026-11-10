@@ -84,6 +84,83 @@ private let lexicon: Lexicon = {
     }
 }
 
+@Test func twoLetterPrefixesConvertToFrequentSyllablesAtWordBoundary() {
+    // jc/jd/uv prefix jcmd, jdb, and uva, and they are also 에/이/도.
+    // Latin stays while the longer word can still continue. A boundary is
+    // not an English word, so the frequent syllable wins. Real two-letter
+    // English words that are also syllables stay English: of is 차, ut is 더.
+    #expect(lexicon.isEnglishPrefix("jc"))
+    #expect(!lexicon.isEnglishWord("jc"))
+    #expect(lexicon.isKoreanWord("에"))
+    #expect(lexicon.isEnglishPrefix("jd"))
+    #expect(lexicon.isKoreanWord("이"))
+    #expect(lexicon.isEnglishPrefix("uv"))
+    #expect(lexicon.isKoreanWord("도"))
+    #expect(lexicon.isEnglishWord("of"))
+    #expect(lexicon.isEnglishWord("ut"))
+
+    let cases = [("jc", "에"), ("jd", "이"), ("uv", "도")]
+    for (keys, hangul) in cases {
+        let open = Session(lexicon: lexicon, mode: .english)
+        var paper = Paper()
+        for key in keys { paper.apply(open.input(key).field) }
+        #expect(paper.text == keys, "\(open.debugLine)")
+        #expect(open.mode == .english)
+        for boundary in [" ", ",", "\n"] {
+            assertTypes(keys + boundary, hangul + boundary, mode: .english)
+            #expect(clientFailures(keys + boundary, hangul + boundary, mode: .english).isEmpty)
+        }
+        let committed = Session(lexicon: lexicon, mode: .english)
+        #expect(committed.type(keys + " M") == hangul + " 1")
+        #expect(committed.mode == .korean)
+        assertTypes(keys, hangul, mode: .korean)
+        assertTypes(keys + " ", hangul + " ", mode: .korean)
+    }
+
+    let undone = Session(lexicon: lexicon, mode: .english)
+    var paper = Paper()
+    for key in "jc " { paper.apply(undone.input(key).field) }
+    #expect(paper.text == "에 ")
+    paper.apply(undone.toggle().field)
+    #expect(paper.text == "jc")
+    #expect(undone.mode == .english)
+    paper.apply(undone.input(" ").field)
+    #expect(paper.text == "jc ")
+
+    for keys in ["jc ", "jd ", "uv "] {
+        let manual = Session(lexicon: lexicon, autoSwitch: false, mode: .english)
+        #expect(manual.type(keys) == keys)
+        #expect(manual.mode == .english)
+    }
+
+    // The prefix must not swallow the command it starts.
+    for command in ["jcmd", "jconsole", "jcontrol", "jdb", "jdeps", "uva"] {
+        let session = Session(lexicon: lexicon, mode: .english)
+        var typed = ""
+        var commandPaper = Paper()
+        for character in command {
+            typed.append(character)
+            commandPaper.apply(session.input(character).field)
+            #expect(commandPaper.text == typed, "\(session.debugLine)")
+            #expect(session.mode == .english)
+        }
+        commandPaper.apply(session.input(" ").field)
+        #expect(commandPaper.text == command + " ")
+        #expect(session.mode == .english)
+        #expect(clientFailures(command + " ", command + " ", mode: .english).isEmpty)
+    }
+
+    // A dot still joins an English token (jc.md), unlike a word boundary.
+    #expect(clientFailures("jc.", "jc.", mode: .english).isEmpty)
+    #expect(clientFailures("jc.md", "jc.md", mode: .english).isEmpty)
+
+    for text in ["of ", "ut ", "to ", "in ", "is ", "it ", "on ", "at ", "jo ", "mr ", "hi ", "no ", "me ",
+                 "JC ", "JD ", "UV ", "Jc ", "Jd ", "Uv "] {
+        assertTypes(text, text, mode: .english)
+        #expect(clientFailures(text, text, mode: .english).isEmpty)
+    }
+}
+
 @Test func recognizedSingleSyllableSwitchesFromEnglishImmediately() {
     for word in ["흠", "음", "응", "네", "예", "잘", "로"] {
         let keys = SebeolKeys.keys(for: word)!

@@ -315,6 +315,12 @@ public final class Session {
         }
         let field = finishField(word: word, breaker: breaker)
         finished += suffix
+        // jc stays Latin until this boundary, then becomes 에. Confirm Korean
+        // for the next word, as a frequent syllable recognized while typing does.
+        if composedSegments.count == 1, composedSegments[0].lang == .korean,
+           lexicon.isKoreanWord(composed) {
+            mode = .korean
+        }
         let sentence = isSentenceBoundary(breaker) || ".?!".contains(composed.last ?? " ")
         if sentence {
             contextLanguage = nil
@@ -504,7 +510,8 @@ public final class Session {
 
         // In English mode a syllable-shaped prefix is not evidence of a
         // language change. Keep QWERTY until a stronger Korean reading appears.
-        if prefersCurrentEnglishMode() {
+        // A finished two-letter prefix can still be a frequent syllable.
+        if prefersCurrentEnglishMode(wordFinal: wordFinal) {
             let english = [Segment(start: 0, end: keys.count, lang: .english)]
             return installReading(english, previous: previous)
         }
@@ -568,7 +575,7 @@ public final class Session {
         // "agents" is still a prefix of "agentship", and "nts" is the syllable
         // 선. A pure letter run that is a word or a prefix stays one English
         // reading. "AIyv" is not a prefix, so 로 can still take the tail.
-        if prefersWholeEnglishWord() {
+        if prefersWholeEnglishWord(wordFinal: wordFinal) {
             let english = [Segment(start: 0, end: keys.count, lang: .english)]
             return installReading(english, previous: previous)
         }
@@ -651,10 +658,10 @@ public final class Session {
         }
     }
 
-    private func prefersCurrentEnglishMode() -> Bool {
+    private func prefersCurrentEnglishMode(wordFinal: Bool) -> Bool {
         guard mode == .english else { return false }
         let spelling = englishText(0..<keys.count)
-        if prefersWholeEnglishWord() || prefersWholeEnglishCode() || lexicon.isCodeToken(spelling)
+        if prefersWholeEnglishWord(wordFinal: wordFinal) || prefersWholeEnglishCode() || lexicon.isCodeToken(spelling)
             || spelling.allSatisfy({ $0.isLetter && $0.isUppercase }) {
             return true
         }
@@ -968,16 +975,33 @@ public final class Session {
     /// In Korean mode Hangul stickiness runs first; English mode gives
     /// dictionary words and prefixes priority over syllable-shaped readings.
     /// An all-digit pad run is handled first, so "MN" is not read as a prefix.
-    private func prefersWholeEnglishWord() -> Bool {
-        let lower = englishText(0..<keys.count).lowercased()
+    private func prefersWholeEnglishWord(wordFinal: Bool = false) -> Bool {
+        let spelling = englishText(0..<keys.count)
+        let lower = spelling.lowercased()
         guard lower.count >= 2, lower.allSatisfy(\.isLetter) else { return false }
         // 390 yv is the common particle 로. Do not let the name Yvonne's
         // dictionary prefix keep this explicitly preferred reading in English.
-        if lower == "yv", Composer.compose(keys).text == "로",
-           englishText(0..<keys.count) == "yv" {
+        if lower == "yv", Composer.compose(keys).text == "로", spelling == "yv" {
             return false
         }
-        return lexicon.isEnglishWord(lower) || lexicon.isEnglishPrefix(lower)
+        if lexicon.isEnglishWord(lower) { return true }
+        guard lexicon.isEnglishPrefix(lower) else { return false }
+        // jc, jd, and uv prefix jcmd, jdb, and uva. Keep that Latin while the
+        // next letter may still finish the command. At a word boundary the
+        // two letters are not an English word, so the frequent syllables
+        // 에, 이, and 도 win. Real two-letter words (of → 차, ut → 더) returned above.
+        if wordFinal, spelling.count == 2, spelling.allSatisfy(\.isLowercase), frequentOpenSyllable() {
+            return false
+        }
+        return true
+    }
+
+    /// One finished syllable from the frequent list (에, 이, 도), not merely
+    /// the large validity list. "md" is valid Hangul 히 and must stay a prefix.
+    private func frequentOpenSyllable() -> Bool {
+        let composition = Composer.compose(keys)
+        guard case .clean(let syllables) = shape(of: composition.pieces), syllables == 1 else { return false }
+        return lexicon.isKoreanWord(composition.text)
     }
 
     /// Korean-mode run of shifted 390 digit keys (M N U I O J K L < >).
