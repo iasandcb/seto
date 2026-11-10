@@ -288,7 +288,7 @@ final class InputSettingsTests: XCTestCase {
         view.textViewDidEndEditing(view)
         view.textViewDidBeginEditing(view)
         XCTAssertFalse(view.session.autoSwitch)
-        XCTAssertEqual(view.session.mode, .english)
+        XCTAssertEqual(view.session.mode, Language.english)
         view.configure(automatic: true, mode: .english)
         view.resetSession()
         XCTAssertTrue(view.session.autoSwitch)
@@ -303,7 +303,7 @@ final class InputSettingsTests: XCTestCase {
         view.configure(automatic: false, mode: .english)
         XCTAssertEqual(view.text, "각")
         XCTAssertEqual(view.selectedRange, caret)
-        XCTAssertEqual(view.session.mode, .english)
+        XCTAssertEqual(view.session.mode, Language.english)
         view.inputCharacter("a")
         XCTAssertEqual(view.text, "각a")
     }
@@ -1399,96 +1399,96 @@ final class BackspaceRepeatTests: XCTestCase {
 /// toggles the symbol layer, and the other holds keep their own actions.
 final class SymbolLongPressTests: XCTestCase {
     @MainActor func testLongPressConvertsTheOpenWordInBothDirections() {
-        let korean = editor(automatic: false, mode: .korean)
+        let korean = makeEditor(automatic: false, mode: Language.korean)
         type("skt", on: korean)
         XCTAssertEqual(korean.text, "낫")
         XCTAssertEqual(korean.session.preedit, "낫")
-        let koreanKeys = keyboard(of: korean)
+        let koreanKeys = keyboardView(of: korean)
         let q = letter("q", in: koreanKeys)
         longPressSymbol(on: koreanKeys)
         XCTAssertEqual(korean.text, "skt")
         XCTAssertEqual(korean.session.preedit, "")
-        XCTAssertEqual(korean.session.mode, .english)
+        XCTAssertEqual(korean.session.mode, Language.english)
         XCTAssertTrue(q.accessibilityLabel?.contains("현재 q") == true)
         // The keys are still the open word, so another hold flips it back
         // and the syllable is composable again.
         longPressSymbol(on: koreanKeys)
         XCTAssertEqual(korean.text, "낫")
-        XCTAssertEqual(korean.session.mode, .korean)
+        XCTAssertEqual(korean.session.mode, Language.korean)
         XCTAssertEqual(korean.session.preedit, "낫")
         tapBackspace(korean)
         XCTAssertEqual(korean.text, "나")
         XCTAssertEqual(korean.session.preedit, "나")
 
-        let english = editor(automatic: false, mode: .english)
+        let english = makeEditor(automatic: false, mode: Language.english)
         type("skt", on: english)
         XCTAssertEqual(english.text, "skt")
         XCTAssertEqual(english.session.preedit, "")
-        longPressSymbol(on: keyboard(of: english))
+        longPressSymbol(on: keyboardView(of: english))
         XCTAssertEqual(english.text, "낫")
-        XCTAssertEqual(english.session.mode, .korean)
+        XCTAssertEqual(english.session.mode, Language.korean)
         XCTAssertEqual(english.session.preedit, "낫")
         tapBackspace(english)
         XCTAssertEqual(english.text, "나")
     }
 
     @MainActor func testLongPressIncludesPartialSyllableAndLeavesEarlierText() {
-        let editor = editor(automatic: false, mode: .korean)
+        let editor = makeEditor(automatic: false, mode: Language.korean)
         editor.text = "앞 "
         editor.selectedRange = NSRange(location: (editor.text as NSString).length, length: 0)
         editor.resetSession()
         type("sk", on: editor)
         XCTAssertEqual(editor.text, "앞 나")
         XCTAssertEqual(editor.session.preedit, "나")
-        longPressSymbol(on: keyboard(of: editor))
+        longPressSymbol(on: keyboardView(of: editor))
         XCTAssertEqual(editor.text, "앞 sk")
         XCTAssertEqual(editor.session.preedit, "")
-        XCTAssertEqual(editor.session.mode, .english)
+        XCTAssertEqual(editor.session.mode, Language.english)
         tapBackspace(editor)
         XCTAssertEqual(editor.text, "앞 s")
     }
 
     @MainActor func testNothingOpenOnlySwitchesMode() {
-        let editor = editor(automatic: false, mode: .korean)
-        longPressSymbol(on: keyboard(of: editor))
+        let editor = makeEditor(automatic: false, mode: Language.korean)
+        longPressSymbol(on: keyboardView(of: editor))
         XCTAssertEqual(editor.text, "")
-        XCTAssertEqual(editor.session.mode, .english)
-        longPressSymbol(on: keyboard(of: editor))
-        XCTAssertEqual(editor.session.mode, .korean)
+        XCTAssertEqual(editor.session.mode, Language.english)
+        longPressSymbol(on: keyboardView(of: editor))
+        XCTAssertEqual(editor.session.mode, Language.korean)
 
-        let committed = editor(automatic: true, mode: .korean)
+        let committed = makeEditor(automatic: true, mode: Language.korean)
         type("hello ", on: committed)
         XCTAssertEqual(committed.text, "hello ")
-        XCTAssertEqual(committed.session.mode, .english)
-        longPressSymbol(on: keyboard(of: committed))
+        XCTAssertEqual(committed.session.mode, Language.english)
+        longPressSymbol(on: keyboardView(of: committed))
         XCTAssertEqual(committed.text, "hello ")
-        XCTAssertEqual(committed.session.mode, .korean)
+        XCTAssertEqual(committed.session.mode, Language.korean)
     }
 
     @MainActor func testConvertedWordIsNotFlippedBackByAutoSwitch() {
-        let editor = editor(automatic: true, mode: .korean)
+        let editor = makeEditor(automatic: true, mode: Language.korean)
         type("dkssud", on: editor)
         XCTAssertEqual(editor.text, "안녕")
-        longPressSymbol(on: keyboard(of: editor))
+        longPressSymbol(on: keyboardView(of: editor))
         XCTAssertEqual(editor.text, "dkssud")
-        XCTAssertEqual(editor.session.mode, .english)
+        XCTAssertEqual(editor.session.mode, Language.english)
         type("gktpdy", on: editor)
         XCTAssertEqual(editor.text, "dkssudgktpdy")
-        XCTAssertEqual(editor.session.mode, .english)
+        XCTAssertEqual(editor.session.mode, Language.english)
 
-        let english = editor(automatic: true, mode: .english)
+        let english = makeEditor(automatic: true, mode: Language.english)
         type("skt", on: english)
-        longPressSymbol(on: keyboard(of: english))
+        longPressSymbol(on: keyboardView(of: english))
         XCTAssertEqual(english.text, "낫")
-        XCTAssertEqual(english.session.mode, .korean)
+        XCTAssertEqual(english.session.mode, Language.korean)
         type("hello", on: english)
         XCTAssertFalse(english.text?.contains("hello") == true)
-        XCTAssertEqual(english.session.mode, .korean)
+        XCTAssertEqual(english.session.mode, Language.korean)
     }
 
     @MainActor func testSymbolTapStillTogglesAndOtherHoldsStay() throws {
-        let editor = editor(automatic: false, mode: .korean)
-        let keyboard = keyboard(of: editor)
+        let editor = makeEditor(automatic: false, mode: Language.korean)
+        let keyboard = keyboardView(of: editor)
         let symbol = buttons(in: keyboard).first { $0.title(for: .normal) == "※" }!
         XCTAssertEqual(symbol.accessibilityHint, "길게 눌러 방금 입력한 단어를 반대 자판으로 바꿉니다")
         let hold = try XCTUnwrap(symbol.gestureRecognizers?.compactMap { $0 as? UILongPressGestureRecognizer }.first)
@@ -1512,24 +1512,24 @@ final class SymbolLongPressTests: XCTestCase {
         symbol.sendActions(for: .touchUpInside)
         XCTAssertTrue(q.accessibilityLabel?.contains("현재 q") == true)
 
-        let shifted = editor(automatic: false, mode: .korean)
-        longPress(letter("q", in: keyboard(of: shifted)), on: keyboard(of: shifted))
+        let shifted = makeEditor(automatic: false, mode: Language.korean)
+        longPress(letter("q", in: keyboardView(of: shifted)), on: keyboardView(of: shifted))
         XCTAssertEqual(shifted.text, "ㅃ")
 
-        let hyphen = editor(automatic: false, mode: .korean)
-        let hyphenKey = buttons(in: keyboard(of: hyphen)).first { $0.accessibilityLabel == "하이픈 입력" }!
-        longPress(hyphenKey, on: keyboard(of: hyphen))
+        let hyphen = makeEditor(automatic: false, mode: Language.korean)
+        let hyphenKey = buttons(in: keyboardView(of: hyphen)).first { $0.accessibilityLabel == "하이픈 입력" }!
+        longPress(hyphenKey, on: keyboardView(of: hyphen))
         XCTAssertEqual(hyphen.text, "→")
 
-        let space = editor(automatic: false, mode: .english)
-        let spaceKey = buttons(in: keyboard(of: space)).first { $0.title(for: .normal) == "간격" }!
-        longPress(spaceKey, on: keyboard(of: space))
+        let space = makeEditor(automatic: false, mode: Language.english)
+        let spaceKey = buttons(in: keyboardView(of: space)).first { $0.title(for: .normal) == "간격" }!
+        longPress(spaceKey, on: keyboardView(of: space))
         XCTAssertEqual(space.text, "\t")
 
-        let deletion = editor(automatic: false, mode: .english)
-        keyboard(of: deletion).backspaceRepeatUsesTimer = false
+        let deletion = makeEditor(automatic: false, mode: Language.english)
+        keyboardView(of: deletion).backspaceRepeatUsesTimer = false
         type("ab", on: deletion)
-        let deleteKey = buttons(in: keyboard(of: deletion)).first { $0.accessibilityLabel == "삭제" }!
+        let deleteKey = buttons(in: keyboardView(of: deletion)).first { $0.accessibilityLabel == "삭제" }!
         deleteKey.sendActions(for: .touchDown)
         deleteKey.sendActions(for: .touchUpInside)
         XCTAssertEqual(deletion.text, "a")
@@ -1552,7 +1552,7 @@ final class SymbolLongPressTests: XCTestCase {
         XCTAssertEqual(buttons(in: keyboard).first { $0.title(for: .normal) == "※" }?.accessibilityLabel, "기호 자판 전환")
     }
 
-    @MainActor private func editor(automatic: Bool, mode: Language) -> HardwareTextView {
+    @MainActor private func makeEditor(automatic: Bool, mode: Language) -> HardwareTextView {
         let editor = HardwareTextView()
         editor.hardwareKeyboardIsConnected = { false }
         editor.setHardwareKeyboardConnected(false)
@@ -1560,7 +1560,7 @@ final class SymbolLongPressTests: XCTestCase {
         return editor
     }
 
-    @MainActor private func keyboard(of editor: HardwareTextView) -> KeyboardView {
+    @MainActor private func keyboardView(of editor: HardwareTextView) -> KeyboardView {
         (editor.inputView as! TouchKeyboardInputView).keyboard
     }
 
@@ -1573,7 +1573,7 @@ final class SymbolLongPressTests: XCTestCase {
     }
 
     @MainActor private func type(_ spelling: String, on editor: HardwareTextView) {
-        type(spelling, on: keyboard(of: editor))
+        type(spelling, on: keyboardView(of: editor))
     }
 
     @MainActor private func type(_ spelling: String, on keyboard: KeyboardView) {
@@ -1587,7 +1587,7 @@ final class SymbolLongPressTests: XCTestCase {
     }
 
     @MainActor private func tapBackspace(_ editor: HardwareTextView) {
-        let keyboard = keyboard(of: editor)
+        let keyboard = keyboardView(of: editor)
         keyboard.backspaceRepeatUsesTimer = false
         let backspace = buttons(in: keyboard).first { $0.accessibilityLabel == "삭제" }!
         backspace.sendActions(for: .touchDown)
