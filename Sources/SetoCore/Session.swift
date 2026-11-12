@@ -525,7 +525,7 @@ public final class Session {
 
         // In English mode a syllable-shaped prefix is not evidence of a
         // language change. Keep QWERTY until a stronger Korean reading appears.
-        // A finished two-letter prefix can still be a frequent syllable.
+        // A finished prefix can still be one frequent syllable (에, 돼).
         if prefersCurrentEnglishMode(wordFinal: wordFinal) {
             let english = [Segment(start: 0, end: keys.count, lang: .english)]
             return installReading(english, previous: previous)
@@ -1001,18 +1001,23 @@ public final class Session {
         }
         if lexicon.isEnglishWord(lower) { return true }
         guard lexicon.isEnglishPrefix(lower) else { return false }
-        // jc, jd, and uv prefix jcmd, jdb, and uva. Keep that Latin while the
-        // next letter may still finish the command. At a word boundary the
-        // two letters are not an English word, so the frequent syllables
-        // 에, 이, and 도 win. Real two-letter words (of → 차, ut → 더) returned above.
-        if wordFinal, spelling.count == 2, spelling.allSatisfy(\.isLowercase), frequentOpenSyllable() {
+        // jc, jd, uv, and uvr prefix jcmd, jdb, uva, and uvrou. Keep that
+        // Latin while the next letter may still finish the word. At a word
+        // boundary the letters are not an English word, so one frequent
+        // syllable wins whether it took two keys (에, 이, 도) or more
+        // (돼 is uvr, 뭐 is ibt). Real words (of → 차, ut → 더, jew → 열,
+        // uvrou) returned above. "md" is valid Hangul 히 but not frequent,
+        // so frequentOpenSyllable leaves it Latin.
+        if wordFinal, spelling.allSatisfy(\.isLowercase), frequentOpenSyllable() {
             return false
         }
         return true
     }
 
-    /// One finished syllable from the frequent list (에, 이, 도), not merely
-    /// the large validity list. "md" is valid Hangul 히 and must stay a prefix.
+    /// One finished syllable from the frequent list (에, 이, 도, 돼), not
+    /// merely the large validity list. "md" is valid Hangul 히 and must stay
+    /// a prefix. Key count is not limited to two: a compound vowel or batchim
+    /// is still one syllable.
     private func frequentOpenSyllable() -> Bool {
         let composition = Composer.compose(keys)
         guard case .clean(let syllables) = shape(of: composition.pieces), syllables == 1 else { return false }

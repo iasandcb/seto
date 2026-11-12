@@ -161,6 +161,91 @@ private let lexicon: Lexicon = {
     }
 }
 
+@Test func frequentSyllablesLongerThanTwoKeysConvertAtWordBoundary() {
+    // uvr prefixes uvrou and is 돼 (ㄷ+ㅗ+ㅐ). A compound vowel takes three
+    // keys, so the two-letter boundary rule never saw it, and 돼 was not in
+    // the frequent list. The same boundary reads any one frequent syllable:
+    // ibt is 뭐 (ibtool), nfs is 산 (nfsd), ibs is 문. Latin stays while the
+    // longer word can continue. jew is the frequent syllable 열 and a real
+    // English word, so it stays.
+    #expect(lexicon.isEnglishPrefix("uvr"))
+    #expect(!lexicon.isEnglishWord("uvr"))
+    #expect(lexicon.isEnglishWord("uvrou"))
+    #expect(lexicon.isKoreanWord("돼"))
+    #expect(SebeolKeys.keys(for: "돼") == "uvr")
+    #expect(lexicon.isEnglishPrefix("ibt"))
+    #expect(!lexicon.isEnglishWord("ibt"))
+    #expect(lexicon.isKoreanWord("뭐"))
+    #expect(SebeolKeys.keys(for: "뭐") == "ibt")
+    #expect(lexicon.isEnglishPrefix("nfs"))
+    #expect(!lexicon.isEnglishWord("nfs"))
+    #expect(lexicon.isKoreanWord("산"))
+    #expect(SebeolKeys.keys(for: "산") == "nfs")
+    #expect(lexicon.isEnglishPrefix("ibs"))
+    #expect(!lexicon.isEnglishWord("ibs"))
+    #expect(lexicon.isKoreanWord("문"))
+    #expect(SebeolKeys.keys(for: "문") == "ibs")
+    #expect(lexicon.isEnglishWord("jew"))
+    #expect(lexicon.isKoreanWord("열"))
+
+    let cases = [("uvr", "돼"), ("ibt", "뭐"), ("nfs", "산"), ("ibs", "문")]
+    for (keys, hangul) in cases {
+        let open = Session(lexicon: lexicon, mode: .english)
+        var paper = Paper()
+        for key in keys { paper.apply(open.input(key).field) }
+        #expect(paper.text == keys, "\(open.debugLine)")
+        #expect(open.mode == .english)
+        for boundary in [" ", ",", "\n"] {
+            assertTypes(keys + boundary, hangul + boundary, mode: .english)
+            #expect(clientFailures(keys + boundary, hangul + boundary, mode: .english).isEmpty)
+        }
+        let committed = Session(lexicon: lexicon, mode: .english)
+        #expect(committed.type(keys + " M") == hangul + " 1")
+        #expect(committed.mode == .korean)
+        assertTypes(keys, hangul, mode: .korean)
+        assertTypes(keys + " ", hangul + " ", mode: .korean)
+    }
+
+    let typing = Session(lexicon: lexicon, mode: .english)
+    var wordPaper = Paper()
+    var typed = ""
+    for key in "uvrou" {
+        typed.append(key)
+        wordPaper.apply(typing.input(key).field)
+        #expect(wordPaper.text == typed, "\(typing.debugLine)")
+        #expect(typing.mode == .english)
+    }
+    wordPaper.apply(typing.input(" ").field)
+    #expect(wordPaper.text == "uvrou ")
+    #expect(typing.mode == .english)
+    #expect(clientFailures("uvrou ", "uvrou ", mode: .english).isEmpty)
+
+    let undone = Session(lexicon: lexicon, mode: .english)
+    var undoPaper = Paper()
+    for key in "uvr " { undoPaper.apply(undone.input(key).field) }
+    #expect(undoPaper.text == "돼 ")
+    undoPaper.apply(undone.toggle().field)
+    #expect(undoPaper.text == "uvr")
+    #expect(undone.mode == .english)
+    undoPaper.apply(undone.input(" ").field)
+    #expect(undoPaper.text == "uvr ")
+
+    for keys in ["uvr ", "ibt ", "nfs ", "ibs "] {
+        let manual = Session(lexicon: lexicon, autoSwitch: false, mode: .english)
+        #expect(manual.type(keys) == keys)
+        #expect(manual.mode == .english)
+    }
+
+    // A dot still joins an English token, unlike a word boundary.
+    #expect(clientFailures("uvr.", "uvr.", mode: .english).isEmpty)
+    #expect(clientFailures("uvr.md", "uvr.md", mode: .english).isEmpty)
+
+    for text in ["uvrou ", "uva ", "jew ", "jew", "of ", "ut ", "UVR ", "Uvr ", "UVR", "nfsd ", "ibtool "] {
+        assertTypes(text, text, mode: .english)
+        #expect(clientFailures(text, text, mode: .english).isEmpty)
+    }
+}
+
 @Test func recognizedSingleSyllableSwitchesFromEnglishImmediately() {
     for word in ["흠", "음", "응", "네", "예", "잘", "로"] {
         let keys = SebeolKeys.keys(for: word)!
