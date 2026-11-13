@@ -208,9 +208,10 @@ public final class Session {
     /// or typo correction, this restores what was typed and holds it.
     /// Otherwise it flips the reading of the current word, or the mode for the next word.
     public func toggle() -> SessionUpdate {
-        // A mixed token such as `누b` can also have an automatic-conversion
+        // A mixed token such as `AI로` can also have an automatic-conversion
         // undo snapshot. Resolve the explicit whole-word toggle first; using
-        // that snapshot would restore the Korean reading `누ㅜ` instead.
+        // that snapshot would restore the earlier reading instead of flipping
+        // the whole word.
         if !keys.isEmpty,
            let first = segments.first,
            segments.dropFirst().contains(where: { $0.lang != first.lang }) {
@@ -595,6 +596,14 @@ public final class Session {
             return installReading(english, previous: previous)
         }
 
+        // 수고 was typed nbv: ㅜ cannot take ㅗ, and "v" is a one-letter
+        // dictionary hit. Scoring then commits Latin `수v`. The vowel stays
+        // Hangul (수ㅗ) unless the whole buffer is already an English word.
+        if prefersHangulWithOrphanVowels() {
+            let korean = [Segment(start: 0, end: keys.count, lang: .korean)]
+            return installReading(korean, previous: previous)
+        }
+
         return selectBestPath(previous: previous, wordFinal: wordFinal)
     }
 
@@ -947,6 +956,21 @@ public final class Session {
                !preservesComposition(at: parts[index].start) { return false }
         }
         return true
+    }
+
+    /// Syllables plus a vowel that could not join, optionally with the next
+    /// choseong already typed (`nbv` → 수ㅗ, `nbvk` → 수ㅗㄱ). A real English
+    /// word or prefix (`head`, `oct`) is decided before this runs. Two-set
+    /// input uses the vowel to reopen the previous syllable, so it is left
+    /// to the existing rules.
+    private func prefersHangulWithOrphanVowels() -> Bool {
+        guard wordMode == .korean, !keys.contains(where: \.isDubeol) else { return false }
+        var pieces = Composer.compose(keys).pieces
+        if pieces.last == .bareChoseong {
+            pieces.removeLast()
+        }
+        guard pieces.count >= 2, pieces.first == .syllable, pieces.contains(.bareJungseong) else { return false }
+        return pieces.allSatisfy { $0 == .syllable || $0 == .bareJungseong }
     }
 
     /// The buffer is still a Korean word being typed: one or more syllables,
@@ -1481,6 +1505,14 @@ public final class Session {
                     || lexicon.isCodeToken(spelling) || isEnglishCode(spelling))
             if !confirmedEnglish { return ("", render(segments)) }
         }
+        // 수v put the syllable and the stray Latin letter into committed
+        // text. Backspace then replaces that range, and a web editor ignores
+        // a replacement when nothing is marked, so the typo stays beside the
+        // correction (수v수고). An open Hangul-then-Latin token stays one mark
+        // until an earlier part of it has already been committed.
+        if plain.isEmpty, englishFollowsHangul() {
+            return ("", render(segments))
+        }
         var splitAt = segments.count
         while splitAt > 0 {
             let segment = segments[splitAt - 1]
@@ -1505,6 +1537,18 @@ public final class Session {
         // A particle can keep growing (에 → 에서). Keep the entire Korean
         // suffix marked until a real boundary, including after ASCII heads.
         return (stable, marked)
+    }
+
+    private func englishFollowsHangul() -> Bool {
+        var sawHangul = false
+        for segment in segments where segment.end > segment.start {
+            if segment.lang == .korean {
+                sawHangul = true
+            } else if sawHangul {
+                return true
+            }
+        }
+        return false
     }
 
     /// A 390 digit or symbol at the front of a Hangul segment was already
