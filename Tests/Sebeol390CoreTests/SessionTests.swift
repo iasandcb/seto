@@ -379,7 +379,7 @@ private let lexicon: Lexicon = {
             failures.append("키 없음 \(word)")
             continue
         }
-        #expect(keys.contains(where: \.isNumber))
+        #expect(try keys.contains(where: \.isNumber))
         failures += clientFailures(keys, word, mode: .english)
         failures += clientFailures(keys + " ", word + " ", mode: .english)
     }
