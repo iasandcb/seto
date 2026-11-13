@@ -321,6 +321,92 @@ private let lexicon: Lexicon = {
     }
 }
 
+@Test func digitKeyKoreanWordsConvertFromEnglishMode() throws {
+    // 5 is ㅠ, so 공유 is k-v-a-j-5. `a` is the ㅇ batchim, which makes the
+    // spelling look like a version token (`page2`, `utf8`) and used to stay Latin.
+    // 공유 is on the large validity list, not the frequent list.
+    #expect(lexicon.isValidKorean("공유"))
+    #expect(!lexicon.isKoreanWord("공유"))
+    let gongyu = try #require(SebeolKeys.keys(for: "공유"))
+    #expect(gongyu == "kvaj5")
+    #expect(lexicon.isCodeToken(gongyu))
+    #expect(!lexicon.isEnglishWord(gongyu))
+
+    // "kv"/"kva" still prefix kvass. The Hangul reading wins once 5 completes 유.
+    let open = Session(lexicon: lexicon, mode: .english)
+    var paper = Paper()
+    var typed = ""
+    for key in "kva" {
+        typed.append(key)
+        paper.apply(open.input(key).field)
+        #expect(paper.text == typed, "\(open.debugLine)")
+        #expect(open.mode == .english)
+    }
+    paper.apply(open.input("j").field)
+    paper.apply(open.input("5").field)
+    #expect(open.document == "공유", "\(open.debugLine)")
+    #expect(paper.text == "공유")
+    #expect(open.mode == .korean)
+
+    for boundary in [" ", ",", "\n"] {
+        assertTypes(gongyu + boundary, "공유" + boundary, mode: .english)
+        #expect(clientFailures(gongyu + boundary, "공유" + boundary, mode: .english).isEmpty)
+    }
+    let followed = Session(lexicon: lexicon, mode: .english)
+    #expect(followed.type(gongyu + " M") == "공유 1")
+    #expect(followed.mode == .korean)
+
+    let undone = Session(lexicon: lexicon, mode: .english)
+    var undoPaper = Paper()
+    for key in gongyu { undoPaper.apply(undone.input(key).field) }
+    #expect(undoPaper.text == "공유")
+    undoPaper.apply(undone.toggle().field)
+    #expect(undoPaper.text == gongyu, "\(undone.debugLine)")
+    #expect(undone.mode == .english)
+    undoPaper.apply(undone.input(" ").field)
+    #expect(undoPaper.text == gongyu + " ")
+
+    let manual = Session(lexicon: lexicon, autoSwitch: false, mode: .english)
+    #expect(manual.type(gongyu + " ") == gongyu + " ")
+    #expect(manual.mode == .english)
+
+    // The digit key finishes the second syllable, so the same token shape
+    // used to reject these. 했어 keeps a digit in the middle and already converted.
+    let words = ["메뉴", "종료", "뭐야", "여덟", "먹었", "마셨", "안녕하세요", "괜찮아요", "다녀오세요", "했어"]
+    var failures: [String] = []
+    for word in words {
+        guard let keys = SebeolKeys.keys(for: word) else {
+            failures.append("키 없음 \(word)")
+            continue
+        }
+        #expect(try keys.contains(where: \.isNumber))
+        failures += clientFailures(keys, word, mode: .english)
+        failures += clientFailures(keys + " ", word + " ", mode: .english)
+    }
+    // One valid syllable whose batchim sits on a digit key: 춥 is o-b-3.
+    let chup = try #require(SebeolKeys.keys(for: "춥"))
+    #expect(chup == "ob3")
+    #expect(lexicon.isCodeToken(chup))
+    #expect(lexicon.isValidKorean("춥"))
+    failures += clientFailures(chup, "춥", mode: .english)
+    failures += clientFailures(chup + " ", "춥 ", mode: .english)
+    let report = failures.prefix(20).joined(separator: "\n")
+    #expect(failures.isEmpty, "\(failures.count) failures\n\(report)")
+
+    // Real English, version tokens, filenames, and numbers stay put.
+    for text in ["kvass", "kvint", "v2", "utf8", "mp3", "mp4", "i18n", "a11y", "k8s",
+                 "html5", "hello", "deploy", "agents.md", "file.txt", "v2.0.1"] {
+        assertTypes(text, text, mode: .english)
+        #expect(clientFailures(text, text, mode: .english).isEmpty)
+    }
+    #expect(clientFailures("<N<L", "2026", mode: .korean).isEmpty)
+    #expect(clientFailures("<N<L ", "2026 ", mode: .korean).isEmpty)
+    #expect(clientFailures("Ind ", "8시 ", mode: .korean).isEmpty)
+    #expect(clientFailures("Ind ", "Ind ", mode: .english).isEmpty)
+    #expect(clientFailures("OK", "95", mode: .korean).isEmpty)
+    #expect(clientFailures("OK", "OK", mode: .english).isEmpty)
+}
+
 @Test func englishPunctuationStillBelongsToEnglishWords() {
     for text in ["of;", "it!", "don't", "it's", "'hello'", "foo/bar", "a;b", "0.1", "->", "=>"] {
         assertTypes(text, text, mode: .english)

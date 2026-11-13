@@ -676,8 +676,14 @@ public final class Session {
     private func prefersCurrentEnglishMode(wordFinal: Bool) -> Bool {
         guard mode == .english else { return false }
         let spelling = englishText(0..<keys.count)
-        if prefersWholeEnglishWord(wordFinal: wordFinal) || prefersWholeEnglishCode() || lexicon.isCodeToken(spelling)
+        if prefersWholeEnglishWord(wordFinal: wordFinal) || prefersWholeEnglishCode()
             || spelling.allSatisfy({ $0.isLetter && $0.isUppercase }) {
+            return true
+        }
+        // `5` is ㅠ and `4` is ㅛ, so 공유 (`kvaj5`) and 메뉴 (`ich5`) match a
+        // version token. That shape loses when the keys are a dictionary word.
+        // `v2`, `utf8`, and `mp3` do not compose one, so they stay Latin.
+        if lexicon.isCodeToken(spelling), !numberRowKeysSpellKoreanWord(spelling) {
             return true
         }
         let composition = Composer.compose(keys)
@@ -696,6 +702,17 @@ public final class Session {
         default:
             return false
         }
+    }
+
+    /// Unshifted number-row keys are jamo on 390, so a Hangul word can look
+    /// like `page2`. It converts when every piece is a syllable of a dictionary
+    /// word and the spelling is not itself English (`v2`, `utf8`, `i18n`).
+    private func numberRowKeysSpellKoreanWord(_ spelling: String) -> Bool {
+        guard spelling.contains(where: \.isNumber) else { return false }
+        if lexicon.isEnglishWord(spelling.lowercased()) { return false }
+        let composition = Composer.compose(keys)
+        guard case .clean = shape(of: composition.pieces) else { return false }
+        return lexicon.isKoreanWord(composition.text) || lexicon.isValidKorean(composition.text)
     }
 
     /// On 390, ; and ' are initials, / is a vowel, and ! is a final.
