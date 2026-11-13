@@ -745,16 +745,116 @@ private let lexicon: Lexicon = {
 }
 
 @Test func shiftSpaceFlipsMixedKoreanAndLatinWordFromItsStartingMode() {
-    let keys = SebeolKeys.keys(for: "누")! + "b"
+    // 누b used to be the mixed sample. The vowel no longer flips to Latin, so
+    // the whole-word toggle is checked on a token that is still two languages.
     let session = Session(lexicon: lexicon, mode: .korean)
     var client = FieldClient()
-    for key in keys {
-        client.apply(session.input(key).field)
+    var paper = Paper()
+    for key in "AIyv" {
+        let update = session.input(key)
+        client.apply(update.field)
+        paper.apply(update.field)
     }
-    #expect(session.document == "누b", "\(session.debugLine)")
-    client.apply(session.toggle().field)
-    #expect(session.document == keys, "\(session.debugLine)")
+    #expect(session.document == "AI로", "\(session.debugLine)")
+    #expect(client.text == "AI로")
+    #expect(paper.text == "AI로")
+    let flipped = session.toggle()
+    client.apply(flipped.field)
+    paper.apply(flipped.field)
+    #expect(session.document == "AIyv", "\(session.debugLine)")
     #expect(client.text == session.document)
+    #expect(paper.text == session.document)
+    #expect(session.mode == .english)
+}
+
+@Test func orphanVowelAfterSyllableStaysHangul() {
+    // 수고 is nbkv. nbv is ㅅㅜ plus an ㅗ that cannot join ㅜ. "v" is a
+    // one-letter dictionary entry, so it used to commit Latin 수v.
+    #expect(Composer.compose("nbv".map(Layout390.atom(for:))).text == "수ㅗ")
+    #expect(Composer.compose("nbvk".map(Layout390.atom(for:))).text == "수ㅗㄱ")
+    #expect(Composer.compose("nbvkv".map(Layout390.atom(for:))).text == "수ㅗ고")
+    #expect(hangulDrift("nbv") == nil)
+    #expect(hangulDrift("nbvk") == nil)
+    #expect(hangulDrift("nbvkv") == nil)
+    #expect(hangulDrift("nbvv") == nil)
+    #expect(hangulDrift("hbb") == nil)
+
+    let session = Session(lexicon: lexicon, mode: .korean)
+    var paper = Paper()
+    var web = WebField()
+    for key in "nbv" {
+        let update = session.input(key)
+        paper.apply(update.field)
+        web.apply(update.field)
+        #expect(paper.text == session.document, "\(key) \(session.debugLine)")
+        #expect(web.text == session.document, "\(key) web=\(web.text)")
+        #expect(paper.marked == session.preedit)
+        #expect(web.marked == session.preedit)
+    }
+    #expect(session.document == "수ㅗ")
+    #expect(session.preedit == "수ㅗ", "the vowel stays in the mark, not committed Latin")
+    #expect(session.mode == .korean)
+    #expect(!session.document.contains("v"))
+
+    let nu = (SebeolKeys.keys(for: "누") ?? "") + "b"
+    #expect(nu == "hbb")
+    let nuSession = Session(lexicon: lexicon, mode: .korean)
+    var nuClient = FieldClient()
+    for key in nu {
+        nuClient.apply(nuSession.input(key).field)
+    }
+    #expect(nuSession.document == "누ㅜ", "\(nuSession.debugLine)")
+    #expect(nuClient.text == "누ㅜ")
+    nuClient.apply(nuSession.toggle().field)
+    #expect(nuSession.document == nu)
+    #expect(nuClient.text == nuSession.document)
+}
+
+@Test func correctingOrphanVowelDoesNotLeaveCommittedLatin() {
+    // ⌫ is Backspace. The reported screen was 수v수고: nbv committed Latin v,
+    // then Backspace failed to delete it before nbkv was retyped.
+    let memory = MemoryTypos()
+    let logged = replayKorean("nbv⌫kv ", expect: "수고 ", memory: memory)
+    #expect(logged.mode == .korean)
+    #expect(memory.rows.count == 1)
+    #expect(memory.rows[0].wrong == "수ㅗ")
+    #expect(memory.rows[0].wrongKeys == "nbv")
+    #expect(memory.rows[0].final == "수고")
+    #expect(memory.rows[0].finalKeys == "nbkv")
+
+    let partial = MemoryTypos()
+    _ = replayKorean("nbv⌫⌫bkv ", expect: "수고 ", memory: partial)
+    #expect(partial.rows.count == 1)
+    #expect(partial.rows[0].wrong == "수ㅗ")
+    #expect(partial.rows[0].finalKeys == "nbkv")
+
+    let cleared = MemoryTypos()
+    _ = replayKorean("nbv⌫⌫⌫nbkv ", expect: "수고 ", memory: cleared)
+    #expect(cleared.rows.isEmpty, "deleting the whole token drops the retype snapshot")
+
+    _ = replayKorean("nbvkv", expect: "수ㅗ고")
+    _ = replayKorean("nbvk", expect: "수ㅗㄱ")
+    _ = replayKorean("nbvv", expect: "수ㅗㅗ")
+    _ = replayKorean("nbbe", expect: Composer.compose("nbbe".map(Layout390.atom(for:))).text)
+
+    let continued = replayKorean("nbv⌫kv kf", expect: "수고 가")
+    #expect(continued.mode == .korean)
+}
+
+@Test func orphanShapedEnglishWordsStayLatin() {
+    // head, her, and ice are a syllable plus a vowel that cannot join, and
+    // they are real words. october's "oct" is the same shape and a prefix.
+    for word in ["head", "her", "ice", "hear", "heat", "other", "be", "oct", "october"] {
+        assertTypes(word, word)
+        assertTypes(word + " ", word + " ")
+        let failures = clientFailures(word + " ", word + " ", mode: .korean)
+        #expect(failures.isEmpty, "\(failures.joined(separator: "\n"))")
+    }
+    let head = Session(lexicon: lexicon, mode: .korean)
+    #expect(head.type("head") == "head")
+    #expect(head.mode == .english)
+    let version = Session(lexicon: lexicon, mode: .korean)
+    #expect(version.type("v2") == "v2")
 }
 
 @Test func manualModeDoesNotConvert() {
@@ -2093,6 +2193,103 @@ private enum SebeolKeys {
         }
         return nil
     }
+}
+
+/// A web editor ignores replacement ranges once the mark is gone. Backspace
+/// after committed `수v` then inserts the correction beside the typo.
+private struct WebField {
+    var committed = ""
+    var marked = ""
+    var text: String { committed + marked }
+
+    mutating func apply(_ field: FieldEdit) {
+        if marked.isEmpty, replacesCommittedText(field) {
+            switch field {
+            case .replaceBeforeCaret(_, let string), .clearMarkThenMark(_, let string):
+                marked = string
+            case .insertReplacing(_, let string), .clearMarkThenInsert(_, let string):
+                committed += string
+                marked = ""
+            case .insertReplacingThenMark(_, let insert, let mark):
+                committed += insert
+                marked = mark
+            case .rewrite(_, let string, let thenMark):
+                committed += string
+                marked = thenMark
+            default:
+                break
+            }
+            return
+        }
+        var paper = Paper(committed: committed, marked: marked)
+        paper.apply(field)
+        committed = paper.committed
+        marked = paper.marked
+    }
+
+    /// The app handled Backspace itself and committed whatever mark remained.
+    mutating func deleteOne() {
+        if !marked.isEmpty {
+            marked = dropEnd(marked, 1)
+            committed += marked
+            marked = ""
+        } else {
+            committed = dropEnd(committed, 1)
+        }
+    }
+
+    private func replacesCommittedText(_ field: FieldEdit) -> Bool {
+        switch field {
+        case .replaceBeforeCaret(let utf16, _),
+             .insertReplacing(let utf16, _),
+             .clearMarkThenInsert(let utf16, _),
+             .clearMarkThenMark(let utf16, _),
+             .insertReplacingThenMark(let utf16, _, _),
+             .rewrite(let utf16, _, _):
+            return utf16 > 0
+        default:
+            return false
+        }
+    }
+}
+
+@discardableResult
+private func replayKorean(_ events: String, expect: String, memory: MemoryTypos? = nil) -> Session {
+    let session = Session(lexicon: lexicon, mode: .korean, typos: memory)
+    var paper = Paper()
+    var web = WebField()
+    var trace: [String] = []
+    for character in events {
+        let label: String
+        if character == "⌫" {
+            let update = session.backspace()
+            label = "bs \(update.field)"
+            if update.field == .none {
+                paper.deleteOne()
+                web.deleteOne()
+            } else {
+                paper.apply(update.field)
+                web.apply(update.field)
+            }
+        } else {
+            let update = session.input(character)
+            label = "\(character) \(update.field)"
+            paper.apply(update.field)
+            web.apply(update.field)
+        }
+        trace.append("\(label) paper=\(paper.text) web=\(web.text) doc=\(session.document) pre=\(session.preedit)")
+        let recent = trace.suffix(6).joined(separator: "\n")
+        #expect(paper.text == session.document, "\(recent)")
+        #expect(web.text == session.document, "\(recent)")
+        #expect(paper.marked == session.preedit, "\(recent)")
+        #expect(web.marked == session.preedit, "\(recent)")
+        #expect(!paper.text.contains("수v") && !web.text.contains("수v"), "\(recent)")
+    }
+    let recent = trace.suffix(4).joined(separator: "\n")
+    #expect(session.document == expect, "\(recent)")
+    #expect(paper.text == expect, "\(recent)")
+    #expect(web.text == expect, "\(recent)")
+    return session
 }
 
 /// Mirrors InputController.apply so tests can see what the field would show.
