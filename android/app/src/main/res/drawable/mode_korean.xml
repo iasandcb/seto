@@ -1,0 +1,8 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <!-- 한, drawn as strokes so status-bar rendering needs no Korean font. -->
+    <path android:fillColor="@android:color/transparent" android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2" android:strokeLineJoin="round" android:strokeLineCap="round"
+        android:pathData="M6,3 L10,3 M3,6 L13,6 M8,9 A3,3 0,1 1,8,15 A3,3 0,1 1,8,9 M17,3 L17,16 M17,9 L21,9 M5,18 L5,22 L19,22" />
+</vector>

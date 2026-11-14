@@ -22,6 +22,15 @@ class SetoInputMethodService : InputMethodService() {
     private val consumedKeys = mutableSetOf<Int>()
     private var editing = false
     private var mode = Language.KOREAN
+    private var statusMode: Language? = null
+
+    private fun updateMode(language: Language) {
+        mode = language
+        if (statusMode != language) {
+            showStatusIcon(if (language == Language.KOREAN) R.drawable.mode_korean else R.drawable.mode_english)
+            statusMode = language
+        }
+    }
 
     override fun onEvaluateInputViewShown() = false
     override fun onEvaluateFullscreenMode() = false
@@ -48,8 +57,8 @@ class SetoInputMethodService : InputMethodService() {
                     }
                 }
             session = FieldSession(logger)
-            session?.forceMode(mode)
             applier = FieldEditApplier(connection, attribute.initialSelStart, attribute.initialSelEnd)
+            session?.let { runEdit { it.forceMode(mode) } }
         } catch (error: Exception) { fail(error) }
     }
 
@@ -60,6 +69,8 @@ class SetoInputMethodService : InputMethodService() {
     }
     override fun onDestroy() { release(); super.onDestroy() }
     private fun release() {
+        hideStatusIcon()
+        statusMode = null
         session?.let {
             try { it.shutdown() } catch (_: Exception) { /* poisoned state can still be destroyed */ }
             it.destroy()
@@ -75,7 +86,9 @@ class SetoInputMethodService : InputMethodService() {
     private fun runEdit(action: () -> SessionUpdate): SessionUpdate? {
         return try {
             editing = true
-            action().also { mode = it.mode; applier?.apply(it) }
+            // Every core operation can change mode, including input's automatic
+            // conversion, Shift+Space, undo/backspace, and initial forceMode.
+            action().also { updateMode(it.mode); applier?.apply(it) }
         } catch (error: Exception) { fail(error); null }
         finally { editing = false }
     }

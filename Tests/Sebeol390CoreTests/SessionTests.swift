@@ -2632,6 +2632,20 @@ private extension Session {
     }
 }
 
+@Test func jjChatReactionFromEnglishMode() {
+    #expect(lexicon.isEnglishPrefix("jj")) // jjs used to mask the existing reaction.
+    for suffix in ["", " ", "\n"] {
+        assertTypes("jj" + suffix, "ㅇㅇ" + suffix, mode: .english)
+        #expect(clientFailures("jj" + suffix, "ㅇㅇ" + suffix, mode: .english).isEmpty)
+    }
+    assertTypes("jjs ", "jjs ", mode: .english)
+    assertTypes("JJ ", "JJ ", mode: .english)
+    // A period starts a domain label, preserving the existing code-token rule.
+    assertTypes("jj.", "jj.", mode: .english)
+    let manual = Session(lexicon: lexicon, autoSwitch: false, mode: .english)
+    #expect(manual.type("jj ") == "jj ")
+}
+
 @Test func brandWordsStartingWithASyllableBecomeEnglish() {
     // i c is 메 on 390. The finished English word takes the syllable back.
     for mode in [Language.korean, .english] {

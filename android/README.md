@@ -7,6 +7,24 @@ There is no on-screen keyboard or launcher activity. Password/raw fields pass
 through. Navigation, Enter, Tab and shortcuts commit the displayed composition
 and pass through, as in the desktop oracle.
 
+While a normal input field is active, a small white **한** (Korean) or **A**
+(English) status icon follows every Session mode update, including automatic
+conversion and Shift+Space. The icon is cleared on field finish, password/raw
+pass-through, or session failure. This uses
+[InputMethodService.showStatusIcon](https://developer.android.com/reference/android/inputmethodservice/InputMethodService#showStatusIcon(int));
+visibility depends on the device's system status bar, with no keyboard window
+or launcher activity.
+
+The `jj` follow-up exposed a shared Swift/Rust core issue, rather than an Android
+key or commit bug: `ㅇㅇ` was already a recognized chat reaction, but `jj` is also
+a prefix of the bundled English entry `jjs`. English-prefix preference masked
+the reaction before it could be selected. Both cores now let that existing
+reaction outrank the prefix. Complete words (`jjs`), uppercase input, manual
+English mode, and period/domain handling retain their existing behavior.
+Regression tests cover open `jj`, space/newline boundaries, and Rust with both
+the desktop and Android keyboard lexicons. Swift core changes were necessary
+because the new oracle test reproduced the same failure there.
+
 ## Build
 
 On the macOS machine used for this phase:
@@ -101,14 +119,15 @@ xz 5.8.3 → 5.8.4, lz4 1.10.0 → 1.11.1.
 
 ## Verification
 
-- `cd core-rs && cargo test`: **76 passed** (72 unchanged core tests + 4 FFI tests).
+- `cd core-rs && cargo test`: **78 passed** (74 core tests + 4 FFI tests).
   Golden replay: **3661 scenarios / 25238 keystrokes**.
 - `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test`:
-  **155 passed**. `Sources/SetoCore` is unchanged.
-- `./gradlew assembleDebug testDebugUnitTest`: successful; **5 Android unit tests**
+  **157 passed**. Includes the new English-mode `jj` regression.
+- `./gradlew assembleDebug testDebugUnitTest`: successful; **7 Android unit tests**
   cover physical mapping, Shift+Space, every FieldEdit, surrogate-pair spans,
-  coalesced selections, and native backspace tracking.
+  coalesced selections, native backspace tracking, and Ctrl+comma/period with
+  all modifier combinations. The Rust/Swift `머지하고` regressions also pass.
 - APK inspection: both `libseto_ffi.so` ABIs have all **4 LOAD Align 0x4000**;
   both JNA libraries have all **2 LOAD Align 0x4000**. `zipalign -c -P 16 4` passes.
-- Debug APK: `app/build/outputs/apk/debug/app-debug.apk`, **7484831 bytes**.
+- Debug APK: `app/build/outputs/apk/debug/app-debug.apk`, **7478249 bytes**.
 - No APK/IME was installed, and no phone or emulator runtime testing was performed.

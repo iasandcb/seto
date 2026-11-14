@@ -1421,6 +1421,9 @@ impl Session {
         if self.lexicon.is_english_word(&lower) {
             return true;
         }
+        if self.is_english_mode_chat_reaction() {
+            return false;
+        }
         if !self.lexicon.is_english_prefix(&lower) {
             return false;
         }
@@ -1781,8 +1784,10 @@ impl Session {
         {
             return false;
         }
+        // ㅇㅇ is already an explicit chat reaction. The dictionary's "jjs"
+        // prefix must not mask it; complete English words still win.
         !self.lexicon.is_english_word(&lower)
-            && !self.lexicon.is_english_prefix(&lower)
+            && (text == "ㅇㅇ" || !self.lexicon.is_english_prefix(&lower))
             && !self.lexicon.is_code_token(&spelling)
             && !self.lexicon.is_abbreviation(&spelling)
     }
