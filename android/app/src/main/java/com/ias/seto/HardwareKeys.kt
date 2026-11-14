@@ -4,6 +4,17 @@ import android.view.KeyEvent
 
 /** Physical Android key codes, independent of the active OS language/key character map. */
 internal object HardwareKeys {
+    /** InputController's only Control-only mappings; all other shortcuts pass through. */
+    fun controlCharacter(code: Int, control: Boolean, shift: Boolean = false,
+                         alt: Boolean = false, meta: Boolean = false, sym: Boolean = false): Char? {
+        if (!control || shift || alt || meta || sym) return null
+        return when (code) {
+            KeyEvent.KEYCODE_COMMA -> '←'
+            KeyEvent.KEYCODE_PERIOD -> '→'
+            else -> null
+        }
+    }
+
     fun character(code: Int, shift: Boolean): Char? {
         if (code in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z) {
             return ((if (shift) 'A' else 'a').code + code - KeyEvent.KEYCODE_A).toChar()

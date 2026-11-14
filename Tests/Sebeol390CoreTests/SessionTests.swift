@@ -2661,3 +2661,12 @@ private extension Session {
         assertTypes(text, text, mode: .english)
     }
 }
+
+@Test func mergeStaysKoreanAtWordBoundary() {
+    // 세벌식 390: 머지하고. 머지 (merge) is a word, not a typo for 머리.
+    for (keys, expected) in [("itld", "머지"), ("itldmfkv", "머지하고")] {
+        let session = Session(lexicon: lexicon, mode: .korean)
+        #expect(session.type(keys) == expected)
+        #expect(session.type(" ") == expected + " ")
+    }
+}

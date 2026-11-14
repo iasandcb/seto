@@ -88,6 +88,13 @@ class SetoInputMethodService : InputMethodService() {
         tracker.shiftChanged(event.isShiftPressed || heldShifts.isNotEmpty())
         val toggle = tracker.keyDown(keyCode == KeyEvent.KEYCODE_SPACE, event.isShiftPressed)
         val active = session ?: return super.onKeyDown(keyCode, event)
+        val controlCharacter = HardwareKeys.controlCharacter(keyCode, event.isCtrlPressed,
+            event.isShiftPressed, event.isAltPressed, event.isMetaPressed, event.isSymPressed)
+        if (controlCharacter != null) {
+            runEdit { active.input(controlCharacter.toString()) }
+            consumedKeys.add(keyCode)
+            return true
+        }
         if (event.isCtrlPressed || event.isAltPressed || event.isMetaPressed || event.isSymPressed) {
             runEdit { active.commitDisplayed(true) }
             return super.onKeyDown(keyCode, event)
