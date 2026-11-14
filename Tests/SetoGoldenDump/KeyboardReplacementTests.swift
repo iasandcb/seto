@@ -1,0 +1,1 @@
+../Sebeol390CoreTests/KeyboardReplacementTests.swift
