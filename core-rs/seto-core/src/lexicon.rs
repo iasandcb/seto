@@ -25,6 +25,8 @@ use memmap2::Mmap;
 use unicode_normalization::{IsNormalized, UnicodeNormalization, is_nfc_quick};
 use unicode_segmentation::UnicodeSegmentation;
 
+use crate::typo_corrector::CandidateCache;
+
 pub const DEFAULT_ABBREVIATIONS: &[&str] = &[
     "AI", "OK", "UI", "UX", "OS", "ID", "IP", "PC", "TV", "US", "UK", "KR", "PR", "CI", "CD", "DB", "IO", "QA", "ML",
     "API", "URL", "CPU", "GPU", "RAM", "SSH", "PDF", "USB", "SQL", "CSS", "HTML", "JSON", "HTTP", "HTTPS", "GIF",
@@ -232,7 +234,7 @@ fn memchr_newline(bytes: &[u8]) -> Option<usize> {
 }
 
 /// NFC form, borrowing when the text is already NFC (the common case).
-fn nfc(text: &str) -> std::borrow::Cow<'_, str> {
+pub(crate) fn nfc(text: &str) -> std::borrow::Cow<'_, str> {
     if is_nfc_quick(text.chars()) == IsNormalized::Yes {
         std::borrow::Cow::Borrowed(text)
     } else {
@@ -242,7 +244,7 @@ fn nfc(text: &str) -> std::borrow::Cow<'_, str> {
 
 /// Swift `String.count`: extended grapheme clusters.
 fn character_count(text: &str) -> usize {
-    text.graphemes(true).count()
+    if text.is_ascii() && !text.contains('\r') { text.len() } else { text.graphemes(true).count() }
 }
 
 /// Word lists for [`Lexicon::from_words`]; mirrors the Swift initializer.
@@ -262,6 +264,8 @@ pub struct Lexicon {
     valid_korean: WordList,
     abbreviations: WordList,
     tech_stems: WordList,
+    /// `TypoCorrector`'s frequent-word key table, built on first use.
+    pub(crate) typo_candidates: CandidateCache,
 }
 
 impl Lexicon {
@@ -278,6 +282,7 @@ impl Lexicon {
             valid_korean: WordList::from_words(words.valid_korean.iter().map(|word| nfc(word))),
             abbreviations: WordList::from_words(words.abbreviations.iter().map(|word| word.to_uppercase())),
             tech_stems: WordList::from_words(words.tech_stems.iter().map(|word| word.to_lowercase())),
+            typo_candidates: CandidateCache::default(),
         }
     }
 
@@ -297,6 +302,7 @@ impl Lexicon {
             valid_korean,
             abbreviations: WordList::from_words(DEFAULT_ABBREVIATIONS.iter().map(|word| word.to_uppercase())),
             tech_stems: WordList::from_words(DEFAULT_TECH_STEMS.iter().map(|word| word.to_lowercase())),
+            typo_candidates: CandidateCache::default(),
         })
     }
 
@@ -320,6 +326,7 @@ impl Lexicon {
             valid_korean: WordList::open(valid_korean)?,
             abbreviations: WordList::from_words(DEFAULT_ABBREVIATIONS.iter().map(|word| word.to_uppercase())),
             tech_stems: WordList::from_words(DEFAULT_TECH_STEMS.iter().map(|word| word.to_lowercase())),
+            typo_candidates: CandidateCache::default(),
         })
     }
 
@@ -363,9 +370,20 @@ impl Lexicon {
         self.korean.iter().map(str::to_owned).collect()
     }
 
+    /// The frequent Korean words as stored: sorted, borrowed, no allocation.
+    pub(crate) fn korean_list(&self) -> &WordList {
+        &self.korean
+    }
+
     /// English entries whose length in characters is inside `length`.
     pub fn english_words(&self, length: RangeInclusive<usize>) -> Vec<String> {
-        self.english.iter().filter(|word| length.contains(&character_count(word))).map(str::to_owned).collect()
+        self.english_words_with_length(length).map(str::to_owned).collect()
+    }
+
+    /// Like [`Lexicon::english_words`], borrowing each entry from the word
+    /// buffer. Typo correction scans this at a word boundary.
+    pub fn english_words_with_length(&self, length: RangeInclusive<usize>) -> impl Iterator<Item = &str> + '_ {
+        self.english.iter().filter(move |word| length.contains(&character_count(word)))
     }
 
     pub fn is_abbreviation(&self, text: &str) -> bool {

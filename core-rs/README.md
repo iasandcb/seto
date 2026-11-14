@@ -3,11 +3,11 @@
 Shared core of Seto. The Swift code in `Sources/SetoCore` is the oracle; this
 crate ports it piece by piece.
 
-Phase 1 (this crate today): `hangul`, `composer`, `layout` (390, 최종, 두벌식,
-`KeyboardLayout`), `keys` (`keymap`, `hardware_keymap`, `KeyboardReplacement`,
-`ShiftSpaceToggleTracker`), `lexicon`, and the `Session` value types
-(`Language`, `FieldEdit`, `SessionUpdate`). `Session` and `TypoCorrector` are
-not ported yet.
+Phase 2 (this crate today): everything in phase 1, plus `Session`,
+`TypoCorrector`, and typo memory/policy (`TypoMemory`, `MemoryTypos`,
+`TypoLogPolicy`). The file-backed typo log stays in Swift. `tests/golden_replay.rs`
+feeds every recorded keystroke to the Rust `Session` and checks document, mode,
+preedit, and `FieldEdit`.
 
 ```sh
 cd core-rs && cargo test
@@ -43,3 +43,5 @@ The three dictionary sweeps (`commonEnglishWordsDoNotFlipMidWord`,
 `dictionaryWordsAreNotAutoCorrected`, `koreanWordsStayKoreanBeforeParticles`)
 are sampled to about 500 sessions each by content hash; the file header lists
 them. `SETO_GOLDEN_FULL=1` keeps every session (about 110 MB).
+
+`cargo test --test golden_replay` replays the corpus against the Rust `Session`.

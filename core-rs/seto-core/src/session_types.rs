@@ -1,5 +1,5 @@
 //! Value types from `Session.swift` shared with the golden corpus. `Session`
-//! itself is ported in a later phase.
+//! itself is in [`crate::session`].
 
 use serde::{Deserialize, Serialize};
 
