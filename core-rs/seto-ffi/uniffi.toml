@@ -1,0 +1,4 @@
+[bindings.kotlin]
+package_name = "com.ias.seto.core"
+cdylib_name = "seto_ffi"
+android = true
