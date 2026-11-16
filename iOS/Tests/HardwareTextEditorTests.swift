@@ -53,10 +53,16 @@ final class HardwareTextEditorTests: XCTestCase {
             XCTAssertEqual(rows.frame.minX, x + 4, accuracy: pixel)
             XCTAssertEqual(rows.frame.width, width - 8, accuracy: pixel)
             XCTAssertEqual(rows.spacing, 11)
-            for row in rows.arrangedSubviews.dropFirst() {
-                XCTAssertEqual(row.bounds.height, 44, accuracy: 0.01)
-                XCTAssertGreaterThanOrEqual(row.frame.minX, 0)
-                XCTAssertLessThanOrEqual(row.frame.maxX, rows.bounds.width + 0.01)
+            for (index, row) in rows.arrangedSubviews.enumerated() {
+                let ratio: CGFloat = value == .off ? 1 : index == 5 ? KeyboardView.oneHandedBottomWidthRatio
+                    : index == 4 ? KeyboardView.oneHandedShiftWidthRatio : KeyboardView.oneHandedWidthRatio
+                XCTAssertEqual(row.bounds.width, 390 * ratio - 8, accuracy: pixel)
+                if index > 0 { XCTAssertEqual(row.bounds.height, 44, accuracy: 0.01) }
+                if value == .right {
+                    XCTAssertEqual(row.frame.maxX, rows.bounds.width, accuracy: pixel)
+                } else {
+                    XCTAssertEqual(row.frame.minX, 0, accuracy: pixel)
+                }
             }
         }
         XCTAssertEqual(KeyboardView.preferredHeight, 315)
@@ -67,6 +73,72 @@ final class HardwareTextEditorTests: XCTestCase {
         for row in rows.arrangedSubviews.dropFirst() {
             XCTAssertLessThan(row.bounds.height, 44)
             XCTAssertGreaterThan(row.bounds.height, 30)
+        }
+    }
+
+    @MainActor func testAllKeyTitlesFitEveryOneHandedLayout() {
+        let suite = "seto.keyboard.tests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keyboard = KeyboardView(frame: CGRect(x: 0, y: 0, width: 390,
+                                                  height: KeyboardView.preferredHeight), defaults: defaults)
+        let rows = keyboard.subviews.compactMap { $0 as? UIStackView }.first!
+        func buttons(in view: UIView) -> [UIButton] {
+            if let button = view as? UIButton { return [button] }
+            return view.subviews.flatMap { buttons(in: $0) }
+        }
+        for value in OneHandedLayout.allCases {
+            defaults.set(value.rawValue, forKey: KeyboardSettings.oneHandedKey)
+            keyboard.reloadSettings()
+            for mode in [Language.korean, .english] {
+                keyboard.update(mode: mode, automatic: false)
+                // Check normal, shifted, and symbol titles, including refreshes
+                // at an unchanged size (fitted fonts must not become stale).
+                let shift = buttons(in: rows.arrangedSubviews[4]).first!
+                let symbol = buttons(in: rows.arrangedSubviews[5]).first!
+                for layer in 0..<3 {
+                    if layer == 1 { shift.sendActions(for: .touchDown) }
+                    if layer == 2 { symbol.sendActions(for: .touchUpInside) }
+                    keyboard.layoutIfNeeded()
+                    for row in rows.arrangedSubviews.dropFirst() {
+                        for button in buttons(in: row) {
+                            button.layoutIfNeeded()
+                            let label = button.titleLabel!
+                            let title = button.currentAttributedTitle?.string ?? button.currentTitle ?? ""
+                            XCTAssertFalse(title.isEmpty)
+                            XCTAssertFalse(title.contains("…") || title.contains("..."))
+                            XCTAssertEqual(label.lineBreakMode, .byClipping)
+                            XCTAssertTrue(label.adjustsFontSizeToFitWidth)
+                            XCTAssertEqual(label.text, title)
+                            XCTAssertGreaterThan(label.bounds.width, 0)
+                            let tolerance = 1 / keyboard.traitCollection.displayScale
+                            for line in title.components(separatedBy: "\n") {
+                                let width = (line as NSString).size(withAttributes: [.font: label.font!]).width
+                                XCTAssertLessThanOrEqual(width, min(label.bounds.width, button.bounds.width) + tolerance,
+                                                         "\(value) \(title) at \(label.font.pointSize)pt")
+                            }
+                            if let attributed = button.currentAttributedTitle {
+                                let font = attributed.attribute(.font, at: 0, effectiveRange: nil) as? UIFont
+                                XCTAssertEqual(font?.pointSize, label.font.pointSize)
+                            }
+                        }
+                    }
+                    let numbers = buttons(in: rows.arrangedSubviews[1])
+                    for (index, pair) in zip("1234567890", "!@#$%^&*()").enumerated() {
+                        XCTAssertEqual(numbers[index].currentAttributedTitle?.string, "\(pair.0) \(pair.1)")
+                    }
+                    for button in buttons(in: rows.arrangedSubviews[2]) {
+                        XCTAssertEqual(button.titleLabel?.numberOfLines, 2)
+                    }
+                    // At 390pt the tapered side keys remain comparable to upper
+                    // letter keys; the space bar keeps its larger target.
+                    let bottom = buttons(in: rows.arrangedSubviews[5])
+                    XCTAssertGreaterThanOrEqual(bottom[3].bounds.width, 80)
+                    XCTAssertTrue(bottom.allSatisfy { $0.bounds.width >= 23 })
+                }
+                symbol.sendActions(for: .touchUpInside)
+                shift.sendActions(for: .touchDown)
+            }
         }
     }
 
