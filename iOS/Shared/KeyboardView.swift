@@ -11,6 +11,7 @@ enum SuggestionLearning {
 /// Touch keyboard uses standard Korean two-set and English QWERTY positions.
 @MainActor
 final class KeyboardView: UIView {
+    static let oneHandedWidthRatio: CGFloat = 0.75
     static let keyHeight: CGFloat = 44
     static let rowGap: CGFloat = 11
     // 28pt phrase bar + five key rows + five gaps + 6pt top/bottom margins.
@@ -259,7 +260,7 @@ final class KeyboardView: UIView {
         NSLayoutConstraint.deactivate(horizontalConstraints)
         horizontalConstraints = [
             rows.widthAnchor.constraint(equalTo: widthAnchor,
-                                        multiplier: value == .off ? 1 : 0.85, constant: -8),
+                                        multiplier: value == .off ? 1 : Self.oneHandedWidthRatio, constant: -8),
             value == .right
                 ? rows.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4)
                 : rows.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4)
@@ -276,7 +277,7 @@ final class KeyboardView: UIView {
         rows.spacing = Self.rowGap * scale
         for height in rowHeights { height.constant = Self.keyHeight * scale }
         super.layoutSubviews()
-        let width = bounds.width * (oneHandedLayout == .off ? 1 : 0.85)
+        let width = bounds.width * (oneHandedLayout == .off ? 1 : Self.oneHandedWidthRatio)
         keyAreaFrame = CGRect(x: oneHandedLayout == .right ? bounds.width - width : 0,
                               y: 0, width: width, height: bounds.height)
     }

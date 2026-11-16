@@ -45,7 +45,7 @@ final class HardwareTextEditorTests: XCTestCase {
             defaults.set(value.rawValue, forKey: KeyboardSettings.oneHandedKey)
             keyboard.reloadSettings()
             keyboard.layoutIfNeeded()
-            let width: CGFloat = value == .off ? 390 : 390 * 0.85
+            let width: CGFloat = value == .off ? 390 : 390 * KeyboardView.oneHandedWidthRatio
             let x: CGFloat = value == .right ? 390 - width : 0
             XCTAssertEqual(keyboard.keyAreaFrame.width, width, accuracy: 0.01)
             // UIKit rounds fractional widths/positions to the display pixel grid.
