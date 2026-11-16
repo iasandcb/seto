@@ -444,7 +444,15 @@ final class TouchKeyboardInputView: UIInputView {
     }
 
     private var fittedHeight: CGFloat {
-        KeyboardView.preferredHeight + bottomPadding
+        let landscape = window?.windowScene?.interfaceOrientation.isLandscape == true
+        return (landscape ? KeyboardView.landscapeHeight : KeyboardView.preferredHeight) + bottomPadding
+    }
+
+    override func layoutSubviews() {
+        if keyboardHeight.constant != fittedHeight {
+            prepare(bottomInset: bottomPadding)
+        }
+        super.layoutSubviews()
     }
 
     override var intrinsicContentSize: CGSize {
@@ -462,7 +470,7 @@ final class TouchKeyboardInputView: UIInputView {
     override func safeAreaInsetsDidChange() {
         super.safeAreaInsetsDidChange()
         let inset = max(safeAreaInsets.bottom, window?.safeAreaInsets.bottom ?? 0)
-        if inset != bottomPadding { prepare(bottomInset: inset) }
+        prepare(bottomInset: inset)
     }
 
     override func didMoveToWindow() {

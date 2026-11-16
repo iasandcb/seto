@@ -11,7 +11,19 @@ enum SuggestionLearning {
 /// Touch keyboard uses standard Korean two-set and English QWERTY positions.
 @MainActor
 final class KeyboardView: UIView {
-    static let preferredHeight: CGFloat = 280
+    static let keyHeight: CGFloat = 44
+    static let rowGap: CGFloat = 11
+    // 28pt phrase bar + five key rows + five gaps + 6pt top/bottom margins.
+    static let preferredHeight: CGFloat = 315
+    static let landscapeHeight: CGFloat = 240
+
+    private let settingsDefaults: UserDefaults
+    private var settingsTimer: Timer?
+    private var rowHeights: [NSLayoutConstraint] = []
+    private var horizontalConstraints: [NSLayoutConstraint] = []
+    private(set) var oneHandedLayout: OneHandedLayout = .off
+    /// Includes the 4pt key margins; the remaining side contains no controls.
+    private(set) var keyAreaFrame: CGRect = .zero
 
     var onKey: ((Character) -> Void)?
     var onPhrase: ((String) -> Void)?
@@ -66,16 +78,19 @@ final class KeyboardView: UIView {
     private weak var previewedButton: UIButton?
     private var previewText: [ObjectIdentifier: () -> String] = [:]
 
-    override init(frame: CGRect) {
+    override convenience init(frame: CGRect) {
+        self.init(frame: frame, defaults: KeyboardSettings.defaults)
+    }
+
+    init(frame: CGRect, defaults: UserDefaults) {
+        settingsDefaults = defaults
         super.init(frame: frame)
         backgroundColor = .secondarySystemBackground
         rows.axis = .vertical
-        rows.spacing = 6
+        rows.spacing = Self.rowGap
         rows.translatesAutoresizingMaskIntoConstraints = false
         addSubview(rows)
         NSLayoutConstraint.activate([
-            rows.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
-            rows.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
             rows.topAnchor.constraint(equalTo: topAnchor, constant: 6),
             rows.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor, constant: -6)
         ])
@@ -223,11 +238,47 @@ final class KeyboardView: UIView {
         }
         symbolKey.titleLabel?.font = .systemFont(ofSize: 22, weight: .semibold)
         for row in rows.arrangedSubviews.dropFirst() {
-            row.heightAnchor.constraint(equalToConstant: 42).isActive = true
+            let height = row.heightAnchor.constraint(equalToConstant: Self.keyHeight)
+            height.isActive = true
+            rowHeights.append(height)
         }
+        reloadSettings()
+        NotificationCenter.default.addObserver(self, selector: #selector(defaultsChanged),
+                                               name: UserDefaults.didChangeNotification, object: nil)
         keyPreview.isHidden = true
         addSubview(keyPreview)
         refresh()
+    }
+
+    @objc private func defaultsChanged() { reloadSettings() }
+
+    func reloadSettings() {
+        let value = KeyboardSettings.oneHandedLayout(in: settingsDefaults)
+        guard horizontalConstraints.isEmpty || value != oneHandedLayout else { return }
+        oneHandedLayout = value
+        NSLayoutConstraint.deactivate(horizontalConstraints)
+        horizontalConstraints = [
+            rows.widthAnchor.constraint(equalTo: widthAnchor,
+                                        multiplier: value == .off ? 1 : 0.85, constant: -8),
+            value == .right
+                ? rows.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4)
+                : rows.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4)
+        ]
+        NSLayoutConstraint.activate(horizontalConstraints)
+        dismissPreview()
+        setNeedsLayout()
+    }
+
+    override func layoutSubviews() {
+        // Shrink evenly in a shorter host (including landscape); never stretch keys.
+        let available = max(0, bounds.height - safeAreaInsets.bottom - 40)
+        let scale = min(1, available / (5 * (Self.keyHeight + Self.rowGap)))
+        rows.spacing = Self.rowGap * scale
+        for height in rowHeights { height.constant = Self.keyHeight * scale }
+        super.layoutSubviews()
+        let width = bounds.width * (oneHandedLayout == .off ? 1 : 0.85)
+        keyAreaFrame = CGRect(x: oneHandedLayout == .right ? bounds.width - width : 0,
+                              y: 0, width: width, height: bounds.height)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -740,6 +791,16 @@ final class KeyboardView: UIView {
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
+        settingsTimer?.invalidate()
+        settingsTimer = nil
+        reloadSettings()
+        if window != nil {
+            // didChangeNotification is process-local. Re-read while visible so changes
+            // from the containing app are also picked up across processes.
+            settingsTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.reloadSettings() }
+            }
+        }
         if window == nil {
             dismissPreview()
             cancelBackspaceHold()

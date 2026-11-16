@@ -71,6 +71,9 @@ private struct ContentView: View {
                             Button("지우기", role: .destructive) { text = "" }
                         }.font(.subheadline)
                     }
+                    GroupBox("터치 키보드") {
+                        OneHandedLayoutPicker()
+                    }
                     GroupBox(hardwareLayout.title + " · " + inputMode.displayName) {
                         Text("연습장을 누른 뒤 입력하세요. Shift+Space로 한/영을 전환하거나 직전 자동 변환을 되돌립니다. 연결된 키보드의 물리 QWERTY 위치를 사용하며, 방향키와 ⌘ 복사·붙여넣기를 지원합니다. 다른 앱의 하드웨어 입력에는 적용되지 않습니다.")
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -195,5 +198,21 @@ struct HardwareLayoutPicker: View {
             Image(systemName: "keyboard.badge.ellipsis")
         }
         .accessibilityLabel("외부 키보드 자판: " + layout.title)
+    }
+}
+
+/// Stored in the App Group so the extension reads the same choice.
+private struct OneHandedLayoutPicker: View {
+    @AppStorage(KeyboardSettings.oneHandedKey, store: KeyboardSettings.defaults)
+    private var layout: OneHandedLayout = .off
+
+    var body: some View {
+        Picker("한 손 키보드", selection: $layout) {
+            ForEach(OneHandedLayout.allCases, id: \.self) { value in
+                Text(value.title).tag(value)
+            }
+        }
+        .pickerStyle(.segmented)
+        .accessibilityLabel("한 손 키보드: " + layout.title)
     }
 }

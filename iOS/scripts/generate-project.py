@@ -198,8 +198,8 @@ resources = ['../Resources/' + name for name in ['english-words.txt', 'english-e
 # LICENSE and NOTICE live in the repository root.
 resources = [p.replace('Resources/../', '') for p in resources]
 resources += ['App/ThirdParty/SwiftTerm-LICENSE.txt', 'App/ThirdParty/D2Coding-OFL.txt', 'App/Fonts/D2Coding-Regular.ttf', 'App/Fonts/D2Coding-Bold.ttf']
-app_sources = core + ['Shared/KeyboardView.swift', 'App/Sebeol390App.swift', 'App/HardwareTextEditor.swift', 'App/MarkVectorView.swift', 'App/MarkVectorLiveSync.swift', 'App/SSHTerminalView.swift', 'App/SSHServerStore.swift', 'App/SSHConnection.swift', 'App/SSHRemoteEditor.swift', 'App/TerminalInput.swift']
-keyboard_sources = core + ['Shared/KeyboardView.swift', 'Keyboard/KeyboardViewController.swift']
+app_sources = core + ['Shared/KeyboardSettings.swift', 'Shared/KeyboardView.swift', 'App/Sebeol390App.swift', 'App/HardwareTextEditor.swift', 'App/MarkVectorView.swift', 'App/MarkVectorLiveSync.swift', 'App/SSHTerminalView.swift', 'App/SSHServerStore.swift', 'App/SSHConnection.swift', 'App/SSHRemoteEditor.swift', 'App/TerminalInput.swift']
+keyboard_sources = core + ['Shared/KeyboardSettings.swift', 'Shared/KeyboardView.swift', 'Keyboard/KeyboardViewController.swift']
 all_files = [file(p, 'sourcecode.swift') for p in dict.fromkeys(app_sources + keyboard_sources)]
 all_files += [file(p, 'text') for p in resources]
 all_files.append(file('App/Assets.xcassets', 'folder.assetcatalog'))
@@ -263,6 +263,7 @@ for name, sources, ext in [('Sebeol390Keyboard', keyboard_sources, True), ('Sebe
     configs = []
     for config in ['Debug', 'Release']:
         cfg = {'PRODUCT_NAME': name, 'PRODUCT_BUNDLE_IDENTIFIER': 'com.ias.seto' + ('.keyboard' if ext else ''), 'INFOPLIST_FILE': 'Keyboard/Info.plist' if ext else 'App/Info.plist', 'GENERATE_INFOPLIST_FILE': 'NO', 'CODE_SIGN_STYLE': 'Automatic', 'TARGETED_DEVICE_FAMILY': '1,2', 'SUPPORTED_PLATFORMS': 'iphoneos iphonesimulator', 'MARKETING_VERSION': '1.0', 'CURRENT_PROJECT_VERSION': '5', 'APPLICATION_EXTENSION_API_ONLY': 'YES' if ext else 'NO', 'SKIP_INSTALL': 'YES' if ext else 'NO', 'SWIFT_STRICT_CONCURRENCY': 'complete', 'ENABLE_TESTABILITY': 'YES' if config == 'Debug' else 'NO'}
+        cfg['CODE_SIGN_ENTITLEMENTS'] = 'Keyboard/Keyboard.entitlements' if ext else 'App/App.entitlements'
         cfg['DEVELOPMENT_TEAM'] = 'RZUH4T3FCB'
         if not ext: cfg['ASSETCATALOG_COMPILER_APPICON_NAME'] = 'AppIcon'
         configs.append(obj(name + config, f'{{isa = XCBuildConfiguration; name = {config}; buildSettings = {settings(cfg)};}}'))

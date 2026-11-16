@@ -3,6 +3,73 @@ import WebKit
 @testable import Sebeol390
 
 final class HardwareTextEditorTests: XCTestCase {
+    @MainActor func testOneHandedDefaultsAndSharedSuiteRoundTrip() {
+        let suite = "seto.keyboard.tests." + UUID().uuidString
+        let writer = UserDefaults(suiteName: suite)!
+        let reader = UserDefaults(suiteName: suite)!
+        defer { writer.removePersistentDomain(forName: suite) }
+        XCTAssertEqual(KeyboardSettings.oneHandedLayout(in: reader), .off)
+        for value in OneHandedLayout.allCases {
+            writer.set(value.rawValue, forKey: KeyboardSettings.oneHandedKey)
+            XCTAssertEqual(KeyboardSettings.oneHandedLayout(in: reader), value)
+        }
+        writer.set("unknown", forKey: KeyboardSettings.oneHandedKey)
+        XCTAssertEqual(KeyboardSettings.oneHandedLayout(in: reader), .off)
+        XCTAssertEqual(KeyboardSettings.appGroup, "group.com.ias.seto")
+    }
+
+    @MainActor func testAppGroupSettingIsReadByKeyboardOnAppearance() {
+        let defaults = KeyboardSettings.defaults
+        let previous = defaults.object(forKey: KeyboardSettings.oneHandedKey)
+        defer { defaults.set(previous, forKey: KeyboardSettings.oneHandedKey) }
+        defaults.set(OneHandedLayout.left.rawValue, forKey: KeyboardSettings.oneHandedKey)
+        let keyboard = KeyboardView()
+        XCTAssertEqual(keyboard.oneHandedLayout, .left)
+        let writer = UserDefaults(suiteName: KeyboardSettings.appGroup)!
+        writer.set(OneHandedLayout.right.rawValue, forKey: KeyboardSettings.oneHandedKey)
+        keyboard.didMoveToWindow()
+        XCTAssertEqual(keyboard.oneHandedLayout, .right)
+        writer.set(OneHandedLayout.off.rawValue, forKey: KeyboardSettings.oneHandedKey)
+        NotificationCenter.default.post(name: UserDefaults.didChangeNotification, object: defaults)
+        XCTAssertEqual(keyboard.oneHandedLayout, .off)
+    }
+
+    @MainActor func testOneHandedLayoutDocksAllRowsAndRefreshesSettings() {
+        let suite = "seto.keyboard.tests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keyboard = KeyboardView(frame: CGRect(x: 0, y: 0, width: 390,
+                                                  height: KeyboardView.preferredHeight), defaults: defaults)
+        let rows = keyboard.subviews.compactMap { $0 as? UIStackView }.first!
+        for value in OneHandedLayout.allCases {
+            defaults.set(value.rawValue, forKey: KeyboardSettings.oneHandedKey)
+            keyboard.reloadSettings()
+            keyboard.layoutIfNeeded()
+            let width: CGFloat = value == .off ? 390 : 390 * 0.85
+            let x: CGFloat = value == .right ? 390 - width : 0
+            XCTAssertEqual(keyboard.keyAreaFrame.width, width, accuracy: 0.01)
+            // UIKit rounds fractional widths/positions to the display pixel grid.
+            let pixel = 1 / keyboard.traitCollection.displayScale
+            XCTAssertEqual(rows.frame.minX, x + 4, accuracy: pixel)
+            XCTAssertEqual(rows.frame.width, width - 8, accuracy: pixel)
+            XCTAssertEqual(rows.spacing, 11)
+            for row in rows.arrangedSubviews.dropFirst() {
+                XCTAssertEqual(row.bounds.height, 44, accuracy: 0.01)
+                XCTAssertGreaterThanOrEqual(row.frame.minX, 0)
+                XCTAssertLessThanOrEqual(row.frame.maxX, rows.bounds.width + 0.01)
+            }
+        }
+        XCTAssertEqual(KeyboardView.preferredHeight, 315)
+        keyboard.frame.size = CGSize(width: 844, height: KeyboardView.landscapeHeight)
+        keyboard.setNeedsLayout()
+        keyboard.layoutIfNeeded()
+        XCTAssertEqual(rows.arrangedSubviews.last!.frame.maxY, 240 - 12, accuracy: 0.01)
+        for row in rows.arrangedSubviews.dropFirst() {
+            XCTAssertLessThan(row.bounds.height, 44)
+            XCTAssertGreaterThan(row.bounds.height, 30)
+        }
+    }
+
     @MainActor func testCompositionDeletionAndSelection() async {
         let view = HardwareTextView()
         view.text = "앞 👨‍👩‍👧‍👦 "
@@ -555,7 +622,7 @@ final class TouchKeyboardLayoutTests: XCTestCase {
         }
         let space = buttons(in: keyboard).first { $0.title(for: .normal) == "간격" }!
         let frame = space.convert(space.bounds, to: input)
-        XCTAssertEqual(frame.height, 42, accuracy: 0.01)
+        XCTAssertEqual(frame.height, KeyboardView.keyHeight, accuracy: 0.01)
         XCTAssertLessThanOrEqual(frame.maxY, input.bounds.height - input.safeAreaInsets.bottom - 6 + 0.01)
     }
 
@@ -817,7 +884,7 @@ final class PresentedKeyboardTests: XCTestCase {
         let space = buttons(in: keyboard).first { $0.title(for: .normal) == "간격" }!
         let keyboardWindow = input.window!
         let keyFrame = space.convert(space.bounds, to: keyboardWindow)
-        XCTAssertEqual(space.bounds.height, 42, accuracy: 0.1)
+        XCTAssertEqual(space.bounds.height, KeyboardView.keyHeight, accuracy: 0.1)
         XCTAssertLessThanOrEqual(keyFrame.maxY, keyboardWindow.bounds.height - keyboardWindow.safeAreaInsets.bottom)
     }
 }
