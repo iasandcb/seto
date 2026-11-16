@@ -12,6 +12,8 @@ enum SuggestionLearning {
 @MainActor
 final class KeyboardView: UIView {
     static let oneHandedWidthRatio: CGFloat = 0.75
+    static let oneHandedShiftWidthRatio: CGFloat = 0.70
+    static let oneHandedBottomWidthRatio: CGFloat = 0.65
     static let keyHeight: CGFloat = 44
     static let rowGap: CGFloat = 11
     // 28pt phrase bar + five key rows + five gaps + 6pt top/bottom margins.
@@ -163,8 +165,11 @@ final class KeyboardView: UIView {
                 rows.addArrangedSubview(inset)
                 leading.widthAnchor.constraint(equalTo: trailing.widthAnchor).isActive = true
                 if letters.count == 7 {
-                    // Match the number / Q–P key width exactly at every screen size.
-                    row.arrangedSubviews[0].widthAnchor.constraint(equalTo: numbers.arrangedSubviews[0].widthAnchor).isActive = true
+                    // Prefer the upper key width, but allow the tapered row to fit.
+                    let width = row.arrangedSubviews[0].widthAnchor.constraint(equalTo: numbers.arrangedSubviews[0].widthAnchor)
+                    width.priority = .defaultHigh
+                    width.isActive = true
+                    leading.widthAnchor.constraint(greaterThanOrEqualTo: row.arrangedSubviews[0].widthAnchor).isActive = true
                 } else {
                     leading.widthAnchor.constraint(equalTo: inset.widthAnchor, multiplier: 0.05).isActive = true
                 }
@@ -233,16 +238,31 @@ final class KeyboardView: UIView {
         rows.addArrangedSubview(controls)
         for case let button as UIButton in controls.arrangedSubviews {
             button.titleLabel?.font = .systemFont(ofSize: 16)
-            if button !== space {
-                button.widthAnchor.constraint(equalTo: numbers.arrangedSubviews[0].widthAnchor).isActive = true
+            if button !== space && button !== symbolKey {
+                button.widthAnchor.constraint(equalTo: symbolKey.widthAnchor).isActive = true
             }
         }
+        let sideWidth = symbolKey.widthAnchor.constraint(equalTo: numbers.arrangedSubviews[0].widthAnchor)
+        sideWidth.priority = .defaultHigh
+        sideWidth.isActive = true
         symbolKey.titleLabel?.font = .systemFont(ofSize: 22, weight: .semibold)
         for row in rows.arrangedSubviews.dropFirst() {
             let height = row.heightAnchor.constraint(equalToConstant: Self.keyHeight)
             height.isActive = true
             rowHeights.append(height)
         }
+        // Only key rows opt into fitting; phrase drafts and suggestion chips
+        // retain their existing truncation behavior.
+        func configureKeys(in view: UIView) {
+            if let button = view as? ImmediateKeyboardButton {
+                button.fittedTitleFont = button.titleLabel?.font
+                button.titleLabel?.lineBreakMode = .byClipping
+                button.titleLabel?.adjustsFontSizeToFitWidth = true
+                button.titleLabel?.minimumScaleFactor = 0.5
+            }
+            for child in view.subviews { configureKeys(in: child) }
+        }
+        for row in rows.arrangedSubviews.dropFirst() { configureKeys(in: row) }
         reloadSettings()
         NotificationCenter.default.addObserver(self, selector: #selector(defaultsChanged),
                                                name: UserDefaults.didChangeNotification, object: nil)
@@ -265,6 +285,12 @@ final class KeyboardView: UIView {
                 ? rows.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4)
                 : rows.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4)
         ]
+        rows.alignment = value == .right ? .trailing : .leading
+        for (index, row) in rows.arrangedSubviews.enumerated() {
+            let ratio: CGFloat = value == .off ? 1 : index == 5 ? Self.oneHandedBottomWidthRatio
+                : index == 4 ? Self.oneHandedShiftWidthRatio : Self.oneHandedWidthRatio
+            horizontalConstraints.append(row.widthAnchor.constraint(equalTo: widthAnchor, multiplier: ratio, constant: -8))
+        }
         NSLayoutConstraint.activate(horizontalConstraints)
         dismissPreview()
         setNeedsLayout()
@@ -656,6 +682,7 @@ final class KeyboardView: UIView {
 
     private func refreshKeyLabels() {
         for (button, digit, symbol) in numberKeys {
+            (button as? ImmediateKeyboardButton)?.fittedTitleFont = .systemFont(ofSize: 17, weight: .semibold)
             let attributes: [NSAttributedString.Key: Any] = [
                 .font: UIFont.systemFont(ofSize: 17, weight: .semibold),
                 .foregroundColor: UIColor.label
@@ -670,6 +697,7 @@ final class KeyboardView: UIView {
             let title = english || symbols ? String(key) : korean
             let secondary = english ? korean : String(key)
             let stacked = !symbols && secondary != title
+            (button as? ImmediateKeyboardButton)?.fittedTitleFont = .systemFont(ofSize: stacked ? 17 : 21, weight: .semibold)
             let attributes: [NSAttributedString.Key: Any] = [
                 .font: UIFont.systemFont(ofSize: stacked ? 17 : 21, weight: .semibold),
                 .foregroundColor: UIColor.label
@@ -1130,6 +1158,30 @@ struct CursorMotion: Equatable {
 /// Keyboard feedback must follow touch-down without UIButton.system's title fades.
 @MainActor
 private final class ImmediateKeyboardButton: UIButton {
+    var fittedTitleFont: UIFont? { didSet { setNeedsLayout() } }
+
+    override func layoutSubviews() {
+        if let baseFont = fittedTitleFont, let label = titleLabel, bounds.width > 0 {
+            let text = currentAttributedTitle?.string ?? currentTitle ?? ""
+            let widest = text.components(separatedBy: "\n").map {
+                ($0 as NSString).size(withAttributes: [.font: baseFont]).width
+            }.max() ?? 0
+            // Fit each explicit line, preserving the Korean/Latin two-line title.
+            // Set the attributed font too: UILabel autoshrinking alone does not
+            // reliably scale titles that contain an explicit .font attribute.
+            let available = max(0, bounds.width - 2)
+            let scale = max(label.minimumScaleFactor, min(1, available / max(1, widest)))
+            let font = baseFont.withSize(baseFont.pointSize * scale)
+            label.font = font
+            if let title = currentAttributedTitle {
+                let fitted = NSMutableAttributedString(attributedString: title)
+                fitted.addAttribute(.font, value: font, range: NSRange(location: 0, length: fitted.length))
+                if !fitted.isEqual(to: title) { setAttributedTitle(fitted, for: .normal) }
+            }
+        }
+        super.layoutSubviews()
+    }
+
     override var isHighlighted: Bool {
         didSet { backgroundColor = isHighlighted ? .secondarySystemFill : .tertiarySystemBackground }
     }
