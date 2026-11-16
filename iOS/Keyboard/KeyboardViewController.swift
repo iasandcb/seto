@@ -12,18 +12,20 @@ final class KeyboardViewController: UIInputViewController {
     private var expectedContext: String?
     private let learnedWords = LearnedWords(defaults: LearnedWords.resolvedDefaults())
     private let keyboard = KeyboardView()
+    private var keyboardHeight: NSLayoutConstraint!
 
     override func viewDidLoad() {
         super.viewDidLoad()
         keyboard.configureSuggestions(lexicon: Self.lexicon, learned: learnedWords)
         keyboard.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(keyboard)
+        keyboardHeight = view.heightAnchor.constraint(equalToConstant: KeyboardView.preferredHeight)
         NSLayoutConstraint.activate([
             keyboard.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             keyboard.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             keyboard.topAnchor.constraint(equalTo: view.topAnchor),
             keyboard.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            view.heightAnchor.constraint(equalToConstant: KeyboardView.preferredHeight)
+            keyboardHeight
         ])
         keyboard.onKey = { [weak self] key in self?.handleKey(key) }
         keyboard.onCancelPendingDoubleSpace = { [weak self] in self?.doubleSpacePeriod.clear() }
@@ -77,6 +79,18 @@ final class KeyboardViewController: UIInputViewController {
         }
         keyboard.showsInputModeSwitch = needsInputModeSwitchKey
         reset()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        keyboard.reloadSettings()
+    }
+
+    override func viewWillLayoutSubviews() {
+        super.viewWillLayoutSubviews()
+        let landscape = view.window?.windowScene?.interfaceOrientation.isLandscape == true
+        keyboardHeight.constant = (landscape ? KeyboardView.landscapeHeight : KeyboardView.preferredHeight)
+            + view.safeAreaInsets.bottom
     }
 
     override func textDidChange(_ textInput: (any UITextInput)?) {

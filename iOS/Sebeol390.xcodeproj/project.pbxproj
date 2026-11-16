@@ -37,6 +37,9 @@
 		5AD00018025885096D52FFD2 /* ../Sources/SetoCore/TypoCorrector.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFE3AA53523C98E19EDB9B3A /* ../Sources/SetoCore/TypoCorrector.swift */; };
 		5BBDA0F1E889031AD3C6122F /* Shared/KeyboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E6B400ABFF2670652131CD0 /* Shared/KeyboardView.swift */; };
 		5E4453D8E1CED349CA7DD368 /* ../Sources/SetoCore/AddressBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF8018366C6FF1D2C3C4A42D /* ../Sources/SetoCore/AddressBar.swift */; };
+		62A20BE6B58F12EF208144E5 /* Shared/KeyboardSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 680252901F4DBBF05179315D /* Shared/KeyboardSettings.swift */; };
+		6A7F8D8A8BC95B5871B9AF53 /* ../Sources/SetoCore/ShiftSpaceToggleTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5CF32AD65209AD3B1B20524 /* ../Sources/SetoCore/ShiftSpaceToggleTracker.swift */; };
+		6AA6DDDE482B69370A21F743 /* ../Sources/SetoCore/ShiftSpaceToggleTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5CF32AD65209AD3B1B20524 /* ../Sources/SetoCore/ShiftSpaceToggleTracker.swift */; };
 		6ED2591934C9D6183871C5A3 /* Tests/SSHRemoteEditorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 500D6BB9065DFFA071674729 /* Tests/SSHRemoteEditorTests.swift */; };
 		6EFA8D2E78B5C8E3DDACA906 /* ../Sources/SetoCore/LayoutDubeol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C2EE2AA987E771889023B16 /* ../Sources/SetoCore/LayoutDubeol.swift */; };
 		767320929A1ACEC528CA4538 /* ../Resources/english-words.txt in Resources */ = {isa = PBXBuildFile; fileRef = 736A61A2816A5EBB19BF16CF /* ../Resources/english-words.txt */; };
@@ -62,6 +65,7 @@
 		A8BB1FFFA7B904F153AEBFED /* App/SSHServerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7970FCF68F771BE6475059BA /* App/SSHServerStore.swift */; };
 		AED46CBD6FB45189C32654B9 /* App/MarkVectorLiveSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = F64BBBD277520A73AD1DCABF /* App/MarkVectorLiveSync.swift */; };
 		AF8EA6032A54B4A580DE9649 /* ../Sources/SetoCore/TypingStatistics.swift in Sources */ = {isa = PBXBuildFile; fileRef = D64D5487E0EEC159A467C0D4 /* ../Sources/SetoCore/TypingStatistics.swift */; };
+		B5CCD4249A0C89CADB2569E7 /* Shared/KeyboardSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 680252901F4DBBF05179315D /* Shared/KeyboardSettings.swift */; };
 		B6D39AD6AA7F21671DABF731 /* App/SSHRemoteEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB9F4AF476D2009525D13454 /* App/SSHRemoteEditor.swift */; };
 		B94CC91E213F118FD84880BD /* ../Sources/SetoCore/LayoutDubeol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C2EE2AA987E771889023B16 /* ../Sources/SetoCore/LayoutDubeol.swift */; };
 		B9DCD4228BB27EE591851C6B /* ../LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = 706EE53880DE10DF518DA7E8 /* ../LICENSE */; };
@@ -138,6 +142,7 @@
 		628CB951D8E91DDD29253E55 /* ../Sources/SetoCore/KeyboardLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/SetoCore/KeyboardLayout.swift; sourceTree = SOURCE_ROOT; };
 		64E024BA63873A8760E50879 /* ../Resources/korean-valid.LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = "../Resources/korean-valid.LICENSE"; sourceTree = SOURCE_ROOT; };
 		65B3D2F4DF57596F117911E6 /* ../Sources/SetoCore/Lexicon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/SetoCore/Lexicon.swift; sourceTree = SOURCE_ROOT; };
+		680252901F4DBBF05179315D /* Shared/KeyboardSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/KeyboardSettings.swift; sourceTree = SOURCE_ROOT; };
 		6A37900721EB46DEB4F8BA6C /* App/HardwareTextEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/HardwareTextEditor.swift; sourceTree = SOURCE_ROOT; };
 		6C7CCDEB3609F1FAA874E941 /* Sebeol390Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = Sebeol390Tests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		706EE53880DE10DF518DA7E8 /* ../LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = ../LICENSE; sourceTree = SOURCE_ROOT; };
@@ -162,6 +167,7 @@
 		CFE3AA53523C98E19EDB9B3A /* ../Sources/SetoCore/TypoCorrector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/SetoCore/TypoCorrector.swift; sourceTree = SOURCE_ROOT; };
 		D1C76F2E1AAA43C13EE23B4F /* ../Sources/SetoCore/Composer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/SetoCore/Composer.swift; sourceTree = SOURCE_ROOT; };
 		D428FBCEB0F4C90E3B44F239 /* App/ThirdParty/D2Coding-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "App/ThirdParty/D2Coding-OFL.txt"; sourceTree = SOURCE_ROOT; };
+		D5CF32AD65209AD3B1B20524 /* ../Sources/SetoCore/ShiftSpaceToggleTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/SetoCore/ShiftSpaceToggleTracker.swift; sourceTree = SOURCE_ROOT; };
 		D64D5487E0EEC159A467C0D4 /* ../Sources/SetoCore/TypingStatistics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/SetoCore/TypingStatistics.swift; sourceTree = SOURCE_ROOT; };
 		DAF07ABCC8BAD6B752453E66 /* Keyboard/KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keyboard/KeyboardViewController.swift; sourceTree = SOURCE_ROOT; };
 		DDB2E328BCEA43E95B531045 /* App/Sebeol390App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/Sebeol390App.swift; sourceTree = SOURCE_ROOT; };
@@ -203,10 +209,12 @@
 				0B441EFBC8C95B348A08877D /* ../Sources/SetoCore/LearnedWords.swift */,
 				65B3D2F4DF57596F117911E6 /* ../Sources/SetoCore/Lexicon.swift */,
 				C0D82E966A71B45F7944349F /* ../Sources/SetoCore/Session.swift */,
+				D5CF32AD65209AD3B1B20524 /* ../Sources/SetoCore/ShiftSpaceToggleTracker.swift */,
 				D64D5487E0EEC159A467C0D4 /* ../Sources/SetoCore/TypingStatistics.swift */,
 				CFE3AA53523C98E19EDB9B3A /* ../Sources/SetoCore/TypoCorrector.swift */,
 				46531D1D86DECF2BBB3D43EB /* ../Sources/SetoCore/TypoLog.swift */,
 				C831159926DA9EECEAD75219 /* ../Sources/SetoCore/WordSuggestions.swift */,
+				680252901F4DBBF05179315D /* Shared/KeyboardSettings.swift */,
 				4E6B400ABFF2670652131CD0 /* Shared/KeyboardView.swift */,
 				DDB2E328BCEA43E95B531045 /* App/Sebeol390App.swift */,
 				6A37900721EB46DEB4F8BA6C /* App/HardwareTextEditor.swift */,
@@ -404,10 +412,12 @@
 				FFF725D52255878A6C6FB3CD /* ../Sources/SetoCore/LearnedWords.swift in Sources */,
 				FFDD30118CC894F62C137193 /* ../Sources/SetoCore/Lexicon.swift in Sources */,
 				E68664035CF53DE320719EAC /* ../Sources/SetoCore/Session.swift in Sources */,
+				6AA6DDDE482B69370A21F743 /* ../Sources/SetoCore/ShiftSpaceToggleTracker.swift in Sources */,
 				AF8EA6032A54B4A580DE9649 /* ../Sources/SetoCore/TypingStatistics.swift in Sources */,
 				5AD00018025885096D52FFD2 /* ../Sources/SetoCore/TypoCorrector.swift in Sources */,
 				C1835E4D2D49CE1E38BBDC81 /* ../Sources/SetoCore/TypoLog.swift in Sources */,
 				86EFAC6C9C549C8F33FE3513 /* ../Sources/SetoCore/WordSuggestions.swift in Sources */,
+				62A20BE6B58F12EF208144E5 /* Shared/KeyboardSettings.swift in Sources */,
 				5BBDA0F1E889031AD3C6122F /* Shared/KeyboardView.swift in Sources */,
 				3DCAE9B5F2F48529A065E483 /* App/Sebeol390App.swift in Sources */,
 				2212CD255B50271F456F4C58 /* App/HardwareTextEditor.swift in Sources */,
@@ -449,10 +459,12 @@
 				00C9ADAE4EFE1A6C0CD5D9E1 /* ../Sources/SetoCore/LearnedWords.swift in Sources */,
 				98C74CE721D85058180A183A /* ../Sources/SetoCore/Lexicon.swift in Sources */,
 				19A1CF76C55A56B7DF1FCCD7 /* ../Sources/SetoCore/Session.swift in Sources */,
+				6A7F8D8A8BC95B5871B9AF53 /* ../Sources/SetoCore/ShiftSpaceToggleTracker.swift in Sources */,
 				2E97931863B5EB24445CEA08 /* ../Sources/SetoCore/TypingStatistics.swift in Sources */,
 				F77FFD1EC4D5080D22A4B27E /* ../Sources/SetoCore/TypoCorrector.swift in Sources */,
 				0471B69B6C4C73691608FC57 /* ../Sources/SetoCore/TypoLog.swift in Sources */,
 				30845141121466DDA98C85C9 /* ../Sources/SetoCore/WordSuggestions.swift in Sources */,
+				B5CCD4249A0C89CADB2569E7 /* Shared/KeyboardSettings.swift in Sources */,
 				0DD9EF62E80E8299762484B3 /* Shared/KeyboardView.swift in Sources */,
 				CBEFEF1850490E1046488929 /* Keyboard/KeyboardViewController.swift in Sources */,
 			);
@@ -479,6 +491,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = NO;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = RZUH4T3FCB;
@@ -500,6 +513,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = NO;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = RZUH4T3FCB;
@@ -532,6 +546,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Keyboard/Keyboard.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = RZUH4T3FCB;
@@ -590,6 +605,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Keyboard/Keyboard.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = RZUH4T3FCB;
