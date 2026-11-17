@@ -1,9 +1,9 @@
 import Foundation
 
-/// Endings stripped only to decide that a stem is already a dictionary word.
+/// Particles and productive 하다 forms attached to a known dictionary word.
 enum KoreanEndings {
     static let longestFirst = [
-        "에서", "으로", "하고", "하는",
+        "에서", "으로", "하고", "하는", "하기", "하다", "하면", "해서", "하자",
         "는", "은", "이", "가", "를", "을", "에", "로",
         "와", "과", "도", "만", "의", "했", "해",
     ]
@@ -28,7 +28,7 @@ enum KoreanVerbEndings {
     static let longestFirst = [
         "습니다", "었는데", "았는데", "니까", "는데", "면서", "지만", "도록", "려고", "어서", "아서",
         "어요", "아요", "세요", "는지", "었다", "았다", "었어", "았어", "겠다",
-        "고", "면", "서", "지", "게", "는", "며", "니", "다", "요", "자", "네", "던", "도", "나", "냐", "죠", "어", "아",
+        "고", "기", "면", "서", "지", "게", "는", "며", "니", "다", "요", "자", "네", "던", "도", "나", "냐", "죠", "어", "아",
     ]
 
     /// True when `word` is stem + ending and the stem is a known word, is seen
