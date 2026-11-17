@@ -59,3 +59,41 @@ private let endingLexicon: Lexicon = {
         #expect(session.document == "한글 ")
     }
 }
+
+@Test func colloquialDuParticleSplitsFromKnownStems() {
+    for stem in ["너", "나", "저", "우리"] {
+        #expect(endingLexicon.isKoreanWord(stem) || endingLexicon.isValidKorean(stem))
+        for ending in ["두", "도"] {
+            let split = KoreanEndings.split(stem + ending)
+            #expect(split?.stem == stem)
+            #expect(split?.ending == ending)
+        }
+    }
+    #expect(zip(KoreanEndings.longestFirst, KoreanEndings.longestFirst.dropFirst())
+        .allSatisfy { $0.count >= $1.count })
+}
+
+@Test func colloquialDuFormsAreNotTypoCorrections() throws {
+    for layout in [KeyboardLayout.sebeol390, .dubeol] {
+        for word in ["너두", "나두", "저두", "우리두"] {
+            let keys = try #require(TypoCorrector.keystrokes(for: word, layout: layout))
+            #expect(TypoCorrector.correction(
+                composed: word, keys: keys.map { layout.atom(for: $0) },
+                language: .korean, lexicon: endingLexicon, memory: nil
+            ) == nil, "\(layout): \(word)")
+        }
+    }
+}
+
+@Test func colloquialDuFormsStayTypedAtWordBoundaries() throws {
+    for layout in [KeyboardLayout.sebeol390, .dubeol] {
+        for word in ["너두", "나두", "저두", "우리두"] {
+            let keys = try #require(TypoCorrector.keystrokes(for: word, layout: layout))
+            for boundary in [" ", ".", "\n"] {
+                let session = Session(lexicon: endingLexicon, mode: .korean, layout: layout)
+                for key in keys + boundary { _ = session.input(layout.atom(for: key)) }
+                #expect(session.document == word + boundary, "\(layout): \(word), boundary: \(boundary.debugDescription)")
+            }
+        }
+    }
+}

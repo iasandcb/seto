@@ -1,11 +1,12 @@
 import Foundation
 
-/// Particles and productive 하다 forms attached to a known dictionary word.
+/// Particles (including colloquial 두 for 도) and productive 하다 forms
+/// attached to a known dictionary word.
 enum KoreanEndings {
     static let longestFirst = [
         "에서", "으로", "하고", "하는", "하기", "하다", "하면", "해서", "하자",
         "는", "은", "이", "가", "를", "을", "에", "로",
-        "와", "과", "도", "만", "의", "했", "해",
+        "와", "과", "도", "두", "만", "의", "했", "해",
     ]
     static let set = Set(longestFirst)
 
