@@ -3,6 +3,44 @@ import WebKit
 @testable import Sebeol390
 
 final class HardwareTextEditorTests: XCTestCase {
+    func testMarkVectorFontSizeDefaultsLimitsAndPersistence() {
+        XCTAssertEqual(MarkVectorFontSize.key, "markVector.fontSize")
+        XCTAssertEqual(MarkVectorFontSize.defaultSize, 17)
+        XCTAssertEqual(MarkVectorFontSize.clamp(0), 12)
+        XCTAssertEqual(MarkVectorFontSize.clamp(100), 32)
+        XCTAssertEqual(MarkVectorFontSize.clamp(.nan), 17)
+        XCTAssertEqual(MarkVectorFontSize.step(17, by: -1), 16)
+        XCTAssertEqual(MarkVectorFontSize.step(17, by: 1), 18)
+        XCTAssertEqual(MarkVectorFontSize.step(12, by: -1), 12)
+        XCTAssertEqual(MarkVectorFontSize.step(32, by: 1), 32)
+
+        let suite = "seto.markVector.tests." + UUID().uuidString
+        let writer = UserDefaults(suiteName: suite)!
+        defer { writer.removePersistentDomain(forName: suite) }
+        writer.set(MarkVectorFontSize.step(17, by: 1), forKey: MarkVectorFontSize.key)
+        let reader = UserDefaults(suiteName: suite)!
+        XCTAssertEqual(reader.double(forKey: MarkVectorFontSize.key), 18)
+    }
+
+    @MainActor func testCustomEditorFontUpdatesWithoutChangingDocumentOrSelection() {
+        let view = HardwareTextView()
+        view.configureFont(size: nil)
+        XCTAssertEqual(view.font, .preferredFont(forTextStyle: .body))
+        XCTAssertTrue(view.adjustsFontForContentSizeCategory)
+        view.text = "한글 font size"
+        view.selectedRange = NSRange(location: 2, length: 3)
+        for size: CGFloat in [12, 17, 32] {
+            view.configureFont(size: size)
+            XCTAssertEqual(view.font?.pointSize, size)
+            XCTAssertFalse(view.adjustsFontForContentSizeCategory)
+            XCTAssertEqual(view.text, "한글 font size")
+            XCTAssertEqual(view.selectedRange, NSRange(location: 2, length: 3))
+        }
+        view.configureFont(size: nil)
+        XCTAssertEqual(view.font, .preferredFont(forTextStyle: .body))
+        XCTAssertTrue(view.adjustsFontForContentSizeCategory)
+    }
+
     @MainActor func testOneHandedDefaultsAndSharedSuiteRoundTrip() {
         let suite = "seto.keyboard.tests." + UUID().uuidString
         let writer = UserDefaults(suiteName: suite)!

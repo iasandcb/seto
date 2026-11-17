@@ -10,12 +10,12 @@ struct HardwareTextEditor: UIViewRepresentable {
     @Binding var mode: Language
     @Binding var automatic: Bool
     var focusOnOpen = false
+    var fontSize: CGFloat? = nil
     @AppStorage("app.hardwareLayout") private var hardwareLayout: KeyboardLayout = .sebeol390
 
     func makeUIView(context: Context) -> HardwareTextView {
         let view = HardwareTextView()
-        view.font = .preferredFont(forTextStyle: .body)
-        view.adjustsFontForContentSizeCategory = true
+        view.configureFont(size: fontSize)
         view.autocorrectionType = .no
         view.autocapitalizationType = .none
         view.smartQuotesType = .no
@@ -28,6 +28,7 @@ struct HardwareTextEditor: UIViewRepresentable {
     }
 
     func updateUIView(_ view: HardwareTextView, context: Context) {
+        view.configureFont(size: fontSize)
         updateCallbacks(view)
         view.configure(automatic: automatic, mode: mode, layout: hardwareLayout)
         if view.text != text {
@@ -47,6 +48,12 @@ struct HardwareTextEditor: UIViewRepresentable {
 
 @MainActor
 final class HardwareTextView: UITextView, UITextViewDelegate {
+    func configureFont(size: CGFloat?) {
+        adjustsFontForContentSizeCategory = size == nil
+        let desired = size.map { UIFont.systemFont(ofSize: $0) } ?? .preferredFont(forTextStyle: .body)
+        if font != desired { font = desired }
+    }
+
     private static let lexicon: Lexicon = {
         guard let url = Bundle.main.resourceURL, let lexicon = try? Lexicon.load(from: url) else {
             return Lexicon(english: [], korean: [])
