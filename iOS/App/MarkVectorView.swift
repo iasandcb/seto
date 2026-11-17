@@ -160,6 +160,22 @@ struct MarkVectorView: View {
     }
 }
 
+enum MarkVectorFontSize {
+    static let key = "markVector.fontSize"
+    static let defaultSize = 17.0
+    static let minimum = 12.0
+    static let maximum = 32.0
+
+    static func clamp(_ size: Double) -> Double {
+        guard size.isFinite else { return defaultSize }
+        return min(maximum, max(minimum, size))
+    }
+
+    static func step(_ size: Double, by amount: Double) -> Double {
+        clamp(clamp(size) + amount)
+    }
+}
+
 private struct MarkVectorEditor: View {
     @State var document: MarkVectorDocument
     @ObservedObject var connection: MarkVectorConnection
@@ -167,6 +183,7 @@ private struct MarkVectorEditor: View {
     @State private var focused = false
     @AppStorage("app.inputMode") private var mode: Language = .korean
     @AppStorage("app.autoSwitch") private var automatic = true
+    @AppStorage(MarkVectorFontSize.key) private var fontSize = MarkVectorFontSize.defaultSize
     @State private var saving = false
     @StateObject private var live = MarkVectorLiveSync()
     @Environment(\.scenePhase) private var scenePhase
@@ -176,15 +193,26 @@ private struct MarkVectorEditor: View {
         NavigationStack {
             VStack(spacing: 8) {
                 InputControls(mode: $mode, automatic: $automatic).padding(.horizontal, 16)
-                HardwareTextEditor(text: $document.content, focused: $focused, mode: $mode, automatic: $automatic)
+                HardwareTextEditor(text: $document.content, focused: $focused, mode: $mode, automatic: $automatic,
+                                   fontSize: CGFloat(MarkVectorFontSize.clamp(fontSize)))
             }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(.horizontal, 12)
                 .navigationTitle(document.filename)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItem(placement: .navigationBarLeading) {
+                    ToolbarItemGroup(placement: .navigationBarLeading) {
                         Button("닫기") { focused = false; dismiss() }.disabled(saving)
+                        Button {
+                            fontSize = MarkVectorFontSize.step(fontSize, by: -1)
+                        } label: { Image(systemName: "minus") }
+                            .accessibilityLabel("글꼴 작게")
+                            .disabled(MarkVectorFontSize.clamp(fontSize) <= MarkVectorFontSize.minimum)
+                        Button {
+                            fontSize = MarkVectorFontSize.step(fontSize, by: 1)
+                        } label: { Image(systemName: "plus") }
+                            .accessibilityLabel("글꼴 크게")
+                            .disabled(MarkVectorFontSize.clamp(fontSize) >= MarkVectorFontSize.maximum)
                     }
                     ToolbarItemGroup(placement: .navigationBarTrailing) {
                         CopyPracticeButton(text: document.content).labelStyle(.iconOnly)
@@ -201,7 +229,6 @@ private struct MarkVectorEditor: View {
                             .disabled(saving || live.synchronized)
                     }
                     ToolbarItemGroup(placement: .keyboard) {
-                        Text(live.status)
                         Spacer()
                         Button("완료") { focused = false }
                     }
@@ -209,11 +236,6 @@ private struct MarkVectorEditor: View {
                 .onChange(of: document.content) { _ in
                     connection.retainDraft(document)
                     live.update(document.content)
-                }
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    Text(live.status).font(.caption).foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity).padding(.vertical, 4)
-                        .background(.bar)
                 }
                 .task(id: scenePhase) {
                     if scenePhase == .active {
