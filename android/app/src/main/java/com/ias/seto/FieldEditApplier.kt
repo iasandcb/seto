@@ -23,10 +23,22 @@ internal class FieldEditApplier(
         }
         return start == cursor && end == selectionEnd
     }
+    val cursorPosition: Int get() = cursor
+    val hasSelection: Boolean get() = cursor != selectionEnd
+
     /** Core returns None when Android should perform its normal backspace. Open Latin
      * tokens delete one UTF-16 unit. A wider native deletion triggers a safe session reset. */
-    fun expectNativeBackspace() {
-        cursor = if (cursor != selectionEnd) minOf(cursor, selectionEnd) else maxOf(0, cursor - 1)
+    fun expectNativeBackspace() = expectNativeDeletion(1)
+
+    fun expectNativeDeletion(utf16: Int) {
+        cursor = if (cursor != selectionEnd) minOf(cursor, selectionEnd) else maxOf(0, cursor - utf16)
+        selectionEnd = cursor
+        expectedSelections.add(cursor to cursor)
+    }
+
+    /** A character inserted outside the session, such as a symbol-layer literal. */
+    fun expectInsertion(utf16: Int) {
+        cursor += utf16
         selectionEnd = cursor
         expectedSelections.add(cursor to cursor)
     }
