@@ -1241,6 +1241,9 @@ public final class Session {
             }
         }
         if wordMode == .korean, Self.particles.contains(tail.text),
+           // Colloquial 두 must not turn the English prefix Kub into 5두.
+           // Keep the existing precedence for standard particles and counters.
+           (tail.text != "두" || !prefersCapitalizedEnglish()),
            case .clean = shape(of: tail.pieces) {
             return true
         }

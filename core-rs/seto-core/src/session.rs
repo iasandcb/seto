@@ -1635,7 +1635,13 @@ impl Session {
             }
         }
         let tail_clean = matches!(tail_shape, Shape::Clean(_));
-        if korean_word && is_particle(&tail.text) && tail_clean {
+        // Colloquial 두 must not turn the English prefix Kub into 5두.
+        // Keep the existing precedence for standard particles and counters.
+        if korean_word
+            && is_particle(&tail.text)
+            && tail_clean
+            && (tail.text != "두" || !self.prefers_capitalized_english())
+        {
             return true;
         }
         // 8시 is also "Ind", 9대 "Our" and 9장 "Olfa". In Korean mode a counter

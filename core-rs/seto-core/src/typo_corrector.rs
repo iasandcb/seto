@@ -9,11 +9,12 @@ use crate::lexicon::{Lexicon, nfc};
 use crate::session_types::Language;
 use crate::typo_log::TypoMemory;
 
-/// Endings stripped only to decide that a stem is already a dictionary word.
+/// Particles (including colloquial 두 for 도) and productive 하다 forms
+/// attached to a known dictionary word.
 pub mod korean_endings {
-    pub const LONGEST_FIRST: [&str; 19] = [
-        "에서", "으로", "하고", "하는", "는", "은", "이", "가", "를", "을", "에", "로", "와", "과", "도", "만", "의",
-        "했", "해",
+    pub const LONGEST_FIRST: [&str; 28] = [
+        "에서", "으로", "하고", "하는", "하기", "하다", "하면", "해서", "하자", "는", "은", "이", "가", "를", "을",
+        "에", "로", "와", "과", "도", "두", "만", "의", "한", "할", "함", "했", "해",
     ];
 
     /// Swift `KoreanEndings.set.contains`.
@@ -40,7 +41,7 @@ pub mod korean_endings {
 /// forms, so 오고, 와서, 주면, 먹었다 are missing from it. A word made of an
 /// attested stem plus one of these endings is a correctly formed word, not a typo.
 pub mod korean_verb_endings {
-    pub const LONGEST_FIRST: [&str; 39] = [
+    pub const LONGEST_FIRST: [&str; 40] = [
         "습니다",
         "었는데",
         "았는데",
@@ -62,6 +63,7 @@ pub mod korean_verb_endings {
         "았어",
         "겠다",
         "고",
+        "기",
         "면",
         "서",
         "지",
@@ -602,7 +604,27 @@ mod tests {
         assert_eq!(korean_endings::split("는"), None);
         assert_eq!(korean_endings::split("학교"), None);
         assert!(korean_endings::contains("으로"));
+        assert!(korean_endings::contains("두"));
+        assert!(korean_endings::contains("한"));
         assert!(!korean_endings::contains("학교"));
+        let lengths: Vec<usize> = korean_endings::LONGEST_FIRST.iter().map(|ending| ending.chars().count()).collect();
+        assert!(lengths.windows(2).all(|pair| pair[0] >= pair[1]));
+        for ending in ["하기", "하다", "하면", "해서", "하자", "하고", "하는"] {
+            let word = format!("공부{ending}");
+            assert_eq!(korean_endings::split(&word), Some(("공부", ending)));
+        }
+        for stem in ["못", "안", "공부"] {
+            for ending in ["한", "할", "함", "했", "해"] {
+                let word = format!("{stem}{ending}");
+                assert_eq!(korean_endings::split(&word), Some((stem, ending)));
+            }
+        }
+        for stem in ["너", "나", "저", "우리"] {
+            for ending in ["두", "도"] {
+                let word = format!("{stem}{ending}");
+                assert_eq!(korean_endings::split(&word), Some((stem, ending)));
+            }
+        }
     }
 
     #[test]
@@ -618,6 +640,12 @@ mod tests {
         assert!(korean_verb_endings::is_inflected("먹었다", known));
         assert!(!korean_verb_endings::is_inflected("굴고", known));
         assert!(!korean_verb_endings::is_inflected("고", known));
+        // Nominal 기: 먹기 is stem 먹, and 가기 is attested by 가다.
+        assert!(korean_verb_endings::is_inflected("먹기", |word| word == "먹"));
+        assert!(korean_verb_endings::is_inflected("가기", |word| word == "가다"));
+        let lengths: Vec<usize> =
+            korean_verb_endings::LONGEST_FIRST.iter().map(|ending| ending.chars().count()).collect();
+        assert!(lengths.windows(2).all(|pair| pair[0] >= pair[1]));
     }
 
     #[test]
