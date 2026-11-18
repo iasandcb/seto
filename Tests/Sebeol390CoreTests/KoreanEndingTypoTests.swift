@@ -60,6 +60,52 @@ private let endingLexicon: Lexicon = {
     }
 }
 
+@Test func shortHadaEndingsSplitFromKnownStems() {
+    for stem in ["못", "안", "공부"] {
+        #expect(endingLexicon.isKoreanWord(stem) || endingLexicon.isValidKorean(stem))
+        for ending in ["한", "할", "함", "했", "해"] {
+            let split = KoreanEndings.split(stem + ending)
+            #expect(split?.stem == stem)
+            #expect(split?.ending == ending)
+        }
+    }
+    #expect(KoreanEndings.set.contains("만"))
+    #expect(zip(KoreanEndings.longestFirst, KoreanEndings.longestFirst.dropFirst())
+        .allSatisfy { $0.count >= $1.count })
+}
+
+@Test func shortHadaFormsAreNotTypoCorrections() throws {
+    for layout in [KeyboardLayout.sebeol390, .dubeol] {
+        for stem in ["못", "안", "공부"] {
+            for ending in ["한", "할", "함", "했", "해"] {
+                let word = stem + ending
+                let keys = try #require(TypoCorrector.keystrokes(for: word, layout: layout))
+                #expect(TypoCorrector.correction(
+                    composed: word, keys: keys.map { layout.atom(for: $0) },
+                    language: .korean, lexicon: endingLexicon, memory: nil
+                ) == nil, "\(layout): \(word)")
+            }
+        }
+    }
+}
+
+@Test func shortHadaFormsStayTypedAtWordBoundaries() throws {
+    for layout in [KeyboardLayout.sebeol390, .dubeol] {
+        for stem in ["못", "안", "공부"] {
+            for ending in ["한", "할", "함", "했", "해"] {
+                let word = stem + ending
+                let keys = try #require(TypoCorrector.keystrokes(for: word, layout: layout))
+                for boundary in [" ", ".", "\n"] {
+                    let session = Session(lexicon: endingLexicon, mode: .korean, layout: layout)
+                    for key in keys + boundary { _ = session.input(layout.atom(for: key)) }
+                    #expect(session.document == word + boundary,
+                        "\(layout): \(word), boundary: \(boundary.debugDescription)")
+                }
+            }
+        }
+    }
+}
+
 @Test func colloquialDuParticleSplitsFromKnownStems() {
     for stem in ["너", "나", "저", "우리"] {
         #expect(endingLexicon.isKoreanWord(stem) || endingLexicon.isValidKorean(stem))
