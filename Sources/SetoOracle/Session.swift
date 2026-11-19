@@ -476,9 +476,13 @@ public final class Session {
                 && koreanText.allSatisfy { $0 == koreanText.first }
                 && koreanText.first.map { "ㅇㅋㅎㅠㅜ".contains($0) } == true
             let knownWhole = isChatReaction || lexicon.isKoreanWord(koreanText) || lexicon.isValidKorean(koreanText)
-            let knownStem = KoreanEndings.split(koreanText).map {
+            let stemKnown = KoreanEndings.split(koreanText).map {
                 lexicon.isKoreanWord($0.stem) || lexicon.isValidKorean($0.stem)
             } ?? false
+            // 내요 is 내 + polite 요. Treat that reading as a known stem so an
+            // obscure headword (`sody`) cannot keep the buffer in English
+            // after `sod` has already confirmed English mode.
+            let knownStem = stemKnown || Self.commonPoliteYo.contains(koreanText)
             let spelling = englishText(0..<keys.count)
             if (knownWhole || knownStem),
                isChatReaction || mode == .korean || knownStem || !lexicon.isEnglishWord(spelling) {
@@ -536,11 +540,13 @@ public final class Session {
         // Two-set keys can form clean but unknown Hangul from an ordinary
         // English word (world → 재깅). Prefer the known whole English word,
         // while preserving known Korean readings and short ambiguous words.
+        // 내요/해요/돼요/가요 stay Korean: their spellings are not common English.
         if keys.allSatisfy(\.isDubeol) {
             let spelling = englishText(0..<keys.count)
             let korean = Composer.compose(keys).text
             if spelling.count >= 3, lexicon.isEnglishWord(spelling),
-               !lexicon.isKoreanWord(korean), !lexicon.isValidKorean(korean) {
+               !lexicon.isKoreanWord(korean), !lexicon.isValidKorean(korean),
+               !Self.commonPoliteYo.contains(korean) {
                 let english = [Segment(start: 0, end: keys.count, lang: .english)]
                 return installReading(english, previous: previous)
             }
@@ -1074,6 +1080,12 @@ public final class Session {
 
     /// Particles and short endings that attach to a word with no space.
     private static let particles = KoreanEndings.set
+
+    /// Everyday 해요체 whose 두벌식 spelling is not a common English word.
+    /// `sody` is only a US dialect of soda, so 내요 wins in either mode.
+    /// Real English words that also end in a 요 reading (`giddy` → 향요,
+    /// `wordy` → 잭요, `world` → 재깅) are not in this set.
+    private static let commonPoliteYo: Set<String> = ["내요", "해요", "돼요", "되요", "가요"]
 
     /// Short words that are a real English word and also a Hangul reading.
     /// `of` is 차. Preserve an explicit undo reading for English context.
