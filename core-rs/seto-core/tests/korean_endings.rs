@@ -16,12 +16,32 @@ fn lexicon() -> Arc<Lexicon> {
     LEXICON.get_or_init(|| Arc::new(Lexicon::load(&common::resources()).expect("Resources lexicon"))).clone()
 }
 
-fn type_word(layout: KeyboardLayout, keys: &str) -> String {
-    let mut session = Session::with_options(lexicon(), SessionOptions { layout, ..SessionOptions::default() });
+fn type_with(lexicon: Arc<Lexicon>, layout: KeyboardLayout, keys: &str) -> String {
+    let mut session = Session::with_options(lexicon, SessionOptions { layout, ..SessionOptions::default() });
     for key in keys.chars() {
         session.input(layout.atom(key));
     }
     session.document()
+}
+
+fn type_word(layout: KeyboardLayout, keys: &str) -> String {
+    type_with(lexicon(), layout, keys)
+}
+
+fn keyboard_lexicon() -> Arc<Lexicon> {
+    static LEXICON: OnceLock<Arc<Lexicon>> = OnceLock::new();
+    LEXICON
+        .get_or_init(|| {
+            Arc::new(
+                Lexicon::load_for_keyboard_files(
+                    &common::keyboard_resources().join("keyboard-english.txt"),
+                    &common::keyboard_resources().join("keyboard-korean-valid.txt"),
+                    &common::resources().join("korean-words.txt"),
+                )
+                .expect("keyboard lexicon"),
+            )
+        })
+        .clone()
 }
 
 #[test]
@@ -117,6 +137,47 @@ fn colloquial_du_stays_and_capitalized_english_is_not_read_as_du() {
     assert_eq!(type_word(KeyboardLayout::Sebeol390, "Ku/ "), "5도 ");
     // 8두 is not an English word or prefix, so the colloquial particle stays.
     assert_eq!(type_word(KeyboardLayout::Sebeol390, "Iub "), "8두 ");
+}
+
+/// 몇시 is one choseong away from 몇+이 (ㅅ/ㅇ), and 몇살 from 몇+할.
+/// Other 시 compounds (한시, 두시) and 몇개·몇번 were already in the validity
+/// list, so only the missing 몇-compounds were rewritten.
+fn myeot_compounds_stay_typed(lexicon: Arc<Lexicon>) {
+    for word in ["몇시", "몇시간", "몇분", "몇개", "몇명", "몇번", "모시", "몇살", "몇년", "몇일", "몇세"]
+    {
+        assert!(lexicon.is_korean_word(word) || lexicon.is_valid_korean(word), "{word}");
+    }
+    // 몇시에 is the new headword plus the particle 에, not a separate entry.
+    assert_eq!(korean_endings::split("몇시에"), Some(("몇시", "에")));
+    assert!(!lexicon.is_korean_word("몇이") && !lexicon.is_valid_korean("몇이"));
+
+    for layout in [KeyboardLayout::Sebeol390, KeyboardLayout::Dubeol, KeyboardLayout::SebeolFinal] {
+        for word in
+            ["몇시", "몇시에", "몇시간", "몇분", "몇개", "몇명", "몇번", "모시", "몇살", "몇년", "몇일", "몇세", "몇이"]
+        {
+            let keys = TypoCorrector::keystrokes(word, layout).unwrap_or_else(|| panic!("keys for {word}"));
+            let atoms: Vec<_> = keys.chars().map(|key| layout.atom(key)).collect();
+            assert_eq!(
+                TypoCorrector::correction(word, &atoms, Language::Korean, &lexicon, None),
+                None,
+                "{layout:?}: {word} must stay (몇시 must not become 몇이)"
+            );
+            for boundary in [" ", ".", "\n"] {
+                let typed = type_with(lexicon.clone(), layout, &format!("{keys}{boundary}"));
+                assert_eq!(typed, format!("{word}{boundary}"), "{layout:?}: {word} boundary {boundary:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn desktop_lexicon_keeps_myeot_compounds() {
+    myeot_compounds_stay_typed(lexicon());
+}
+
+#[test]
+fn keyboard_lexicon_keeps_myeot_compounds() {
+    myeot_compounds_stay_typed(keyboard_lexicon());
 }
 
 #[test]
