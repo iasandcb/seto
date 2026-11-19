@@ -6,7 +6,7 @@
 
 ## 빌드와 설치
 
-Xcode는 필요 없습니다. Xcode Command Line Tools(Swift 6)만 있으면 됩니다.
+Xcode는 필요 없습니다. Xcode Command Line Tools(Swift 6)와 Rust(stable)가 필요합니다. `./build.sh`가 Rust를 찾아 Apple XCFramework와 Swift 바인딩을 만든 뒤 테스트합니다. `rustup`이 없으면 그 스크립트가 설치합니다.
 
 ```sh
 ./build.sh

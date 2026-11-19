@@ -52,6 +52,9 @@ else
     echo "${NOTE}"
 fi
 
+echo "== rust core =="
+./scripts/build-apple-xcframework.sh
+
 echo "== test =="
 swift test
 

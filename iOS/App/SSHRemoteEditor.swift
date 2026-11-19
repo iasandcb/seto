@@ -1,4 +1,5 @@
 import Foundation
+import SetoCore
 import SwiftUI
 
 struct SSHRemoteMessage: Codable, Sendable {

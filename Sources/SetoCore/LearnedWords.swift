@@ -1,4 +1,5 @@
 import Foundation
+import SetoSupport
 
 /// On-device counts and recency for words the user has committed.
 /// Password and secure fields must pass `secure: true` so nothing is stored.

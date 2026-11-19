@@ -1,6 +1,10 @@
 import Testing
 import Foundation
+#if SETO_ORACLE
+@testable import SetoOracle
+#else
 @testable import SetoCore
+#endif
 
 @Test func selectedLayoutComposesThroughSession() {
     for (layout, keys) in [(KeyboardLayout.sebeol390, "mfs kgw"), (.sebeolFinal, "mfs kgw"), (.dubeol, "gks rmf")] {

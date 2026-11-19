@@ -1,7 +1,8 @@
 # seto-core (Rust)
 
-Shared core of Seto. The Swift code in `Sources/SetoCore` is the oracle; this
-crate ports it piece by piece.
+Shared core of Seto. `Sources/SetoOracle` is the Swift oracle used only to
+regenerate the golden corpus. macOS and iOS call this crate through
+`seto-ffi`'s `FieldSession` (`scripts/build-apple-xcframework.sh`).
 
 Phase 2 (this crate today): everything in phase 1, plus `Session`,
 `TypoCorrector`, and typo memory/policy (`TypoMemory`, `MemoryTypos`,

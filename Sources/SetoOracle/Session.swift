@@ -1,4 +1,5 @@
 import Foundation
+import SetoSupport
 
 public enum Language: String, Equatable, Sendable {
     case korean

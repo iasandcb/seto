@@ -1,5 +1,9 @@
 import Testing
+#if SETO_ORACLE
+@testable import SetoOracle
+#else
 @testable import SetoCore
+#endif
 
 @Test func safariAddressFieldIsRecognizedByIdentifier() {
     let field = FocusedElement(role: "AXTextField", identifier: "WEB_BROWSER_ADDRESS_AND_SEARCH_FIELD", insideWebArea: false)

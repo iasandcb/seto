@@ -1,6 +1,10 @@
 import Foundation
 import Testing
+#if SETO_ORACLE
+@testable import SetoOracle
+#else
 @testable import SetoCore
+#endif
 
 @Test func typoLogStoresJsonlAndKeepsTheTail() {
     let directory = FileManager.default.temporaryDirectory

@@ -1,4 +1,5 @@
 import Foundation
+import SetoSupport
 
 /// A candidate owns only the trailing word at the captured caret position.
 public struct WordSuggestionContext: Equatable, Sendable {
