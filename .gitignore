@@ -8,3 +8,6 @@ signing/*
 !signing/README.md
 
 .vscode/
+
+# Rust core
+core-rs/target/

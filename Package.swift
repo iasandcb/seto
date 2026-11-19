@@ -33,3 +33,21 @@ let package = Package(
         ),
     ]
 )
+
+// Golden corpus for the shared Rust core (core-rs/testdata/session-golden.json).
+// Only built on request so a plain `swift test` never rewrites it:
+//     SETO_GOLDEN_DUMP=1 swift test --filter SetoGoldenDump
+if Context.environment["SETO_GOLDEN_DUMP"] != nil {
+    package.targets.append(
+        .testTarget(
+            name: "SetoGoldenDump",
+            dependencies: ["SetoCore"],
+            swiftSettings: [
+                .unsafeFlags([
+                    "-load-plugin-library",
+                    "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib",
+                ]),
+            ]
+        )
+    )
+}
