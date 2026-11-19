@@ -3,6 +3,71 @@ mod common;
 use seto_core::{KeyboardLayout, Language, Lexicon, Session, SessionOptions};
 use std::sync::Arc;
 
+/// English-mode `0` is choseong ㅋ on 390. A code-like token must keep every
+/// digit, including the intermediate `zou20`, while `kvaj5` still becomes 공유.
+#[test]
+fn alphanumeric_token_keeps_every_digit() {
+    for lexicon in [
+        Lexicon::load(&common::resources()).unwrap(),
+        Lexicon::load_for_keyboard_files(
+            &common::keyboard_resources().join("keyboard-english.txt"),
+            &common::keyboard_resources().join("keyboard-korean-valid.txt"),
+            &common::resources().join("korean-words.txt"),
+        )
+        .unwrap(),
+    ] {
+        let lexicon = Arc::new(lexicon);
+        let mut session = Session::new(lexicon.clone());
+        session.force_mode(Language::English);
+        let mut typed = String::new();
+        for key in "zou2026".chars() {
+            typed.push(key);
+            let update = session.input_char(key);
+            assert_eq!(session.document(), typed, "{}", session.debug_line());
+            assert_eq!(update.preedit, "", "{typed}");
+            assert_eq!(session.mode(), Language::English, "{typed}");
+        }
+
+        for token in ["v20", "html50", "utf80", "i18n0", "a11y0", "AI0", "ML0", "0", "102", "2020", "zou2", "zou202"] {
+            let mut session = Session::new(lexicon.clone());
+            session.force_mode(Language::English);
+            let mut typed = String::new();
+            for key in token.chars() {
+                typed.push(key);
+                let update = session.input_char(key);
+                assert_eq!(session.document(), typed, "{} {}", token, session.debug_line());
+                assert!(
+                    update.preedit.chars().all(|character| character.is_ascii_alphanumeric()),
+                    "{token} {typed} preedit {}",
+                    update.preedit
+                );
+                assert_eq!(session.mode(), Language::English, "{token}");
+            }
+        }
+
+        let mut gongyu = Session::new(lexicon.clone());
+        gongyu.force_mode(Language::English);
+        for key in "kvaj5".chars() {
+            gongyu.input_char(key);
+        }
+        assert_eq!(gongyu.document(), "공유", "{}", gongyu.debug_line());
+        assert_eq!(gongyu.mode(), Language::Korean);
+
+        let mut particle = Session::new(lexicon.clone());
+        particle.force_mode(Language::English);
+        for key in "AIhgs".chars() {
+            particle.input_char(key);
+        }
+        assert_eq!(particle.document(), "AI는", "{}", particle.debug_line());
+
+        let mut chat = Session::new(lexicon);
+        chat.force_mode(Language::English);
+        chat.input_char('j');
+        chat.input_char('0');
+        assert_eq!(chat.document(), "ㅇㅋ", "{}", chat.debug_line());
+    }
+}
+
 #[test]
 fn jj_chat_reaction_from_english_mode() {
     for lexicon in [
