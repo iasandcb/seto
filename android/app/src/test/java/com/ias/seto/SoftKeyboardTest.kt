@@ -14,10 +14,10 @@ class SoftLayoutTest {
     private fun letter(base: Char) = SoftLayout.Key(SoftLayout.Kind.Letter, base)
     private fun number(base: Char) = SoftLayout.Key(SoftLayout.Kind.Number, base)
 
-    @Test fun rowsFollowTheIosShapeAndKeep390Choseong() {
+    @Test fun rowsMatchTheIosTouchKeyboard() {
         assertEquals("1234567890", SoftLayout.numberRow.joinToString("") { it.base.toString() })
         assertEquals("qwertyuiop", SoftLayout.topRow.joinToString("") { it.base.toString() })
-        assertEquals("asdfghjkl;'", SoftLayout.homeRow.joinToString("") { it.base.toString() })
+        assertEquals("asdfghjkl", SoftLayout.homeRow.joinToString("") { it.base.toString() })
         assertEquals("zxcvbnm", SoftLayout.bottomLetters.joinToString("") { it.base.toString() })
         assertEquals(
             listOf(
@@ -27,34 +27,50 @@ class SoftLayoutTest {
             ),
             SoftLayout.bottomRow.map { it.kind },
         )
+        assertEquals(44, SoftLayout.KEY_HEIGHT_DP)
+        assertEquals(11, SoftLayout.ROW_GAP_DP)
+        assertEquals(4, SoftLayout.KEY_GAP_DP)
+        assertEquals(14, SoftLayout.SHIFT_GAP_DP)
+        assertEquals(0.05f, SoftLayout.HOME_INSET)
+        assertEquals(32, SoftLayout.GLOBE_WIDTH_DP)
+        assertEquals(5, SoftLayout.CORNER_RADIUS_DP)
     }
 
-    @Test fun letterCapsStack390AndQwertyWithTheActiveModeFirst() {
+    @Test fun letterCapsStackDubeolAndQwertyWithTheActiveModeFirst() {
         val q = letter('q')
-        assertEquals("ㅅ\nq", SoftLayout.face(q, korean).text)
-        assertEquals("q\nㅅ", SoftLayout.face(q, english).text)
-        assertEquals("ㅍ\nQ", SoftLayout.face(q, korean.copy(shifted = true)).text)
-        assertEquals("Q\nㅍ", SoftLayout.face(q, english.copy(shifted = true)).text)
-        assertEquals("한글 ㅅ, 영문 q, 현재 ㅅ", SoftLayout.face(q, korean).label)
+        val y = letter('y')
+        assertEquals("ㅂ\nq", SoftLayout.face(q, korean).text)
+        assertEquals("q\nㅂ", SoftLayout.face(q, english).text)
+        assertEquals("ㅃ\nQ", SoftLayout.face(q, korean.copy(shifted = true)).text)
+        assertEquals("Q\nㅃ", SoftLayout.face(q, english.copy(shifted = true)).text)
+        assertEquals("ㅛ\nY", SoftLayout.face(y, korean.copy(shifted = true)).text)
+        assertEquals("한글 ㅂ, 영문 q, 현재 ㅂ", SoftLayout.face(q, korean).label)
+        assertEquals(17, SoftLayout.face(q, korean).textSizeSp)
+        assertEquals(21, SoftLayout.face(q, korean.copy(symbols = true)).textSizeSp)
         assertEquals(SoftLayout.Effect.Compose('q'), SoftLayout.tap(q, korean))
         assertEquals(SoftLayout.Effect.Compose('Q'), SoftLayout.tap(q, korean.copy(shifted = true)))
         assertEquals(SoftLayout.Effect.Compose('Q'), SoftLayout.longPress(q, korean))
         assertEquals(SoftLayout.Effect.Literal("Q"), SoftLayout.longPress(q, english.copy(direct = true)))
+        assertEquals("ㄱ\nr", SoftLayout.face(letter('r'), korean).text)
+        assertEquals("ㅐ\no", SoftLayout.face(letter('o'), korean).text)
     }
 
-    @Test fun numberRowIs390InKoreanAndDigitsInEnglish() {
+    @Test fun numberRowShowsDigitAndShiftSymbolInBothLanguages() {
         val one = number('1')
         val four = number('4')
-        assertEquals("ㅎ\n1", SoftLayout.face(one, korean).text)
+        assertEquals("1 !", SoftLayout.face(one, korean).text)
         assertEquals("1 !", SoftLayout.face(one, english).text)
-        assertEquals("ㅈ\n1", SoftLayout.face(one, korean.copy(shifted = true)).text)
-        assertEquals(SoftLayout.Effect.Compose('1'), SoftLayout.tap(one, korean))
-        assertEquals(SoftLayout.Effect.Compose('!'), SoftLayout.tap(one, korean.copy(shifted = true)))
-        assertEquals(SoftLayout.Effect.Literal("1"), SoftLayout.longPress(one, korean))
-        assertEquals(SoftLayout.Effect.Compose('4'), SoftLayout.tap(four, english))
-        assertEquals(SoftLayout.Effect.Compose('$'), SoftLayout.longPress(four, english))
+        assertEquals("1 !", SoftLayout.face(one, korean.copy(shifted = true)).text)
+        assertEquals("숫자 1, Shift !, 현재 !", SoftLayout.face(one, korean.copy(shifted = true)).label)
+        assertEquals("숫자 1, Shift !, 현재 1", SoftLayout.face(one, korean).label)
+        assertEquals(SoftLayout.Effect.Literal("1"), SoftLayout.tap(one, korean))
+        assertEquals(SoftLayout.Effect.Literal("!"), SoftLayout.tap(one, korean.copy(shifted = true)))
+        assertEquals(SoftLayout.Effect.Literal("!"), SoftLayout.longPress(one, korean))
+        assertEquals(SoftLayout.Effect.Literal("4"), SoftLayout.tap(four, english))
+        assertEquals(SoftLayout.Effect.Literal("$"), SoftLayout.longPress(four, english))
         assertEquals("1 !", SoftLayout.face(one, korean.copy(symbols = true)).text)
         assertEquals(SoftLayout.Effect.Literal("!"), SoftLayout.longPress(one, korean.copy(symbols = true)))
+        assertEquals(17, SoftLayout.face(one, korean).textSizeSp)
     }
 
     @Test fun symbolLayerMatchesTheIosMapAndDoesNotCompose() {
@@ -67,13 +83,16 @@ class SoftLayoutTest {
             'n' to '>', 'm' to '\\',
         )
         val symbols = korean.copy(symbols = true)
+        val present = (SoftLayout.topRow + SoftLayout.homeRow + SoftLayout.bottomLetters).map { it.base }.toSet()
         expected.forEach { (base, glyph) ->
             assertEquals(glyph, SoftLayout.symbolFor(base))
+            if (base !in present) return@forEach
             val key = letter(base)
             assertEquals(glyph.toString(), SoftLayout.face(key, symbols).text)
             assertEquals(SoftLayout.Effect.Literal(glyph.toString()), SoftLayout.tap(key, symbols))
             assertNull(SoftLayout.longPress(key, symbols))
         }
+        assertEquals('+', SoftLayout.symbolFor(';'))
     }
 
     @Test fun referenceMarkHoldAndBottomKeys() {
@@ -85,15 +104,24 @@ class SoftLayoutTest {
         val question = SoftLayout.Key(SoftLayout.Kind.Question)
         assertEquals(SoftLayout.Effect.ToggleSymbols, SoftLayout.tap(mark, korean))
         assertEquals(SoftLayout.Effect.ConvertWord, SoftLayout.longPress(mark, korean))
+        assertEquals("↔", SoftLayout.face(language, korean).text)
+        assertEquals("한영 전환 및 자동 변환 되돌리기", SoftLayout.face(language, korean).label)
+        assertEquals(SoftLayout.AUTO_SWITCH_MENU, "자동 한영 전환")
+        assertEquals("자동 한영 켜짐", SoftLayout.autoSwitchState(true))
+        assertEquals("자동 한영 꺼짐", SoftLayout.autoSwitchState(false))
         assertEquals(SoftLayout.Effect.ToggleLanguage, SoftLayout.tap(language, korean))
-        assertEquals(SoftLayout.Effect.ToggleAutoSwitch, SoftLayout.longPress(language, korean))
-        assertEquals(SoftLayout.Effect.Compose('-'), SoftLayout.tap(hyphen, korean))
-        assertEquals(SoftLayout.Effect.Compose('→'), SoftLayout.longPress(hyphen, korean))
+        assertEquals(SoftLayout.Effect.ShowAutoMenu, SoftLayout.longPress(language, korean))
+        assertEquals(SoftLayout.Effect.Literal("-"), SoftLayout.tap(hyphen, korean))
+        assertEquals(SoftLayout.Effect.Literal("→"), SoftLayout.longPress(hyphen, korean))
         assertEquals(SoftLayout.Effect.Compose(' '), SoftLayout.tap(space, korean))
-        assertEquals(SoftLayout.Effect.Compose('\t'), SoftLayout.longPress(space, korean))
-        assertEquals(SoftLayout.Effect.Compose('.'), SoftLayout.tap(period, korean))
-        assertEquals(SoftLayout.Effect.Compose(','), SoftLayout.longPress(period, korean))
+        assertEquals(SoftLayout.Effect.Literal("\t"), SoftLayout.longPress(space, korean))
+        assertEquals(SoftLayout.Effect.Literal("."), SoftLayout.tap(period, korean))
+        assertEquals(SoftLayout.Effect.Literal(","), SoftLayout.longPress(period, korean))
+        assertEquals(SoftLayout.Effect.Literal("?"), SoftLayout.tap(question, korean))
         assertEquals(SoftLayout.Effect.Literal("!"), SoftLayout.longPress(question, korean))
+        assertEquals(22, SoftLayout.face(mark, korean).textSizeSp)
+        assertEquals(18, SoftLayout.face(SoftLayout.Key(SoftLayout.Kind.Shift), korean).textSizeSp)
+        assertEquals(16, SoftLayout.face(space, korean).textSizeSp)
         assertTrue(SoftLayout.face(mark, korean.copy(symbols = true)).latched)
         assertTrue(SoftLayout.face(SoftLayout.Key(SoftLayout.Kind.Shift), korean.copy(shifted = true)).latched)
     }
@@ -110,33 +138,37 @@ class SoftLayoutTest {
 
     @Test fun directFieldsTypeTheVisibleLatinCharacter() {
         val direct = korean.copy(direct = true)
-        assertEquals("q\nㅅ", SoftLayout.face(letter('q'), direct).text)
+        assertEquals("q\nㅂ", SoftLayout.face(letter('q'), direct).text)
         assertEquals(SoftLayout.Effect.Literal("q"), SoftLayout.tap(letter('q'), direct))
         assertEquals(SoftLayout.Effect.Literal("1"), SoftLayout.tap(number('1'), direct))
         assertEquals("1 !", SoftLayout.face(number('1'), direct).text)
     }
 
-    @Test fun hardware390Labels() {
-        val expected = mapOf(
-            '1' to "ㅎ", '2' to "ㅆ", '3' to "ㅂ", '4' to "ㅛ", '5' to "ㅠ",
-            '6' to "ㅑ", '7' to "ㅖ", '8' to "ㅢ", '9' to "ㅜ", '0' to "ㅋ",
-            'q' to "ㅅ", 'w' to "ㄹ", 'e' to "ㅕ", 'r' to "ㅐ", 't' to "ㅓ",
-            'y' to "ㄹ", 'u' to "ㄷ", 'i' to "ㅁ", 'o' to "ㅊ", 'p' to "ㅍ",
-            'a' to "ㅇ", 's' to "ㄴ", 'd' to "ㅣ", 'f' to "ㅏ", 'g' to "ㅡ",
-            'h' to "ㄴ", 'j' to "ㅇ", 'k' to "ㄱ", 'l' to "ㅈ", ';' to "ㅂ", '\'' to "ㅌ",
-            'z' to "ㅁ", 'x' to "ㄱ", 'c' to "ㅔ", 'v' to "ㅗ", 'b' to "ㅜ",
-            'n' to "ㅅ", 'm' to "ㅎ", '/' to "ㅗ",
-            '!' to "ㅈ", 'Q' to "ㅍ", 'W' to "ㅌ", 'E' to "ㅋ", 'R' to "ㅒ",
-            'T' to ";", 'Y' to "<", 'U' to "7", 'I' to "8", 'O' to "9", 'P' to ">",
-            'A' to "ㄷ", 'S' to "ㄶ", 'D' to "ㄺ", 'F' to "ㄲ", 'G' to "/", 'H' to "'",
-            'J' to "4", 'K' to "5", 'L' to "6",
-            'Z' to "ㅊ", 'X' to "ㅄ", 'C' to "ㄻ", 'V' to "ㅀ", 'B' to "!",
-            'N' to "0", 'M' to "1", '<' to "2", '>' to "3",
-            ',' to ",", '.' to ".", ' ' to " ",
-        )
-        expected.forEach { (key, label) ->
-            assertEquals(key.toString(), label, SoftLayout.koreanLabel(key))
-        }
+    @Test fun dubeolCapsMatchTheIosTouchKeyboard() {
+        assertEquals("ㅂㅈㄷㄱㅅㅛㅕㅑㅐㅔ", "qwertyuiop".map { SoftLayout.koreanLabel(it) }.joinToString(""))
+        assertEquals("ㅁㄴㅇㄹㅎㅗㅓㅏㅣ", "asdfghjkl".map { SoftLayout.koreanLabel(it) }.joinToString(""))
+        assertEquals("ㅋㅌㅊㅍㅠㅜㅡ", "zxcvbnm".map { SoftLayout.koreanLabel(it) }.joinToString(""))
+        assertEquals("ㅃ", SoftLayout.koreanLabel('Q'))
+        assertEquals("ㅉ", SoftLayout.koreanLabel('W'))
+        assertEquals("ㄸ", SoftLayout.koreanLabel('E'))
+        assertEquals("ㄲ", SoftLayout.koreanLabel('R'))
+        assertEquals("ㅆ", SoftLayout.koreanLabel('T'))
+        assertEquals("ㅒ", SoftLayout.koreanLabel('O'))
+        assertEquals("ㅖ", SoftLayout.koreanLabel('P'))
+        assertEquals("ㅛ", SoftLayout.koreanLabel('Y'))
+        val q = SoftLayout.dubeolAtom('q')!!
+        assertEquals('q', q.english)
+        assertEquals(0x1107, q.scalar)
+        assertFalse(q.jungseong)
+        val shifted = SoftLayout.dubeolAtom('Q')!!
+        assertEquals(0x1108, shifted.scalar)
+        assertFalse(shifted.jungseong)
+        val vowel = SoftLayout.dubeolAtom('O')!!
+        assertEquals(0x1164, vowel.scalar)
+        assertTrue(vowel.jungseong)
+        assertNull(SoftLayout.dubeolAtom(' '))
+        assertNull(SoftLayout.dubeolAtom('1'))
+        assertEquals("1", SoftLayout.koreanLabel('1'))
     }
 
     @Test fun qwertyShiftMatchesHardwarePairs() {

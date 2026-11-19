@@ -1,21 +1,44 @@
 package com.ias.seto
 
 /**
- * On-screen Sebeolsik 390 / QWERTY board.
+ * On-screen board matching the iOS keyboard extension (`KeyboardView`).
  *
- * Row structure, number row, symbol layer, and the ※ / hyphen holds follow the
- * iOS touch keyboard. Korean caps are 390, not two-set: the Rust session still
- * receives the QWERTY character and does the composition. The home row also
- * has `;` and `'` because those physical keys are choseong ㅂ and ㅌ.
+ * Rows, key set, stacked Hangul/QWERTY caps, the ※ symbol layer, and Shift
+ * follow that view. Hangul caps are the standard two-set readings iOS draws,
+ * not Sebeolsik 390. The service still sends hardware keys through the 390
+ * session; a soft-key letter is a dubeol atom (`dubeolAtom`).
+ *
+ * The phrase bar, suggestions, and one-handed mode are not on this keyboard.
+ * The iOS globe stays a 32dp leading key so the IME can still be switched.
  */
 internal object SoftLayout {
+    const val KEY_HEIGHT_DP = 44
+    const val ROW_GAP_DP = 11
+    const val KEY_GAP_DP = 4
+    const val SHIFT_GAP_DP = 14
+    const val HOME_INSET = 0.05f
+    const val GLOBE_WIDTH_DP = 32
+    const val CORNER_RADIUS_DP = 5
+    const val VERTICAL_MARGIN_DP = 6
+    const val HORIZONTAL_MARGIN_DP = 4
+    const val MIN_SPACE_DP = 80
+    /** iOS landscape content height minus the phrase bar and its gap. */
+    const val LANDSCAPE_KEY_BLOCK_DP = 200
+    const val AUTO_SWITCH_MENU = "자동 한영 전환"
+
     enum class Kind {
         Letter, Number, Shift, Backspace, Symbol, Language, Hyphen, Space, Period, Question, Return, Globe,
     }
 
     data class Key(val kind: Kind, val base: Char? = null)
 
-    data class Face(val text: String, val label: String, val special: Boolean, val latched: Boolean = false)
+    data class Face(
+        val text: String,
+        val label: String,
+        val special: Boolean,
+        val latched: Boolean = false,
+        val textSizeSp: Int = 17,
+    )
 
     sealed class Effect {
         data class Compose(val character: Char) : Effect()
@@ -26,6 +49,7 @@ internal object SoftLayout {
         data object ToggleSymbols : Effect()
         data object ConvertWord : Effect()
         data object ToggleLanguage : Effect()
+        data object ShowAutoMenu : Effect()
         data object ToggleAutoSwitch : Effect()
         data object ReturnKey : Effect()
         data object NextKeyboard : Effect()
@@ -39,10 +63,13 @@ internal object SoftLayout {
         val direct: Boolean = false,
     )
 
+    /** english character plus the two-set jamo iOS would compose for it. */
+    data class DubeolAtom(val english: Char, val scalar: Int, val jungseong: Boolean)
+
     val numberRow = "1234567890".map { Key(Kind.Number, it) }
     val topRow = "qwertyuiop".map { Key(Kind.Letter, it) }
-    /** 11 keys: ㅂ and ㅌ have no other unshifted 390 position. */
-    val homeRow = "asdfghjkl;'".map { Key(Kind.Letter, it) }
+    /** Nine keys. iOS insets this row; choseong ㅂ and ㅌ live on q and x. */
+    val homeRow = "asdfghjkl".map { Key(Kind.Letter, it) }
     val bottomLetters = "zxcvbnm".map { Key(Kind.Letter, it) }
     val bottomRow = listOf(
         Key(Kind.Globe),
@@ -55,39 +82,37 @@ internal object SoftLayout {
         Key(Kind.Return),
     )
 
+    fun autoSwitchState(enabled: Boolean): String = if (enabled) "자동 한영 켜짐" else "자동 한영 꺼짐"
+
     fun face(key: Key, state: State, returnLabel: String = "↵"): Face {
         val special = key.kind in SPECIAL
         return when (key.kind) {
-            Kind.Letter -> letterFace(key.base!!, state, special)
+            Kind.Letter -> letterFace(key.base!!, state)
             Kind.Number -> numberFace(key.base!!, state)
-            Kind.Shift -> Face("⇧", "시프트", special = true, latched = state.shifted)
-            Kind.Backspace -> Face("⌫", "삭제", special = true)
-            Kind.Symbol -> Face("※", "기호 자판 전환", special = true, latched = state.symbols)
-            Kind.Language -> Face("↔", "한영 전환 및 자동 변환 되돌리기", special = true)
-            Kind.Hyphen -> Face("-", "하이픈 입력", special = false)
-            Kind.Space -> Face("간격", "간격", special = false)
-            Kind.Period -> Face(".", ".", special = false)
-            Kind.Question -> Face("?", "?", special = false)
-            Kind.Return -> Face(returnLabel, returnLabel, special = true)
-            Kind.Globe -> Face("🌐", "다음 키보드", special = true)
+            Kind.Shift -> Face("⇧", "시프트", special = true, latched = state.shifted, textSizeSp = 18)
+            Kind.Backspace -> Face("⌫", "삭제", special = true, textSizeSp = 18)
+            Kind.Symbol -> Face("※", "기호 자판 전환", special = true, latched = state.symbols, textSizeSp = 22)
+            Kind.Language -> Face("↔", "한영 전환 및 자동 변환 되돌리기", special = true, textSizeSp = 16)
+            Kind.Hyphen -> Face("-", "하이픈 입력", special = false, textSizeSp = 16)
+            Kind.Space -> Face("간격", "간격", special = false, textSizeSp = 16)
+            Kind.Period -> Face(".", ".", special = false, textSizeSp = 16)
+            Kind.Question -> Face("?", "?", special = false, textSizeSp = 16)
+            Kind.Return -> Face(returnLabel, returnLabel, special = true, textSizeSp = 16)
+            Kind.Globe -> Face("🌐", "다음 키보드", special = true, textSizeSp = 18)
         }
     }
 
     fun tap(key: Key, state: State): Effect = when (key.kind) {
         Kind.Letter -> characterEffect(letterOutput(key.base!!, state), state)
-        Kind.Number -> if (state.direct || state.symbols) {
-            Effect.Literal(numberOutput(key.base!!, state).toString())
-        } else {
-            Effect.Compose(numberOutput(key.base!!, state))
-        }
+        Kind.Number -> Effect.Literal(numberOutput(key.base!!, state).toString())
         Kind.Shift -> Effect.Shift
         Kind.Backspace -> Effect.Backspace
         Kind.Symbol -> Effect.ToggleSymbols
         Kind.Language -> Effect.ToggleLanguage
-        Kind.Hyphen -> plain('-', state)
+        Kind.Hyphen -> Effect.Literal("-")
         Kind.Space -> plain(' ', state)
-        Kind.Period -> plain('.', state)
-        Kind.Question -> plain('?', state)
+        Kind.Period -> Effect.Literal(".")
+        Kind.Question -> Effect.Literal("?")
         Kind.Return -> Effect.ReturnKey
         Kind.Globe -> Effect.NextKeyboard
     }
@@ -95,21 +120,16 @@ internal object SoftLayout {
     /**
      * Null means the hold is not its own action, so releasing still delivers the tap.
      * ※ hold re-reads the open word and must not also toggle the symbol layer.
+     * ↔ hold opens the auto-switch check, matching the iOS menu, and does not toggle yet.
      */
     fun longPress(key: Key, state: State): Effect? = when (key.kind) {
         Kind.Letter -> if (state.symbols) null else characterEffect(qwertyShift(key.base!!), state)
-        Kind.Number -> when {
-            state.direct || state.symbols -> Effect.Literal(qwertyShift(key.base!!).toString())
-            // The digit itself. Sending it through 390 would type the jamo on the cap.
-            state.korean -> Effect.Literal(key.base!!.toString())
-            else -> Effect.Compose(qwertyShift(key.base!!))
-        }
+        Kind.Number -> Effect.Literal(qwertyShift(key.base!!).toString())
         Kind.Symbol -> Effect.ConvertWord
-        Kind.Language -> Effect.ToggleAutoSwitch
-        Kind.Hyphen -> plain('→', state)
-        Kind.Space -> plain('\t', state)
-        Kind.Period -> plain(',', state)
-        // '!' is a 390 batchim. The alternate is the punctuation mark, like iOS.
+        Kind.Language -> Effect.ShowAutoMenu
+        Kind.Hyphen -> Effect.Literal("→")
+        Kind.Space -> Effect.Literal("\t")
+        Kind.Period -> Effect.Literal(",")
         Kind.Question -> Effect.Literal("!")
         Kind.Globe -> Effect.PickKeyboard
         else -> null
@@ -133,10 +153,23 @@ internal object SoftLayout {
         return SYMBOL_VALUES[index]
     }
 
-    fun koreanLabel(key: Char): String = when (val glyph = KOREAN[key]) {
-        null -> key.toString()
-        is Korean.Text -> glyph.value.toString()
-        is Korean.Jamo -> JamoLabels.compat(glyph.kind, glyph.scalar).toString()
+    /** Two-set compat jamo for [key], or the character itself when it is not a letter. */
+    fun koreanLabel(key: Char): String {
+        val atom = dubeolAtom(key) ?: return key.toString()
+        val kind = if (atom.jungseong) JamoLabels.Kind.JUNG else JamoLabels.Kind.CHO
+        return JamoLabels.compat(kind, atom.scalar).toString()
+    }
+
+    /**
+     * Letter atoms only. Space, newline, and punctuation stay on the session's
+     * own layout (or are inserted literally) because two-set reads them as themselves.
+     */
+    fun dubeolAtom(key: Char): DubeolAtom? {
+        val lower = key.lowercaseChar()
+        val index = DUBEOL_LETTERS.indexOf(lower)
+        if (index < 0) return null
+        val scalar = DUBEOL_SHIFT[key] ?: DUBEOL_SCALARS[index]
+        return DubeolAtom(key, scalar, scalar >= 0x1161)
     }
 
     private fun letterOutput(base: Char, state: State): Char = when {
@@ -154,10 +187,10 @@ internal object SoftLayout {
     private fun plain(character: Char, state: State): Effect =
         if (state.direct) Effect.Literal(character.toString()) else Effect.Compose(character)
 
-    private fun letterFace(base: Char, state: State, special: Boolean): Face {
+    private fun letterFace(base: Char, state: State): Face {
         if (state.symbols && !state.direct) {
             val glyph = symbolFor(base).toString()
-            return Face(glyph, glyph, special)
+            return Face(glyph, glyph, special = false, textSizeSp = 21)
         }
         val produced = if (state.shifted) qwertyShift(base) else base
         val korean = koreanLabel(produced)
@@ -167,58 +200,20 @@ internal object SoftLayout {
         val secondary = if (showKorean) latin else korean
         val text = if (primary == secondary) primary else "$primary\n$secondary"
         val current = if (showKorean) korean else latin
-        return Face(text, "한글 $korean, 영문 $latin, 현재 $current", special)
+        val size = if (primary == secondary) 21 else 17
+        return Face(text, "한글 $korean, 영문 $latin, 현재 $current", special = false, textSizeSp = size)
     }
 
     private fun numberFace(base: Char, state: State): Face {
         val symbol = qwertyShift(base)
-        if (state.direct || state.symbols || !state.korean) {
-            return Face("$base $symbol", "숫자 $base, Shift $symbol", special = false)
-        }
-        val produced = if (state.shifted) symbol else base
-        val korean = koreanLabel(produced)
-        val text = if (korean == produced.toString()) "$base $symbol" else "$korean\n$base"
-        return Face(text, "한글 $korean, 숫자 $base, Shift $symbol", special = false)
+        val current = if (state.shifted) symbol else base
+        return Face(
+            "$base $symbol",
+            "숫자 $base, Shift $symbol, 현재 $current",
+            special = false,
+            textSizeSp = 17,
+        )
     }
-
-    private sealed class Korean {
-        data class Jamo(val kind: JamoLabels.Kind, val scalar: Int) : Korean()
-        data class Text(val value: Char) : Korean()
-    }
-
-    private fun cho(scalar: Int) = Korean.Jamo(JamoLabels.Kind.CHO, scalar)
-    private fun jung(scalar: Int) = Korean.Jamo(JamoLabels.Kind.JUNG, scalar)
-    private fun jong(scalar: Int) = Korean.Jamo(JamoLabels.Kind.JONG, scalar)
-    private fun text(value: Char) = Korean.Text(value)
-
-    /** 390 readings that differ from the QWERTY character. Same table as Layout390. */
-    private val KOREAN: Map<Char, Korean> = mapOf(
-        '1' to jong(0x11C2), '2' to jong(0x11BB), '3' to jong(0x11B8),
-        '4' to jung(0x116D), '5' to jung(0x1172), '6' to jung(0x1163),
-        '7' to jung(0x1168), '8' to jung(0x1174), '9' to jung(0x116E),
-        '0' to cho(0x110F),
-        'q' to jong(0x11BA), 'w' to jong(0x11AF), 'e' to jung(0x1167),
-        'r' to jung(0x1162), 't' to jung(0x1165), 'y' to cho(0x1105),
-        'u' to cho(0x1103), 'i' to cho(0x1106), 'o' to cho(0x110E),
-        'p' to cho(0x1111),
-        'a' to jong(0x11BC), 's' to jong(0x11AB), 'd' to jung(0x1175),
-        'f' to jung(0x1161), 'g' to jung(0x1173), 'h' to cho(0x1102),
-        'j' to cho(0x110B), 'k' to cho(0x1100), 'l' to cho(0x110C),
-        ';' to cho(0x1107), '\'' to cho(0x1110),
-        'z' to jong(0x11B7), 'x' to jong(0x11A8), 'c' to jung(0x1166),
-        'v' to jung(0x1169), 'b' to jung(0x116E), 'n' to cho(0x1109),
-        'm' to cho(0x1112), '/' to jung(0x1169),
-        '!' to jong(0x11BD),
-        'Q' to jong(0x11C1), 'W' to jong(0x11C0), 'E' to jong(0x11BF),
-        'R' to jung(0x1164), 'T' to text(';'), 'Y' to text('<'),
-        'U' to text('7'), 'I' to text('8'), 'O' to text('9'), 'P' to text('>'),
-        'A' to jong(0x11AE), 'S' to jong(0x11AD), 'D' to jong(0x11B0),
-        'F' to jong(0x11A9), 'G' to text('/'), 'H' to text('\''),
-        'J' to text('4'), 'K' to text('5'), 'L' to text('6'),
-        'Z' to jong(0x11BE), 'X' to jong(0x11B9), 'C' to jong(0x11B1),
-        'V' to jong(0x11B6), 'B' to text('!'), 'N' to text('0'), 'M' to text('1'),
-        '<' to text('2'), '>' to text('3'),
-    )
 
     private val SHIFTED = mapOf(
         '1' to '!', '2' to '@', '3' to '#', '4' to '$', '5' to '%',
@@ -231,6 +226,18 @@ internal object SoftLayout {
         Kind.Shift, Kind.Backspace, Kind.Symbol, Kind.Language, Kind.Return, Kind.Globe,
     )
 
+    /** Same slots as `KeyboardView.output` in symbol mode, including keys this board does not show. */
     private const val SYMBOL_POSITIONS = "1234567890qwertyuiopasdfghjkl;zxcvbnm,./"
     private const val SYMBOL_VALUES = "1234567890-/:;()₩&@~,+!'\"[]{}+=_*%<>\\|~`#"
+
+    private const val DUBEOL_LETTERS = "qwertyuiopasdfghjklzxcvbnm"
+    private val DUBEOL_SCALARS = intArrayOf(
+        0x1107, 0x110C, 0x1103, 0x1100, 0x1109, 0x116D, 0x1167, 0x1163, 0x1162, 0x1166,
+        0x1106, 0x1102, 0x110B, 0x1105, 0x1112, 0x1169, 0x1165, 0x1161, 0x1175,
+        0x110F, 0x1110, 0x110E, 0x1111, 0x1172, 0x116E, 0x1173,
+    )
+    private val DUBEOL_SHIFT = mapOf(
+        'Q' to 0x1108, 'W' to 0x110D, 'E' to 0x1104, 'R' to 0x1101,
+        'T' to 0x110A, 'O' to 0x1164, 'P' to 0x1168,
+    )
 }
