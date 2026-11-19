@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::layout::{KeyOutput, KeyboardLayout};
 use crate::session_types::{Language, SessionUpdate};
+pub use crate::typo_log::TypoRow;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -85,16 +86,6 @@ pub struct GoldenTypos {
     /// "memory": an in-memory `TypoMemory` seeded with `rows`.
     pub kind: String,
     pub rows: Vec<TypoRow>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct TypoRow {
-    pub wrong: String,
-    pub wrong_keys: String,
-    #[serde(rename = "final")]
-    pub final_text: String,
-    pub final_keys: String,
 }
 
 /// One call on the session.

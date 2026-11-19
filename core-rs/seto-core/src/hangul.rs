@@ -109,6 +109,16 @@ pub fn merge(first: Jamo, second: Jamo) -> Option<Jamo> {
         .map(|&(_, _, result)| Jamo::new(result, first.kind))
 }
 
+/// The two same-class jamo that merge into `compound` (ㅘ is ㅗ then ㅏ).
+/// Every compound has exactly one such pair.
+pub fn merge_parts(compound: Jamo) -> Option<(Jamo, Jamo)> {
+    MERGES
+        .iter()
+        .find(|(_, _, result)| *result == compound.scalar)
+        .map(|&(first, second, _)| (Jamo::new(first, compound.kind), Jamo::new(second, compound.kind)))
+        .filter(|&(first, second)| merge(first, second) == Some(compound))
+}
+
 /// Precomposed syllable U+AC00 + (cho * 21 + jung) * 28 + jong.
 pub fn syllable(cho: u32, jung: u32, jong: Option<u32>) -> char {
     let ci = cho - 0x1100;
@@ -161,6 +171,25 @@ mod tests {
         assert_eq!(merge(Jamo::jong(0x11A8), Jamo::cho(0x1100)), None);
         // Vowel order is not reversed: ㅏㅗ is not ㅘ.
         assert_eq!(merge(Jamo::jung(0x1161), Jamo::jung(0x1169)), None);
+    }
+
+    #[test]
+    fn merge_parts_invert_merge() {
+        assert_eq!(merge_parts(Jamo::jung(0x116A)), Some((Jamo::jung(0x1169), Jamo::jung(0x1161))));
+        assert_eq!(merge_parts(Jamo::jong(0x11B0)), Some((Jamo::jong(0x11AF), Jamo::jong(0x11A8))));
+        assert_eq!(merge_parts(Jamo::cho(0x1100)), None);
+        for (first, second, result) in MERGES {
+            let kind = if result < 0x1161 {
+                JamoKind::Choseong
+            } else if result < 0x11A8 {
+                JamoKind::Jungseong
+            } else {
+                JamoKind::Jongseong
+            };
+            let compound = Jamo::new(result, kind);
+            assert_eq!(merge_parts(compound), Some((Jamo::new(first, kind), Jamo::new(second, kind))));
+            assert_eq!(MERGES.iter().filter(|(_, _, other)| *other == result).count(), 1);
+        }
     }
 
     #[test]
