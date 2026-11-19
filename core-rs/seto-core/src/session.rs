@@ -162,6 +162,14 @@ fn is_particle(text: &str) -> bool {
     korean_endings::contains(text)
 }
 
+/// Everyday 해요체 whose 두벌식 spelling is not a common English word.
+/// `sody` is only a US dialect of soda, so 내요 wins in either mode.
+/// Real English words that also end in a 요 reading (`giddy` → 향요,
+/// `wordy` → 잭요, `world` → 재깅) are not in this set.
+fn is_common_polite_yo(text: &str) -> bool {
+    matches!(text, "내요" | "해요" | "돼요" | "되요" | "가요")
+}
+
 /// Short words that are a real English word and also a Hangul reading.
 /// `of` is 차. Preserve an explicit undo reading for English context.
 const ENGLISH_CONTEXT_WORDS: [&str; 21] = [
@@ -760,7 +768,11 @@ impl Session {
             let is_chat_reaction = korean_text.chars().count() >= 2 && all_same_from(&korean_text, "ㅇㅋㅎㅠㅜ");
             let known = |text: &str| self.lexicon.is_korean_word(text) || self.lexicon.is_valid_korean(text);
             let known_whole = is_chat_reaction || known(&korean_text);
-            let known_stem = korean_endings::split(&korean_text).is_some_and(|(stem, _)| known(stem));
+            // 내요 is 내 + polite 요. Treat that reading as a known stem so an
+            // obscure headword (`sody`) cannot keep the buffer in English
+            // after `sod` has already confirmed English mode.
+            let known_stem = korean_endings::split(&korean_text).is_some_and(|(stem, _)| known(stem))
+                || is_common_polite_yo(&korean_text);
             let spelling = self.english_text(0, self.keys.len());
             if (known_whole || known_stem)
                 && (is_chat_reaction
@@ -815,6 +827,7 @@ impl Session {
         // Two-set keys can form clean but unknown Hangul from an ordinary
         // English word (world → 재깅). Prefer the known whole English word,
         // while preserving known Korean readings and short ambiguous words.
+        // 내요/해요/돼요/가요 stay Korean: their spellings are not common English.
         if self.keys.iter().all(KeyAtom::is_dubeol) {
             let spelling = self.english_text(0, self.keys.len());
             let korean_text = compose(&self.keys).text;
@@ -822,6 +835,7 @@ impl Session {
                 && self.lexicon.is_english_word(&spelling)
                 && !self.lexicon.is_korean_word(&korean_text)
                 && !self.lexicon.is_valid_korean(&korean_text)
+                && !is_common_polite_yo(&korean_text)
             {
                 return self.install_reading(english, previous);
             }

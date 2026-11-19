@@ -86,3 +86,45 @@ import Foundation
         }
     }
 }
+
+/// `sody` is a Webster headword only as a US dialect of soda. On 두벌식 those
+/// keys are 내요. 해요/돼요/가요 follow the same rule. Real English words stay English.
+@Test func dubeolPoliteYoBeatsObscureEnglish() throws {
+    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    let resources = try Lexicon.load(from: root.appendingPathComponent("Resources"))
+    #expect(!resources.isEnglishWord("sody"))
+    #expect(!resources.isEnglishWord("sodies"))
+    #expect(!resources.isEnglishPrefix("sody"))
+    let listed = Lexicon(
+        english: ["sody", "gody", "ehody", "rkdy", "ehldy", "hello", "giddy", "world", "wordy", "shady", "ready", "body", "study", "rhapsody", "soda"],
+        korean: ["내", "해", "가", "돼", "되", "나"])
+    let polite = [("sody", "내요"), ("sody ", "내요 "), ("sody.", "내요."), ("gody ", "해요 "), ("ehody ", "돼요 "), ("rkdy ", "가요 "), ("ehldy ", "되요 "), ("hello sody ", "hello 내요 ")]
+    let englishWords = ["giddy", "world", "wordy", "shady", "ready", "body", "study", "rhapsody", "soda"]
+    for lexicon in [listed, resources] {
+        for initial in [Language.korean, .english] {
+            for (keys, expected) in polite {
+                let session = Session(lexicon: lexicon, mode: initial, layout: .dubeol)
+                for key in keys { _ = session.input(key) }
+                #expect(session.document == expected, "\(initial) \(keys): \(session.document)")
+            }
+            if lexicon === resources {
+                let session = Session(lexicon: lexicon, mode: initial, layout: .dubeol)
+                for key in "skdy " { _ = session.input(key) }
+                #expect(session.document == "나요 ", "\(initial) 나요: \(session.document)")
+            }
+            for word in englishWords {
+                let session = Session(lexicon: lexicon, mode: initial, layout: .dubeol)
+                let keys = word + " "
+                for key in keys { _ = session.input(key) }
+                #expect(session.document == keys, "\(initial) \(word): \(session.document)")
+                #expect(session.mode == .english)
+            }
+            for layout in [KeyboardLayout.sebeol390, .sebeolFinal] {
+                let session = Session(lexicon: lexicon, mode: initial, layout: layout)
+                for key in "hrj4 " { _ = session.input(key) }
+                #expect(session.document == "내요 ", "\(layout) \(initial): \(session.document)")
+                #expect(session.mode == .korean)
+            }
+        }
+    }
+}
