@@ -699,7 +699,9 @@ public final class Session {
         // `5` is ㅠ and `4` is ㅛ, so 공유 (`kvaj5`) and 메뉴 (`ich5`) match a
         // version token. That shape loses when the keys are a dictionary word.
         // `v2`, `utf8`, and `mp3` do not compose one, so they stay Latin.
-        if lexicon.isCodeToken(spelling), !numberRowKeysSpellKoreanWord(spelling) {
+        // `0` is ㅋ, so `zou20` and `i18n0` also look like a token plus a new
+        // initial. Extra digits stay in the token; a finished Hangul word does not.
+        if alphanumericContinuationStaysEnglish(spelling) {
             return true
         }
         let composition = Composer.compose(keys)
@@ -729,6 +731,19 @@ public final class Session {
         let composition = Composer.compose(keys)
         guard case .clean = shape(of: composition.pieces) else { return false }
         return lexicon.isKoreanWord(composition.text) || lexicon.isValidKorean(composition.text)
+    }
+
+    /// Letters and digits that are still one token, not a Hangul word.
+    /// `i18n0` is not itself a code token (a letter follows the digits), but
+    /// it is that token plus another digit. `0` must not become bare ㅋ.
+    private func alphanumericContinuationStaysEnglish(_ spelling: String) -> Bool {
+        if numberRowKeysSpellKoreanWord(spelling) { return false }
+        if lexicon.isCodeToken(spelling) { return true }
+        guard spelling.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber) }) else { return false }
+        let trailingDigits = spelling.reversed().prefix { $0.isASCII && $0.isNumber }.count
+        let head = spelling.dropLast(trailingDigits)
+        guard !head.isEmpty, head.count < spelling.count else { return false }
+        return lexicon.isCodeToken(String(head)) || lexicon.isAbbreviation(String(head))
     }
 
     /// On 390, ; and ' are initials, / is a vowel, and ! is a final.
@@ -1122,6 +1137,12 @@ public final class Session {
             || establishedCode else { return nil }
         let spelling = englishText(0..<keys.count)
         guard !lexicon.isEnglishWord(spelling), !lexicon.isEnglishPrefix(spelling) else { return nil }
+        // Number-row `0` is choseong ㅋ. After an acronym, abbreviation, or
+        // code token it continues the digits (`zou2` → `zou20`), instead of
+        // opening a syllable the way `h` opens AI는. The whole token is then
+        // kept Latin unless those keys are a dictionary word (`kvaj5` → 공유).
+        let next = keys[headEnd].english
+        if next.isASCII && next.isNumber { return nil }
         guard Composer.compose(keys[headEnd...]).pieces == [.bareChoseong],
               preservesComposition(at: headEnd) else { return nil }
         guard !lexicon.isKoreanWord(Composer.compose(keys).text) else { return nil }

@@ -411,6 +411,34 @@ private let lexicon: Lexicon = {
     #expect(clientFailures("OK", "OK", mode: .english).isEmpty)
 }
 
+@Test func alphanumericTokenKeepsDigitZero() {
+    // 0 is ㅋ. After a code-like token the composing text used to show that
+    // choseong (`zou2` + `0` → `zou2ㅋ`) until another digit restored the token.
+    let token = "zou2026"
+    let session = Session(lexicon: lexicon, mode: .english)
+    var paper = Paper()
+    var typed = ""
+    for key in token {
+        typed.append(key)
+        let update = session.input(key)
+        paper.apply(update.field)
+        #expect(session.document == typed, "\(session.debugLine)")
+        #expect(paper.text == typed)
+        #expect(update.preedit.isEmpty)
+        #expect(session.mode == .english)
+    }
+    for text in ["v20", "html50", "utf80", "i18n0", "a11y0", "AI0", "ML0", "0", "102", "2020"] {
+        #expect(clientFailures(text, text, mode: .english).isEmpty, text)
+    }
+    let gongyu = Session(lexicon: lexicon, mode: .english)
+    #expect(gongyu.type("kvaj5") == "공유")
+    #expect(gongyu.mode == .korean)
+    let particle = Session(lexicon: lexicon, mode: .english)
+    #expect(particle.type("AIhgs") == "AI는")
+    let chat = Session(lexicon: lexicon, mode: .english)
+    #expect(chat.type("j0") == "ㅇㅋ")
+}
+
 @Test func englishPunctuationStillBelongsToEnglishWords() {
     for text in ["of;", "it!", "don't", "it's", "'hello'", "foo/bar", "a;b", "0.1", "->", "=>"] {
         assertTypes(text, text, mode: .english)

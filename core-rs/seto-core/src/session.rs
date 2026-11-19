@@ -998,7 +998,9 @@ impl Session {
         // `5` is ㅠ and `4` is ㅛ, so 공유 (`kvaj5`) and 메뉴 (`ich5`) match a
         // version token. That shape loses when the keys are a dictionary word.
         // `v2`, `utf8`, and `mp3` do not compose one, so they stay Latin.
-        if self.lexicon.is_code_token(&spelling) && !self.number_row_keys_spell_korean_word(&spelling) {
+        // `0` is ㅋ, so `zou20` and `i18n0` also look like a token plus a new
+        // initial. Extra digits stay in the token; a finished Hangul word does not.
+        if self.alphanumeric_continuation_stays_english(&spelling) {
             return true;
         }
         let composition = compose(&self.keys);
@@ -1033,6 +1035,26 @@ impl Session {
             return false;
         }
         self.lexicon.is_korean_word(&composition.text) || self.lexicon.is_valid_korean(&composition.text)
+    }
+
+    /// Letters and digits that are still one token, not a Hangul word.
+    /// `i18n0` is not itself `is_code_token` (a letter follows the digits), but
+    /// it is that token plus another digit. `0` must not become bare ㅋ.
+    fn alphanumeric_continuation_stays_english(&self, spelling: &str) -> bool {
+        if self.number_row_keys_spell_korean_word(spelling) {
+            return false;
+        }
+        if self.lexicon.is_code_token(spelling) {
+            return true;
+        }
+        if !spelling.chars().all(|character| character.is_ascii_alphanumeric()) {
+            return false;
+        }
+        let head = spelling.trim_end_matches(|character: char| character.is_ascii_digit());
+        if head.is_empty() || head.len() == spelling.len() {
+            return false;
+        }
+        self.lexicon.is_code_token(head) || self.lexicon.is_abbreviation(head)
     }
 
     /// On 390, ; and ' are initials, / is a vowel, and ! is a final.
@@ -1496,6 +1518,13 @@ impl Session {
         }
         let spelling = self.english_text(0, self.keys.len());
         if self.lexicon.is_english_word(&spelling) || self.lexicon.is_english_prefix(&spelling) {
+            return None;
+        }
+        // Number-row `0` is choseong ㅋ. After an acronym, abbreviation, or
+        // code token it continues the digits (`zou2` → `zou20`), instead of
+        // opening a syllable the way `h` opens AI는. The whole token is then
+        // kept Latin unless those keys are a dictionary word (`kvaj5` → 공유).
+        if self.keys[head_end].english.is_ascii_digit() {
             return None;
         }
         if compose(&self.keys[head_end..]).pieces != [CompositionPiece::BareChoseong]
