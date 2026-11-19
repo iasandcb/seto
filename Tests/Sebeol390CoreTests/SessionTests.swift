@@ -383,7 +383,7 @@ private let lexicon: Lexicon = {
             failures.append("키 없음 \(word)")
             continue
         }
-        #expect(try keys.contains(where: \.isNumber))
+        #expect(keys.contains(where: \.isNumber))
         failures += clientFailures(keys, word, mode: .english)
         failures += clientFailures(keys + " ", word + " ", mode: .english)
     }
@@ -428,7 +428,7 @@ private let lexicon: Lexicon = {
         #expect(session.mode == .english)
     }
     for text in ["v20", "html50", "utf80", "i18n0", "a11y0", "AI0", "ML0", "0", "102", "2020"] {
-        #expect(clientFailures(text, text, mode: .english).isEmpty, text)
+        #expect(clientFailures(text, text, mode: .english).isEmpty, "\(text)")
     }
     let gongyu = Session(lexicon: lexicon, mode: .english)
     #expect(gongyu.type("kvaj5") == "공유")
