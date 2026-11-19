@@ -274,6 +274,75 @@ mod tests {
         assert!(session.debug_line().unwrap().contains("가 "));
     }
 
+    fn jamo(layout: LayoutKind, english: char, scalar: u32, position: JamoPosition) -> Atom {
+        Atom { layout, english: english.to_string(), korean: AtomReading::Jamo { scalar, position } }
+    }
+
+    #[test]
+    fn one_key_korean_typo_uses_the_lexicon() {
+        let lexicon = SharedLexicon::from_lists(vec![], vec!["한글".into(), "맑다".into()], vec![], vec![], vec![]);
+        let typed = vec![
+            jamo(LayoutKind::Sebeol390, 'm', 0x1112, JamoPosition::Choseong),
+            jamo(LayoutKind::Sebeol390, 'f', 0x1161, JamoPosition::Jungseong),
+            jamo(LayoutKind::Sebeol390, 's', 0x11AB, JamoPosition::Jongseong),
+            jamo(LayoutKind::Sebeol390, 'k', 0x1100, JamoPosition::Choseong),
+            jamo(LayoutKind::Sebeol390, 'b', 0x116E, JamoPosition::Jungseong),
+            jamo(LayoutKind::Sebeol390, 'w', 0x11AF, JamoPosition::Jongseong),
+        ];
+        assert_eq!(
+            correct_typo("한굴".into(), typed, Language::Korean, lexicon.clone(), None).unwrap().as_deref(),
+            Some("한글")
+        );
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let resources = SharedLexicon::from_directory(root.join("Resources").to_string_lossy().into()).unwrap();
+        let session = FieldSession::open(resources, true, Language::Korean, LayoutKind::Sebeol390, None);
+        // gitdms as dubeol atoms, while the session's own layout stays 390.
+        let dubeol = [
+            ('g', 0x1112u32, JamoPosition::Choseong),
+            ('i', 0x1163, JamoPosition::Jungseong),
+            ('t', 0x1109, JamoPosition::Choseong),
+            ('d', 0x110B, JamoPosition::Choseong),
+            ('m', 0x1173, JamoPosition::Jungseong),
+            ('s', 0x1102, JamoPosition::Choseong),
+            (' ', 0, JamoPosition::Choseong),
+        ];
+        for (index, (english, scalar, position)) in dubeol.into_iter().enumerate() {
+            let update = if english == ' ' {
+                session
+                    .input_atom(Atom {
+                        layout: LayoutKind::Dubeol,
+                        english: " ".into(),
+                        korean: AtomReading::Character { value: " ".into() },
+                    })
+                    .unwrap()
+            } else {
+                session.input_atom(jamo(LayoutKind::Dubeol, english, scalar, position)).unwrap()
+            };
+            if index == 2 {
+                assert_eq!(update.preedit, "", "{:?}", session.debug_line());
+            }
+        }
+        assert_eq!(session.state().unwrap().document, "git은 ", "{:?}", session.debug_line());
+        let clear = SharedLexicon::from_lists(vec![], vec!["맑다".into()], vec![], vec![], vec![]);
+        let typed_final = "if!uf"
+            .chars()
+            .map(|key| {
+                let atom = seto_core::KeyboardLayout::SebeolFinal.atom(key);
+                let korean = match atom.korean {
+                    seto_core::KeyOutput::Jamo(jamo) => {
+                        AtomReading::Jamo { scalar: jamo.scalar, position: jamo.kind.into() }
+                    }
+                    seto_core::KeyOutput::Character(character) => {
+                        AtomReading::Character { value: character.to_string() }
+                    }
+                };
+                Atom { layout: LayoutKind::SebeolFinal, english: key.to_string(), korean }
+            })
+            .collect();
+        let fixed = correct_typo("맊다".into(), typed_final, Language::Korean, clear, None).unwrap();
+        assert_eq!(fixed.as_deref(), Some("맑다"));
+    }
+
     #[test]
     fn compose_and_endings_match_the_core() {
         let keys = vec![

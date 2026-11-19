@@ -260,31 +260,49 @@ private final class StemProbe: seto_ffi.KnownStem, @unchecked Sendable {
     func isKnown(word: String) -> Bool { probe(word) }
 }
 
+private final class LexiconBox {
+    weak var lexicon: Lexicon?
+    let rust: seto_ffi.SharedLexicon
+    init(_ lexicon: Lexicon, _ rust: seto_ffi.SharedLexicon) {
+        self.lexicon = lexicon
+        self.rust = rust
+    }
+}
+
 private final class LexiconCache: @unchecked Sendable {
     static let shared = LexiconCache()
     private let lock = NSLock()
-    private var entries: [ObjectIdentifier: seto_ffi.SharedLexicon] = [:]
+    /// Weak keys. `ObjectIdentifier` is the instance address, and a later
+    /// `Lexicon` can be allocated there after the previous one is freed.
+    /// Keeping the Rust lexicon under that address fed the new word list the
+    /// previous dictionary, so typo correction and English heads went stale.
+    private var entries: [LexiconBox] = []
 
     func lexicon(for lexicon: Lexicon) -> seto_ffi.SharedLexicon {
         lock.lock()
         defer { lock.unlock() }
-        let key = ObjectIdentifier(lexicon)
-        if let cached = entries[key] { return cached }
-        let made: seto_ffi.SharedLexicon
+        entries.removeAll { $0.lexicon == nil }
+        if let cached = entries.first(where: { $0.lexicon === lexicon }) {
+            return cached.rust
+        }
+        let made = Self.make(lexicon)
+        entries.append(LexiconBox(lexicon, made))
+        return made
+    }
+
+    private static func make(_ lexicon: Lexicon) -> seto_ffi.SharedLexicon {
         switch lexicon.origin {
         case .files(let directory):
-            made = must { try seto_ffi.SharedLexicon.fromDirectory(directory: directory.path) }
+            return must { try seto_ffi.SharedLexicon.fromDirectory(directory: directory.path) }
         case .keyboard(let directory):
-            made = must { try seto_ffi.SharedLexicon.forKeyboard(directory: directory.path) }
+            return must { try seto_ffi.SharedLexicon.forKeyboard(directory: directory.path) }
         case .words(let english, let korean, let abbreviations, let techStems, let validKorean):
-            made = seto_ffi.SharedLexicon.fromLists(
+            return seto_ffi.SharedLexicon.fromLists(
                 english: english, korean: korean, abbreviations: abbreviations,
                 techStems: techStems, validKorean: validKorean)
         @unknown default:
             fatalError("세토 Rust 코어: 알 수 없는 사전 출처")
         }
-        entries[key] = made
-        return made
     }
 }
 
