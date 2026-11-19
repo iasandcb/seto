@@ -1041,6 +1041,7 @@ public final class Session {
             return false
         }
         if lexicon.isEnglishWord(lower) { return true }
+        if isEnglishModeChatReaction() { return false }
         guard lexicon.isEnglishPrefix(lower) else { return false }
         // jc, jd, uv, and uvr prefix jcmd, jdb, uva, and uvrou. Keep that
         // Latin while the next letter may still finish the word. At a word
@@ -1240,6 +1241,9 @@ public final class Session {
             }
         }
         if wordMode == .korean, Self.particles.contains(tail.text),
+           // Colloquial 두 must not turn the English prefix Kub into 5두.
+           // Keep the existing precedence for standard particles and counters.
+           (tail.text != "두" || !prefersCapitalizedEnglish()),
            case .clean = shape(of: tail.pieces) {
             return true
         }
@@ -1358,7 +1362,9 @@ public final class Session {
         let spelling = englishText(0..<keys.count)
         let lower = spelling.lowercased()
         guard spelling.contains(where: \.isLetter), spelling.allSatisfy({ $0.isLetter || $0.isNumber }) else { return false }
-        return !lexicon.isEnglishWord(lower) && !lexicon.isEnglishPrefix(lower)
+        // ㅇㅇ is already an explicit chat reaction. The dictionary's "jjs"
+        // prefix must not mask it; complete English words still win.
+        return !lexicon.isEnglishWord(lower) && (text == "ㅇㅇ" || !lexicon.isEnglishPrefix(lower))
             && !lexicon.isCodeToken(spelling) && !lexicon.isAbbreviation(spelling)
     }
 

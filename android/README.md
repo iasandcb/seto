@@ -1,11 +1,47 @@
-# Seto Android hardware IME — phase 3
+# Seto Android IME — phase 3
 
 `com.ias.seto`, minSdk 34 (Android 14), target/compile SDK 35. Hardware QWERTY
-keys feed the existing Sebeolsik 390 Rust Session. Shift+Space toggles only if
-no other key was typed during that Shift hold; autorepeat does not toggle again.
-There is no on-screen keyboard or launcher activity. Password/raw fields pass
-through. Navigation, Enter, Tab and shortcuts commit the displayed composition
-and pass through, as in the desktop oracle.
+and the on-screen keyboard both feed the existing Sebeolsik 390 Rust Session.
+Shift+Space toggles only if no other key was typed during that Shift hold;
+autorepeat does not toggle again. Password/raw fields pass through on a hardware
+keyboard and, on the soft keyboard, insert the visible character directly.
+Navigation, Enter, Tab and shortcuts commit the displayed composition and pass
+through, as in the desktop oracle.
+
+The soft keyboard follows the iOS touch-keyboard rows: a number row, QWERTY
+letters, and a bottom row with ※, ↔, `-`, space, `.`, `?`, and return. Korean
+mode shows 390 jamo with the QWERTY character underneath; English mode reverses
+that. The home row also has `;` and `'` so choseong ㅂ and ㅌ are reachable.
+Tapping a number in Korean mode sends that 390 key (ㅛㅠㅑ on 4 5 6, and so on);
+a long-press inserts the digit itself. English number taps are digits, and a
+long-press inserts the shifted symbol. ※ toggles the iOS symbol layer; holding
+it calls `convertOpenWord`. ↔ calls `toggle` (undo the last automatic conversion
+or flip the open word); holding it turns automatic switching on or off. Holding
+`-` inserts `→`. Backspace deletes on contact and then repeats: 20 characters,
+then word waves. A mode change shows a short toast, `한` or `A`, because the
+status bar is often hidden. While a hardware keyboard is the active input the
+framework hides this view; the system "show on-screen keyboard" setting brings
+it back. Hardware keys keep the previous path. JVM tests cover the 390 caps,
+the symbol map, the holds, the backspace cadence, and word waves.
+
+While a normal input field is active, a small white **한** (Korean) or **A**
+(English) status icon follows every Session mode update, including automatic
+conversion and Shift+Space. The icon is cleared on field finish, password/raw
+pass-through, or session failure. This uses
+[InputMethodService.showStatusIcon](https://developer.android.com/reference/android/inputmethodservice/InputMethodService#showStatusIcon(int));
+visibility depends on the device's system status bar. There is no launcher activity.
+The on-screen keyboard is a separate window and is hidden while a hardware
+keyboard is the active input.
+
+The `jj` follow-up exposed a shared Swift/Rust core issue, rather than an Android
+key or commit bug: `ㅇㅇ` was already a recognized chat reaction, but `jj` is also
+a prefix of the bundled English entry `jjs`. English-prefix preference masked
+the reaction before it could be selected. Both cores now let that existing
+reaction outrank the prefix. Complete words (`jjs`), uppercase input, manual
+English mode, and period/domain handling retain their existing behavior.
+Regression tests cover open `jj`, space/newline boundaries, and Rust with both
+the desktop and Android keyboard lexicons. Swift core changes were necessary
+because the new oracle test reproduced the same failure there.
 
 ## Build
 
@@ -101,14 +137,15 @@ xz 5.8.3 → 5.8.4, lz4 1.10.0 → 1.11.1.
 
 ## Verification
 
-- `cd core-rs && cargo test`: **76 passed** (72 unchanged core tests + 4 FFI tests).
+- `cd core-rs && cargo test`: **78 passed** (74 core tests + 4 FFI tests).
   Golden replay: **3661 scenarios / 25238 keystrokes**.
 - `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test`:
-  **155 passed**. `Sources/SetoCore` is unchanged.
-- `./gradlew assembleDebug testDebugUnitTest`: successful; **5 Android unit tests**
+  **157 passed**. Includes the new English-mode `jj` regression.
+- `./gradlew assembleDebug testDebugUnitTest`: successful; **7 Android unit tests**
   cover physical mapping, Shift+Space, every FieldEdit, surrogate-pair spans,
-  coalesced selections, and native backspace tracking.
+  coalesced selections, native backspace tracking, and Ctrl+comma/period with
+  all modifier combinations. The Rust/Swift `머지하고` regressions also pass.
 - APK inspection: both `libseto_ffi.so` ABIs have all **4 LOAD Align 0x4000**;
   both JNA libraries have all **2 LOAD Align 0x4000**. `zipalign -c -P 16 4` passes.
-- Debug APK: `app/build/outputs/apk/debug/app-debug.apk`, **7484831 bytes**.
+- Debug APK: `app/build/outputs/apk/debug/app-debug.apk`, **7478249 bytes**.
 - No APK/IME was installed, and no phone or emulator runtime testing was performed.
