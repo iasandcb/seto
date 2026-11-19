@@ -135,6 +135,68 @@ private let endingLexicon: Lexicon = {
     }
 }
 
+private func keyboardEndingLexicon() throws -> (Lexicon, URL) {
+    let root = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    let bundle = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: bundle, withIntermediateDirectories: true)
+    for name in ["keyboard-english.txt", "keyboard-korean-valid.txt"] {
+        try FileManager.default.createSymbolicLink(
+            at: bundle.appendingPathComponent(name),
+            withDestinationURL: root.appendingPathComponent("iOS/Keyboard/Resources/" + name))
+    }
+    try FileManager.default.createSymbolicLink(
+        at: bundle.appendingPathComponent("korean-words.txt"),
+        withDestinationURL: root.appendingPathComponent("Resources/korean-words.txt"))
+    return (try Lexicon.loadForKeyboard(from: bundle), bundle)
+}
+
+/// 몇시 is one choseong away from 몇+이, and was missing from the validity list
+/// while 한시 and 두시 were present. 몇시에 is that headword plus 에.
+@Test func myeotCompoundsAreNotTypoCorrections() throws {
+    let (keyboard, directory) = try keyboardEndingLexicon()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let lexicons = [endingLexicon, keyboard]
+    let words = ["몇시", "몇시에", "몇시간", "몇분", "몇개", "몇명", "몇번", "모시", "몇살", "몇년", "몇일", "몇세", "몇이"]
+    for lexicon in lexicons {
+        for word in ["몇시", "몇시간", "몇분", "몇개", "몇명", "몇번", "모시", "몇살", "몇년", "몇일", "몇세"] {
+            #expect(lexicon.isKoreanWord(word) || lexicon.isValidKorean(word), "\(word)")
+        }
+    }
+    #expect(KoreanEndings.split("몇시에")?.stem == "몇시", "몇시")
+    #expect(KoreanEndings.split("몇시에")?.ending == "에", "에")
+    for lexicon in lexicons {
+        for layout in [KeyboardLayout.sebeol390, .dubeol, .sebeolFinal] {
+            for word in words {
+                let keys = try #require(TypoCorrector.keystrokes(for: word, layout: layout))
+                #expect(TypoCorrector.correction(
+                    composed: word, keys: keys.map { layout.atom(for: $0) },
+                    language: .korean, lexicon: lexicon, memory: nil
+                ) == nil, "\(layout): \(word)")
+            }
+        }
+    }
+}
+
+@Test func myeotCompoundsStayTypedAtWordBoundaries() throws {
+    let (keyboard, directory) = try keyboardEndingLexicon()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let lexicons = [endingLexicon, keyboard]
+    let words = ["몇시", "몇시에", "몇시간", "몇분", "몇개", "몇명", "몇번", "모시", "몇살", "몇년", "몇일", "몇세", "몇이"]
+    for lexicon in lexicons {
+        for layout in [KeyboardLayout.sebeol390, .dubeol, .sebeolFinal] {
+            for word in words {
+                let keys = try #require(TypoCorrector.keystrokes(for: word, layout: layout))
+                for boundary in [" ", ".", "\n"] {
+                    let session = Session(lexicon: lexicon, mode: .korean, layout: layout)
+                    for key in keys + boundary { _ = session.input(layout.atom(for: key)) }
+                    #expect(session.document == word + boundary, "\(layout): \(word) \(boundary.debugDescription)")
+                }
+            }
+        }
+    }
+}
+
 @Test func colloquialDuFormsStayTypedAtWordBoundaries() throws {
     for layout in [KeyboardLayout.sebeol390, .dubeol] {
         for word in ["너두", "나두", "저두", "우리두"] {
