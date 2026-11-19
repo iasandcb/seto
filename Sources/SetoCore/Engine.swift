@@ -135,7 +135,12 @@ enum KoreanVerbEndings {
     static let longestFirst = seto_ffi.verbEndingTable()
 
     static func isInflected(_ word: String, isKnown: (String) -> Bool) -> Bool {
-        seto_ffi.verbIsInflected(word: word, known: StemProbe(isKnown))
+        // Rust calls the predicate before returning and then drops it. The
+        // closure does not outlive this function; StemProbe only stores it so
+        // UniFFI can pass a class callback.
+        withoutActuallyEscaping(isKnown) { escaping in
+            seto_ffi.verbIsInflected(word: word, known: StemProbe(escaping))
+        }
     }
 }
 
