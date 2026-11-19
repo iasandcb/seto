@@ -15,13 +15,15 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.WindowInsets
+import android.widget.PopupMenu
 import android.widget.TextView
 import kotlin.math.max
 import kotlin.math.min
 
 /**
- * Gboard-like key grid: even gaps, rounded caps, and labels that shrink instead of ellipsizing.
- * Shift, symbol mode, and repeat timing live here. The service applies every [SoftLayout.Effect].
+ * Key grid sized like the iOS touch keyboard: 44dp caps, 11dp row gaps, and a
+ * 5% inset on the nine-key home row. Shift, symbol mode, and repeat timing live
+ * here. The service applies every [SoftLayout.Effect].
  */
 internal class SoftKeyboardView(
     context: Context,
@@ -41,6 +43,7 @@ internal class SoftKeyboardView(
     private val backspaceKey = cap(SoftLayout.Key(SoftLayout.Kind.Backspace))
     private val bottomKeys = row(SoftLayout.bottomRow)
     private var state = SoftLayout.State()
+    private var automatic = true
     private var returnLabel = "↵"
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private val repeat = BackspaceRepeat()
@@ -54,9 +57,11 @@ internal class SoftKeyboardView(
         isFocusable = false
         isFocusableInTouchMode = false
         descendantFocusability = FOCUS_BLOCK_DESCENDANTS
-        setPadding(dp(3), dp(6), dp(3), dp(4))
+        val marginH = dp(SoftLayout.HORIZONTAL_MARGIN_DP)
+        val marginV = dp(SoftLayout.VERTICAL_MARGIN_DP)
+        setPadding(marginH, marginV, marginH, marginV)
         setOnApplyWindowInsetsListener { _, insets ->
-            val bottom = insets.getInsets(WindowInsets.Type.navigationBars()).bottom + dp(4)
+            val bottom = insets.getInsets(WindowInsets.Type.navigationBars()).bottom + marginV
             if (paddingBottom != bottom) setPadding(paddingLeft, paddingTop, paddingRight, bottom)
             insets
         }
@@ -65,6 +70,7 @@ internal class SoftKeyboardView(
         children.forEach { addView(it) }
         applyChrome()
         refreshFaces()
+        setAutomatic(true)
     }
 
     fun setKorean(korean: Boolean) {
@@ -76,6 +82,13 @@ internal class SoftKeyboardView(
     fun setDirect(direct: Boolean) {
         state = state.copy(direct = direct, shifted = false, symbols = false)
         refreshFaces()
+    }
+
+    fun setAutomatic(enabled: Boolean) {
+        automatic = enabled
+        keys.filter { it.spec.kind == SoftLayout.Kind.Language }.forEach { key ->
+            key.stateDescription = SoftLayout.autoSwitchState(enabled)
+        }
     }
 
     fun setReturnLabel(label: String) {
@@ -97,8 +110,10 @@ internal class SoftKeyboardView(
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val width = MeasureSpec.getSize(widthMeasureSpec).takeIf { it > 0 } ?: dp(360)
-        val keyH = dp(KEY_HEIGHT_DP)
-        val preferred = paddingTop + paddingBottom + keyH * ROWS + dp(V_GAP_DP) * (ROWS - 1)
+        val natural = keyBlock(1f)
+        val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val block = if (landscape) min(natural, dp(SoftLayout.LANDSCAPE_KEY_BLOCK_DP)) else natural
+        val preferred = paddingTop + paddingBottom + block
         val height = when (MeasureSpec.getMode(heightMeasureSpec)) {
             MeasureSpec.EXACTLY -> MeasureSpec.getSize(heightMeasureSpec)
             MeasureSpec.AT_MOST -> min(preferred, MeasureSpec.getSize(heightMeasureSpec))
@@ -114,11 +129,15 @@ internal class SoftKeyboardView(
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         val inner = width - paddingLeft - paddingRight
-        val gap = dp(H_GAP_DP)
-        val vGap = dp(V_GAP_DP)
+        val gap = dp(SoftLayout.KEY_GAP_DP)
         val rows = ROWS
-        val available = height - paddingTop - paddingBottom - vGap * (rows - 1)
-        val keyH = max(1, available / rows)
+        val available = height - paddingTop - paddingBottom
+        val natural = keyBlock(1f)
+        val scale = if (natural <= 0) 1f else min(1f, available.toFloat() / natural)
+        val keyH = max(1, (dp(SoftLayout.KEY_HEIGHT_DP) * scale).toInt())
+        val preferredGap = max(0, (dp(SoftLayout.ROW_GAP_DP) * scale).toInt())
+        val gapBudget = available - keyH * rows
+        val vGap = if (rows <= 1) 0 else min(preferredGap, max(0, gapBudget / (rows - 1)))
         val ten = equalWidths(10, inner, gap)
         val letterW = ten.min()
         var y = paddingTop
@@ -126,12 +145,18 @@ internal class SoftKeyboardView(
         y += keyH + vGap
         placeEqual(topKeys, paddingLeft, y, keyH, inner, gap)
         y += keyH + vGap
-        placeEqual(homeKeys, paddingLeft, y, keyH, inner, gap)
+        placeHome(y, keyH, inner, gap)
         y += keyH + vGap
         placeShiftRow(y, keyH, inner, gap, letterW)
         y += keyH + vGap
         placeBottom(y, keyH, inner, gap, letterW)
         keys.forEach { fit(it) }
+    }
+
+    private fun keyBlock(scale: Float): Int {
+        val keyH = (dp(SoftLayout.KEY_HEIGHT_DP) * scale).toInt()
+        val vGap = (dp(SoftLayout.ROW_GAP_DP) * scale).toInt()
+        return keyH * ROWS + vGap * (ROWS - 1)
     }
 
     private fun placeEqual(row: List<KeyCap>, x0: Int, y: Int, keyH: Int, inner: Int, gap: Int) {
@@ -143,35 +168,53 @@ internal class SoftKeyboardView(
         }
     }
 
-    private fun placeShiftRow(y: Int, keyH: Int, inner: Int, gap: Int, letterW: Int) {
-        val letters = letterW * letterKeys.size + gap * (letterKeys.size - 1)
-        val leftover = inner - letters - gap * 2
-        val side = max(letterW, leftover / 2)
-        val backspaceW = inner - side - letters - gap * 2
+    private fun placeHome(y: Int, keyH: Int, inner: Int, gap: Int) {
+        val inset = (inner * SoftLayout.HOME_INSET).toInt()
+        val rowInner = max(1, inner - inset * 2)
+        placeEqual(homeKeys, paddingLeft + inset, y, keyH, rowInner, gap)
+    }
+
+    private fun placeShiftRow(y: Int, keyH: Int, inner: Int, gap: Int, preferredLetter: Int) {
+        val sideGap = dp(SoftLayout.SHIFT_GAP_DP)
+        val count = letterKeys.size
+        var letterW = preferredLetter
+        fun lettersWidth(width: Int) = width * count + gap * (count - 1)
+        if (letterW * 2 + lettersWidth(letterW) + sideGap * 2 > inner) {
+            letterW = max(1, (inner - gap * (count - 1) - sideGap * 2) / (count + 2))
+        }
+        val letters = lettersWidth(letterW)
+        val side = max(letterW, (inner - letters - sideGap * 2) / 2)
         var x = paddingLeft
         place(shiftKey, x, y, side, keyH)
-        x += side + gap
-        letterKeys.forEach { view ->
+        x += side + sideGap
+        letterKeys.forEachIndexed { index, view ->
             place(view, x, y, letterW, keyH)
-            x += letterW + gap
+            x += letterW
+            if (index != letterKeys.lastIndex) x += gap
         }
-        place(backspaceKey, x, y, max(1, backspaceW), keyH)
+        x += sideGap
+        place(backspaceKey, x, y, max(1, paddingLeft + inner - x), keyH)
     }
 
     private fun placeBottom(y: Int, keyH: Int, inner: Int, gap: Int, letterW: Int) {
+        val globe = bottomKeys.first { it.spec.kind == SoftLayout.Kind.Globe }
         val space = bottomKeys.first { it.spec.kind == SoftLayout.Kind.Space }
-        val fixed = bottomKeys.filter { it !== space }
-        val minSpace = dp(72)
+        val fixed = bottomKeys.filter { it !== space && it !== globe }
+        val globeW = dp(SoftLayout.GLOBE_WIDTH_DP)
         val gaps = gap * (bottomKeys.size - 1)
-        val fixedW = if (letterW * fixed.size + gaps + minSpace <= inner) {
-            letterW
-        } else {
-            max(dp(28), (inner - gaps - minSpace) / fixed.size)
+        val minSpace = dp(SoftLayout.MIN_SPACE_DP)
+        var fixedW = letterW
+        if (globeW + fixedW * fixed.size + gaps + minSpace > inner) {
+            fixedW = max(dp(28), (inner - globeW - gaps - minSpace) / fixed.size)
         }
-        val spaceW = max(dp(48), inner - fixedW * fixed.size - gaps)
+        val spaceW = max(dp(48), inner - globeW - fixedW * fixed.size - gaps)
         var x = paddingLeft
         bottomKeys.forEach { view ->
-            val w = if (view === space) spaceW else fixedW
+            val w = when {
+                view === globe -> globeW
+                view === space -> spaceW
+                else -> fixedW
+            }
             place(view, x, y, w, keyH)
             x += w + gap
         }
@@ -198,8 +241,9 @@ internal class SoftKeyboardView(
         val maxH = (view.height - padY * 2).toFloat()
         val lines = view.text?.toString().orEmpty().split('\n')
         val paint = view.paint
+        val preferred = spPx(view.face.textSizeSp)
         val size = fittedTextSizePx(
-            lines, maxW, maxH, sp(18).toFloat(), sp(8).toFloat(),
+            lines, maxW, maxH, preferred, preferred * 0.5f,
             measureWidth = { px, line ->
                 paint.textSize = px
                 paint.measureText(line)
@@ -247,7 +291,7 @@ internal class SoftKeyboardView(
             else -> key
         }
         view.background = GradientDrawable().apply {
-            cornerRadius = dp(6).toFloat()
+            cornerRadius = dp(SoftLayout.CORNER_RADIUS_DP).toFloat()
             setColor(bg)
         }
         view.setTextColor(if (view.face.latched) 0xFFFFFFFF.toInt() else text)
@@ -276,7 +320,20 @@ internal class SoftKeyboardView(
         val effect = SoftLayout.longPress(view.spec, state) ?: return
         holdFired = true
         feedback(view.spec.kind)
-        dispatch(effect)
+        if (effect == SoftLayout.Effect.ShowAutoMenu) showAutoMenu(view) else dispatch(effect)
+    }
+
+    /** iOS shows this as a checkmark menu on ↔. Choosing the row flips the setting. */
+    private fun showAutoMenu(anchor: View) {
+        val popup = PopupMenu(context, anchor)
+        val item = popup.menu.add(SoftLayout.AUTO_SWITCH_MENU)
+        item.isCheckable = true
+        item.isChecked = automatic
+        popup.setOnMenuItemClickListener {
+            dispatch(SoftLayout.Effect.ToggleAutoSwitch)
+            true
+        }
+        popup.show()
     }
 
     private fun onUp(view: KeyCap) {
@@ -369,9 +426,9 @@ internal class SoftKeyboardView(
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt().coerceAtLeast(if (value == 0) 0 else 1)
 
-    private fun sp(value: Int): Int = TypedValue.applyDimension(
+    private fun spPx(value: Int): Float = TypedValue.applyDimension(
         TypedValue.COMPLEX_UNIT_SP, value.toFloat(), resources.displayMetrics,
-    ).toInt().coerceAtLeast(1)
+    )
 
     override fun onDetachedFromWindow() {
         cancelPointer()
@@ -399,9 +456,6 @@ internal class SoftKeyboardView(
 
     companion object {
         private const val ROWS = 5
-        private const val KEY_HEIGHT_DP = 50
-        private const val H_GAP_DP = 4
-        private const val V_GAP_DP = 7
         private const val LONG_PRESS_MS = 400L
     }
 }

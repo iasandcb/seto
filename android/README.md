@@ -8,21 +8,23 @@ keyboard and, on the soft keyboard, insert the visible character directly.
 Navigation, Enter, Tab and shortcuts commit the displayed composition and pass
 through, as in the desktop oracle.
 
-The soft keyboard follows the iOS touch-keyboard rows: a number row, QWERTY
-letters, and a bottom row with ※, ↔, `-`, space, `.`, `?`, and return. Korean
-mode shows 390 jamo with the QWERTY character underneath; English mode reverses
-that. The home row also has `;` and `'` so choseong ㅂ and ㅌ are reachable.
-Tapping a number in Korean mode sends that 390 key (ㅛㅠㅑ on 4 5 6, and so on);
-a long-press inserts the digit itself. English number taps are digits, and a
-long-press inserts the shifted symbol. ※ toggles the iOS symbol layer; holding
-it calls `convertOpenWord`. ↔ calls `toggle` (undo the last automatic conversion
-or flip the open word); holding it turns automatic switching on or off. Holding
-`-` inserts `→`. Backspace deletes on contact and then repeats: 20 characters,
-then word waves. A mode change shows a short toast, `한` or `A`, because the
-status bar is often hidden. While a hardware keyboard is the active input the
-framework hides this view; the system "show on-screen keyboard" setting brings
-it back. Hardware keys keep the previous path. JVM tests cover the 390 caps,
-the symbol map, the holds, the backspace cadence, and word waves.
+The soft keyboard follows the iOS touch keyboard: number row, QWERTY letters,
+a nine-key home row inset like iOS, Shift and backspace around `zxcvbnm`, and
+a bottom row of a 32dp globe, ※, ↔, `-`, space, `.`, `?`, and return. The
+globe is the iOS phrase-bar key; phrases, suggestions, and one-handed mode are
+not on Android. Korean mode shows two-set jamo with the QWERTY character
+underneath, the same caps iOS draws; English mode reverses that. Number keys
+always show `1 !` and insert the digit, or the shifted symbol after Shift or
+a long-press. Letter taps are two-set atoms. Hardware keys stay Sebeolsik 390.
+※ toggles the iOS symbol layer; holding it calls `convertOpenWord`. ↔ calls
+`toggle` (undo the last automatic conversion or flip the open word); holding
+it opens the iOS "자동 한영 전환" check. Holding `-` inserts `→`. Backspace
+deletes on contact and then repeats: 20 characters, then word waves. A mode
+change shows a short toast, `한` or `A`, because the status bar is often
+hidden. While a hardware keyboard is the active input the framework hides this
+view; the system "show on-screen keyboard" setting brings it back. JVM tests
+cover the two-set caps, the symbol map, the holds, the backspace cadence, and
+word waves.
 
 While a normal input field is active, a small white **한** (Korean) or **A**
 (English) status icon follows every Session mode update, including automatic

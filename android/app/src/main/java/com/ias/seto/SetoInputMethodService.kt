@@ -9,18 +9,23 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
+import com.ias.seto.core.Atom
+import com.ias.seto.core.AtomReading
 import com.ias.seto.core.FieldEdit
 import com.ias.seto.core.FieldSession
+import com.ias.seto.core.JamoPosition
 import com.ias.seto.core.Language
+import com.ias.seto.core.LayoutKind
 import com.ias.seto.core.SessionUpdate
 import com.ias.seto.core.TypoLogger
 import org.json.JSONObject
 import java.io.File
 
 /**
- * Sebeolsik 390 IME. Hardware QWERTY and the on-screen keyboard both call the
- * shared Rust session. The soft keyboard hides while a hardware keyboard is the
- * active input, unless the system is set to show the on-screen keyboard too.
+ * Sebeolsik 390 IME. Hardware QWERTY still feeds the 390 session. The on-screen
+ * keyboard matches the iOS touch board: letter taps are two-set atoms, and the
+ * view hides while a hardware keyboard is the active input unless the system
+ * is set to show the on-screen keyboard too.
  */
 class SetoInputMethodService : InputMethodService() {
     private val keyboardHost = object : SoftKeyboardView.Host {
@@ -93,6 +98,7 @@ class SetoInputMethodService : InputMethodService() {
     private fun bindKeyboard(info: EditorInfo? = currentInputEditorInfo) {
         keyboard?.setDirect(directInput)
         keyboard?.setKorean(mode == Language.KOREAN)
+        keyboard?.setAutomatic(autoSwitch)
         if (info != null) keyboard?.setReturnLabel(returnLabel(info))
     }
 
@@ -104,6 +110,7 @@ class SetoInputMethodService : InputMethodService() {
             SoftLayout.Effect.DeleteWord -> deleteWordWave()
             SoftLayout.Effect.ToggleLanguage -> session?.let { runEdit { it.toggle() } }
             SoftLayout.Effect.ConvertWord -> session?.let { runEdit { it.convertOpenWord() } }
+            SoftLayout.Effect.ShowAutoMenu -> Unit
             SoftLayout.Effect.ToggleAutoSwitch -> toggleAutoSwitch()
             SoftLayout.Effect.ReturnKey -> handleReturn()
             SoftLayout.Effect.NextKeyboard -> nextKeyboard(picker = false)
@@ -212,6 +219,7 @@ class SetoInputMethodService : InputMethodService() {
         if (session == null) return
         autoSwitch = !autoSwitch
         getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_AUTO, autoSwitch).apply()
+        keyboard?.setAutomatic(autoSwitch)
         applyOptions()
         if (session == null) return
         modeToast?.cancel()
@@ -221,7 +229,19 @@ class SetoInputMethodService : InputMethodService() {
 
     private fun compose(character: Char) {
         val active = session ?: return
-        runEdit { active.input(character.toString()) }
+        val touch = SoftLayout.dubeolAtom(character)
+        if (touch == null) {
+            // Space and newline. Hardware keys keep using input(), which is 390.
+            runEdit { active.input(character.toString()) }
+            return
+        }
+        val position = if (touch.jungseong) JamoPosition.JUNGSEONG else JamoPosition.CHOSEONG
+        val atom = Atom(
+            LayoutKind.DUBEOL,
+            touch.english.toString(),
+            AtomReading.Jamo(touch.scalar.toUInt(), position),
+        )
+        runEdit { active.inputAtom(atom) }
     }
 
     private fun insertLiteral(text: String) {
