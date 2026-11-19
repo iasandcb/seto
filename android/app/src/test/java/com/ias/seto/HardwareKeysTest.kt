@@ -5,6 +5,29 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class HardwareKeysTest {
+    @Test fun controlOnlyArrowsMatchMac() {
+        assertEquals('←', HardwareKeys.controlCharacter(KeyEvent.KEYCODE_COMMA, control = true))
+        assertEquals('→', HardwareKeys.controlCharacter(KeyEvent.KEYCODE_PERIOD, control = true))
+        // Other physical keys pass through, including the K/T hotkey letters.
+        for (code in KeyEvent.KEYCODE_UNKNOWN..KeyEvent.KEYCODE_PROFILE_SWITCH) {
+            if (code != KeyEvent.KEYCODE_COMMA && code != KeyEvent.KEYCODE_PERIOD) {
+                assertNull(HardwareKeys.controlCharacter(code, control = true))
+            }
+        }
+    }
+
+    @Test fun arrowShortcutsRequireOnlyControl() {
+        for (code in listOf(KeyEvent.KEYCODE_COMMA, KeyEvent.KEYCODE_PERIOD)) {
+            // Cover every modifier combination, including Ctrl+Shift and Ctrl+Alt (AltGr).
+            for (mask in 0..31) {
+                val result = HardwareKeys.controlCharacter(code, control = mask and 1 != 0,
+                    shift = mask and 2 != 0, alt = mask and 4 != 0,
+                    meta = mask and 8 != 0, sym = mask and 16 != 0)
+                if (mask == 1) assertNotNull(result) else assertNull(result)
+            }
+        }
+    }
+
     @Test fun physicalQwertyDoesNotDependOnOsLayout() {
         for (offset in 0..25) {
             assertEquals('a' + offset, HardwareKeys.character(KeyEvent.KEYCODE_A + offset, false))

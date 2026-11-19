@@ -8,7 +8,7 @@ import java.io.File
 internal object LexiconAssets {
     @Synchronized fun load(context: Context) {
         // Bump this version when the bundled lists change. Never overwrite an mmap'd file.
-        val directory = File(context.filesDir, "lexicon-v1").apply { mkdirs() }
+        val directory = File(context.filesDir, "lexicon-v2").apply { mkdirs() }
         fun copy(name: String): String {
             val destination = File(directory, name)
             if (!destination.isFile) {

@@ -2632,6 +2632,20 @@ private extension Session {
     }
 }
 
+@Test func jjChatReactionFromEnglishMode() {
+    #expect(lexicon.isEnglishPrefix("jj")) // jjs used to mask the existing reaction.
+    for suffix in ["", " ", "\n"] {
+        assertTypes("jj" + suffix, "ㅇㅇ" + suffix, mode: .english)
+        #expect(clientFailures("jj" + suffix, "ㅇㅇ" + suffix, mode: .english).isEmpty)
+    }
+    assertTypes("jjs ", "jjs ", mode: .english)
+    assertTypes("JJ ", "JJ ", mode: .english)
+    // A period starts a domain label, preserving the existing code-token rule.
+    assertTypes("jj.", "jj.", mode: .english)
+    let manual = Session(lexicon: lexicon, autoSwitch: false, mode: .english)
+    #expect(manual.type("jj ") == "jj ")
+}
+
 @Test func brandWordsStartingWithASyllableBecomeEnglish() {
     // i c is 메 on 390. The finished English word takes the syllable back.
     for mode in [Language.korean, .english] {
@@ -2659,5 +2673,14 @@ private extension Session {
     }
     for text in ["don't ", "it's ", "I'm ", "we're ", "o'clock ", "can't ", "you'll ", "he's ", "he'll ", "she's ", "ma'am ", "it'll ", "kid's "] {
         assertTypes(text, text, mode: .english)
+    }
+}
+
+@Test func mergeStaysKoreanAtWordBoundary() {
+    // 세벌식 390: 머지하고. 머지 (merge) is a word, not a typo for 머리.
+    for (keys, expected) in [("itld", "머지"), ("itldmfkv", "머지하고")] {
+        let session = Session(lexicon: lexicon, mode: .korean)
+        #expect(session.type(keys) == expected)
+        #expect(session.type(" ") == expected + " ")
     }
 }
