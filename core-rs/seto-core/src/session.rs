@@ -1421,6 +1421,9 @@ impl Session {
         if self.lexicon.is_english_word(&lower) {
             return true;
         }
+        if self.is_english_mode_chat_reaction() {
+            return false;
+        }
         if !self.lexicon.is_english_prefix(&lower) {
             return false;
         }
@@ -1632,7 +1635,13 @@ impl Session {
             }
         }
         let tail_clean = matches!(tail_shape, Shape::Clean(_));
-        if korean_word && is_particle(&tail.text) && tail_clean {
+        // Colloquial 두 must not turn the English prefix Kub into 5두.
+        // Keep the existing precedence for standard particles and counters.
+        if korean_word
+            && is_particle(&tail.text)
+            && tail_clean
+            && (tail.text != "두" || !self.prefers_capitalized_english())
+        {
             return true;
         }
         // 8시 is also "Ind", 9대 "Our" and 9장 "Olfa". In Korean mode a counter
@@ -1781,8 +1790,10 @@ impl Session {
         {
             return false;
         }
+        // ㅇㅇ is already an explicit chat reaction. The dictionary's "jjs"
+        // prefix must not mask it; complete English words still win.
         !self.lexicon.is_english_word(&lower)
-            && !self.lexicon.is_english_prefix(&lower)
+            && (text == "ㅇㅇ" || !self.lexicon.is_english_prefix(&lower))
             && !self.lexicon.is_code_token(&spelling)
             && !self.lexicon.is_abbreviation(&spelling)
     }
