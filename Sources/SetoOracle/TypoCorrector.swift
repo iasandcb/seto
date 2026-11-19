@@ -1,4 +1,5 @@
 import Foundation
+import SetoSupport
 
 /// Particles (including colloquial 두 for 도) and productive 하다 forms
 /// attached to a known dictionary word.

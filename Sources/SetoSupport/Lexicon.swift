@@ -1,6 +1,17 @@
 import Foundation
 
+public enum LexiconOrigin: Equatable, Sendable {
+    /// `Resources/` (or the editable dictionary folder): english-words.txt, english-extra.txt, korean-words.txt, korean-valid.txt.
+    case files(URL)
+    /// Keyboard bundle: keyboard-english.txt, keyboard-korean-valid.txt, korean-words.txt.
+    case keyboard(URL)
+    /// In-memory lists, before plural expansion. The Rust core expands them the same way.
+    case words(english: [String], korean: [String], abbreviations: [String], techStems: [String], validKorean: [String])
+}
+
 public final class Lexicon: @unchecked Sendable {
+    /// Where the word lists came from, so the Rust session can rebuild the same lexicon.
+    public private(set) var origin: LexiconOrigin
     private let english: [String]
     private var mappedEnglish: MappedWordList?
     private var mappedValidKorean: MappedWordList?
@@ -19,6 +30,9 @@ public final class Lexicon: @unchecked Sendable {
         techStems: [String] = [],
         validKorean: [String] = []
     ) {
+        self.origin = .words(
+            english: english, korean: korean, abbreviations: abbreviations,
+            techStems: techStems, validKorean: validKorean)
         let baseWords = Set(english.map { $0.lowercased() })
         var recognized = baseWords
         // Webster's headwords omit many regular plurals. Index the inflected
@@ -133,13 +147,15 @@ public final class Lexicon: @unchecked Sendable {
         let extra = (try? lines(directory.appendingPathComponent("english-extra.txt"))) ?? []
         let korean = try lines(directory.appendingPathComponent("korean-words.txt"))
         let valid = (try? lines(directory.appendingPathComponent("korean-valid.txt"))) ?? []
-        return Lexicon(
+        let lexicon = Lexicon(
             english: english + extra,
             korean: korean,
             abbreviations: Self.defaultAbbreviations,
             techStems: Self.defaultTechStems,
             validKorean: valid
         )
+        lexicon.origin = .files(directory)
+        return lexicon
     }
 
     /// Pre-expanded, sorted word lists avoid constructing hundreds of thousands
@@ -151,6 +167,7 @@ public final class Lexicon: @unchecked Sendable {
             abbreviations: defaultAbbreviations,
             techStems: defaultTechStems
         )
+        result.origin = .keyboard(directory)
         result.mappedEnglish = try MappedWordList(url: directory.appendingPathComponent("keyboard-english.txt"))
         result.mappedValidKorean = try MappedWordList(url: directory.appendingPathComponent("keyboard-korean-valid.txt"))
         return result

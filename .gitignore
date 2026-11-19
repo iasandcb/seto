@@ -11,3 +11,5 @@ signing/*
 
 # Rust core
 core-rs/target/
+# Apple FFI is built on the Mac (scripts/build-apple-xcframework.sh), not committed.
+Apple/

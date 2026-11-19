@@ -1,6 +1,10 @@
 import Testing
 import Foundation
+#if SETO_ORACLE
+@testable import SetoOracle
+#else
 @testable import SetoCore
+#endif
 
 @Test func dubeolComposition() {
     for (keys, expected) in [("gksrmf", "한글"), ("dkssudgktpdy", "안녕하세요"), ("rkqt", "값"), ("rkqtdl", "값이"), ("rkrk", "가가"), ("rhk", "과"), ("Rk", "까"), ("rhkr", "곽")] {

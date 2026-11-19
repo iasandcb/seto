@@ -1,5 +1,9 @@
 import Testing
+#if SETO_ORACLE
+@testable import SetoOracle
+#else
 @testable import SetoCore
+#endif
 
 @Test func choseongKeys() {
     expectJamo("k", .choseong, "ㄱ")

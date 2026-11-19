@@ -13,6 +13,6 @@ public enum LayoutDubeol {
     }
 
     private static let finals: [UInt32: UInt32] = [0x1100:0x11A8,0x1101:0x11A9,0x1102:0x11AB,0x1103:0x11AE,0x1105:0x11AF,0x1106:0x11B7,0x1107:0x11B8,0x1109:0x11BA,0x110A:0x11BB,0x110B:0x11BC,0x110C:0x11BD,0x110E:0x11BE,0x110F:0x11BF,0x1110:0x11C0,0x1111:0x11C1,0x1112:0x11C2]
-    static func final(forInitial jamo: Jamo) -> Jamo? { finals[jamo.scalar].map(Jamo.jong) }
-    static func initial(forFinal jamo: Jamo) -> Jamo? { finals.first { $0.value == jamo.scalar }.map { Jamo.cho($0.key) } }
+    public static func final(forInitial jamo: Jamo) -> Jamo? { finals[jamo.scalar].map(Jamo.jong) }
+    public static func initial(forFinal jamo: Jamo) -> Jamo? { finals.first { $0.value == jamo.scalar }.map { Jamo.cho($0.key) } }
 }

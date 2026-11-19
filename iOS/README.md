@@ -61,7 +61,7 @@ iOS 16 이상을 위한 SwiftUI 안내·연습 앱과 UIKit 키보드 확장입�
 
 ## Xcode Cloud
 
-`ci_scripts/ci_post_clone.sh`는 SwiftTerm 빌드 플러그인을 사용할 수 있도록 Xcode Cloud의 패키지 플러그인·매크로 지문 검증을 건너뜁니다. 프로젝트 파일은 저장소에 포함되어 있어 재생성하지 않습니다.
+`ci_scripts/ci_post_clone.sh`는 SwiftTerm 빌드 플러그인을 사용할 수 있도록 Xcode Cloud의 패키지 플러그인·매크로 지문 검증을 건너뛰고, Rust를 설치한 뒤 `scripts/build-apple-xcframework.sh`로 `seto-ffi` XCFramework와 Swift 바인딩을 만듭니다. Xcode Cloud 이미지에는 Rust가 없고, 바이너리를 저장소에 넣지 않습니다. 프로젝트 파일은 저장소에 포함되어 있어 재생성하지 않습니다. 앱과 키보드 확장은 로컬 패키지 `SetoCore`를 링크합니다.
 빌드 번호는 Xcode Cloud가 내보내기 시 덮어쓰므로 App Store Connect › Xcode Cloud › 설정(Settings) › 빌드 번호(Build Number)에서 관리합니다.
 
 ## 검증
@@ -69,6 +69,7 @@ iOS 16 이상을 위한 SwiftUI 안내·연습 앱과 UIKit 키보드 확장입�
 ```sh
 # Xcode가 활성 개발자 디렉터리가 아닌 경우 명령 앞에
 # DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer 를 붙입니다.
+./scripts/build-apple-xcframework.sh
 xcodebuild -project iOS/Sebeol390.xcodeproj -scheme Sebeol390 \
   -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
   -derivedDataPath /tmp/sebeol390-ios-build CODE_SIGNING_ALLOWED=NO build

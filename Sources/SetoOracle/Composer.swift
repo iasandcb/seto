@@ -1,4 +1,5 @@
 import Foundation
+import SetoSupport
 
 public enum CompositionPiece: Equatable, Sendable {
     case syllable

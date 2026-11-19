@@ -1,6 +1,10 @@
 import Foundation
 import Testing
+#if SETO_ORACLE
+@testable import SetoOracle
+#else
 @testable import SetoCore
+#endif
 
 @Test func unixCommandsAreInBundledLexicon() throws {
     let resources = URL(fileURLWithPath: #filePath)

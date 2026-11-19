@@ -62,7 +62,7 @@ SECTION_ORDER = [
     'PBXFileReference', 'PBXFrameworksBuildPhase', 'PBXGroup',
     'PBXNativeTarget', 'PBXProject', 'PBXResourcesBuildPhase',
     'PBXSourcesBuildPhase', 'PBXTargetDependency', 'XCBuildConfiguration',
-    'XCConfigurationList', 'XCRemoteSwiftPackageReference',
+    'XCConfigurationList',     'XCLocalSwiftPackageReference', 'XCRemoteSwiftPackageReference',
     'XCSwiftPackageProductDependency',
 ]
 KEY_ORDER = {
@@ -79,6 +79,7 @@ KEY_ORDER = {
     'PBXTargetDependency': ['isa', 'target', 'targetProxy'],
     'XCBuildConfiguration': ['isa', 'buildSettings', 'name'],
     'XCConfigurationList': ['isa', 'buildConfigurations', 'defaultConfigurationIsVisible', 'defaultConfigurationName'],
+    'XCLocalSwiftPackageReference': ['isa', 'relativePath'],
     'XCRemoteSwiftPackageReference': ['isa', 'repositoryURL', 'requirement'],
     'XCSwiftPackageProductDependency': ['isa', 'package', 'productName'],
 }
@@ -99,6 +100,7 @@ def format_project(object_values):
         if isa == 'PBXFileReference':
             labels[key] = objv.get('path', '')
         elif isa == 'XCSwiftPackageProductDependency': labels[key] = objv.get('productName', '')
+        elif isa == 'XCLocalSwiftPackageReference': labels[key] = objv.get('relativePath', '')
         elif isa == 'XCRemoteSwiftPackageReference': labels[key] = objv.get('repositoryURL', '').rsplit('/', 1)[-1].removesuffix('.git')
         elif isa == 'XCBuildConfiguration': labels[key] = objv.get('name', '')
         elif isa == 'PBXNativeTarget': labels[key] = objv.get('name', '')
@@ -127,11 +129,12 @@ def format_project(object_values):
         if isa == 'XCConfigurationList':
             target = next((x.get('name') for x in parsed.values() if x.get('isa') == 'PBXNativeTarget' and x.get('buildConfigurationList') == oid), None)
             label += ' for PBXNativeTarget "' + target + '"' if target else ' for PBXProject "Sebeol390"'
+        if isa == 'XCLocalSwiftPackageReference': label = f'XCLocalSwiftPackageReference "{labels[oid]}"'
         if isa == 'XCRemoteSwiftPackageReference': label = f'XCRemoteSwiftPackageReference "{labels[oid]}"'
         if isa == 'PBXTargetDependency': label = 'PBXTargetDependency'
         if isa == 'PBXFileReference' and label.endswith(('.txt', '.LICENSE', '.ttf')) or isa == 'PBXFileReference' and '/' in label:
             return label
-        if isa in ('PBXFileReference', 'PBXNativeTarget', 'XCSwiftPackageProductDependency', 'XCRemoteSwiftPackageReference', 'PBXGroup', 'PBXProject', 'XCBuildConfiguration'):
+        if isa in ('PBXFileReference', 'PBXNativeTarget', 'XCSwiftPackageProductDependency', 'XCLocalSwiftPackageReference', 'XCRemoteSwiftPackageReference', 'PBXGroup', 'PBXProject', 'XCBuildConfiguration'):
             return label
         return label
     def scalar(v): return openstep_quote(v)
@@ -193,13 +196,12 @@ def format_project(object_values):
     return '\n'.join(lines) + '\n'
 def file(path, kind):
     return obj(path, f'{{isa = PBXFileReference; lastKnownFileType = {kind}; path = {quote(path)}; sourceTree = SOURCE_ROOT;}}')
-core = sorted('../' + str(p.relative_to(repo)) for p in (repo / 'Sources/SetoCore').glob('*.swift'))
 resources = ['../Resources/' + name for name in ['english-words.txt', 'english-extra.txt', 'korean-words.txt', 'korean-valid.txt', 'korean-valid.LICENSE', '../LICENSE', '../NOTICE']]
 # LICENSE and NOTICE live in the repository root.
 resources = [p.replace('Resources/../', '') for p in resources]
 resources += ['App/ThirdParty/SwiftTerm-LICENSE.txt', 'App/ThirdParty/D2Coding-OFL.txt', 'App/Fonts/D2Coding-Regular.ttf', 'App/Fonts/D2Coding-Bold.ttf']
-app_sources = core + ['Shared/KeyboardSettings.swift', 'Shared/KeyboardView.swift', 'App/Sebeol390App.swift', 'App/HardwareTextEditor.swift', 'App/MarkVectorView.swift', 'App/MarkVectorLiveSync.swift', 'App/SSHTerminalView.swift', 'App/SSHServerStore.swift', 'App/SSHConnection.swift', 'App/SSHRemoteEditor.swift', 'App/TerminalInput.swift']
-keyboard_sources = core + ['Shared/KeyboardSettings.swift', 'Shared/KeyboardView.swift', 'Keyboard/KeyboardViewController.swift']
+app_sources = ['App/SetoCoreExport.swift', 'Shared/KeyboardSettings.swift', 'Shared/KeyboardView.swift', 'App/Sebeol390App.swift', 'App/HardwareTextEditor.swift', 'App/MarkVectorView.swift', 'App/MarkVectorLiveSync.swift', 'App/SSHTerminalView.swift', 'App/SSHServerStore.swift', 'App/SSHConnection.swift', 'App/SSHRemoteEditor.swift', 'App/TerminalInput.swift']
+keyboard_sources = ['Shared/KeyboardSettings.swift', 'Shared/KeyboardView.swift', 'Keyboard/KeyboardViewController.swift']
 all_files = [file(p, 'sourcecode.swift') for p in dict.fromkeys(app_sources + keyboard_sources)]
 all_files += [file(p, 'text') for p in resources]
 all_files.append(file('App/Assets.xcassets', 'folder.assetcatalog'))
@@ -227,9 +229,18 @@ for config in ['Debug', 'Release']:
     cfg = {'SDKROOT': 'iphoneos', 'IPHONEOS_DEPLOYMENT_TARGET': '16.0', 'SWIFT_VERSION': '6.0', 'CLANG_ENABLE_MODULES': 'YES', 'ONLY_ACTIVE_ARCH': 'YES' if config == 'Debug' else 'NO', 'SWIFT_OPTIMIZATION_LEVEL': '-Onone' if config == 'Debug' else '-O'}
     project_configs.append(obj('project' + config, f'{{isa = XCBuildConfiguration; name = {config}; buildSettings = {settings(cfg)};}}'))
 project_config_list = obj('project-configs', '{isa = XCConfigurationList; buildConfigurations = ' + refs(project_configs) + '; defaultConfigurationName = Release;}')
-packages = []
+local_package = obj('package-local-seto', '{isa = XCLocalSwiftPackageReference; relativePath = ..;}')
+packages = [local_package]
 package_products = []
 package_builds = []
+def seto_product(owner):
+    return obj('package-product-SetoCore-' + owner, '{isa = XCSwiftPackageProductDependency; package = ' + local_package + '; productName = SetoCore;}')
+seto_app = seto_product('app')
+seto_ext = seto_product('keyboard')
+seto_test = seto_product('test')
+seto_app_build = obj('package-build-SetoCore-app', '{isa = PBXBuildFile; productRef = ' + seto_app + ';}')
+seto_ext_build = obj('package-build-SetoCore-keyboard', '{isa = PBXBuildFile; productRef = ' + seto_ext + ';}')
+seto_test_build = obj('package-build-SetoCore-test', '{isa = PBXBuildFile; productRef = ' + seto_test + ';}')
 for package, url, revision, products_ in [
     ('SwiftTerm', 'https://github.com/migueldeicaza/SwiftTerm.git', '9eccf3548a563f6f91d8e9a06dd98db3086a68d1', ['SwiftTerm']),
     ('swift-nio-ssh', 'https://github.com/apple/swift-nio-ssh.git', 'd1985926494b624e751b379009dc83f3395fd88a', ['NIOSSH']),
@@ -251,9 +262,9 @@ for name, sources, ext in [('Sebeol390Keyboard', keyboard_sources, True), ('Sebe
     if not ext:
         resource_builds.append(obj(name + '-assets', '{isa = PBXBuildFile; fileRef = ' + ident('App/Assets.xcassets') + ';}'))
     resource_phase = obj(name + '-resources', '{isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = ' + refs(resource_builds) + '; runOnlyForDeploymentPostprocessing = 0;}')
+    linked = [seto_ext_build] if ext else package_builds + [seto_app_build]
     phases = [source_phase, resource_phase]
-    if not ext:
-        phases.append(obj('app-frameworks', '{isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ' + refs(package_builds) + '; runOnlyForDeploymentPostprocessing = 0;}'))
+    phases.append(obj(name + '-frameworks', '{isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ' + refs(linked) + '; runOnlyForDeploymentPostprocessing = 0;}'))
     dependencies = []
     if not ext:
         embed = obj('embed-build', '{isa = PBXBuildFile; fileRef = ' + ident('Sebeol390Keyboard-product') + '; settings = {ATTRIBUTES = (RemoveHeadersOnCopy,);};}')
@@ -268,7 +279,8 @@ for name, sources, ext in [('Sebeol390Keyboard', keyboard_sources, True), ('Sebe
         if not ext: cfg['ASSETCATALOG_COMPILER_APPICON_NAME'] = 'AppIcon'
         configs.append(obj(name + config, f'{{isa = XCBuildConfiguration; name = {config}; buildSettings = {settings(cfg)};}}'))
     config_list = obj(name + '-configs', '{isa = XCConfigurationList; buildConfigurations = ' + refs(configs) + '; defaultConfigurationName = Release;}')
-    targets.append(obj(name + '-target', '{isa = PBXNativeTarget; buildConfigurationList = ' + config_list + '; buildPhases = ' + refs(phases) + '; packageProductDependencies = ' + refs(package_products if not ext else []) + '; buildRules = (); dependencies = ' + refs(dependencies) + f'; name = {name}; productName = {name}; productReference = {product}; productType = "com.apple.product-type.{"app-extension" if ext else "application"}";}}'))
+    own_products = [seto_ext] if ext else package_products + [seto_app]
+    targets.append(obj(name + '-target', '{isa = PBXNativeTarget; buildConfigurationList = ' + config_list + '; buildPhases = ' + refs(phases) + '; packageProductDependencies = ' + refs(own_products) + '; buildRules = (); dependencies = ' + refs(dependencies) + f'; name = {name}; productName = {name}; productReference = {product}; productType = "com.apple.product-type.{"app-extension" if ext else "application"}";}}'))
 # Host-based UIKit tests exercise real UITextView replacement and selection.
 test_sources = ['Tests/HardwareTextEditorTests.swift', 'Tests/SSHRemoteEditorTests.swift', 'Tests/SSHServerStoreTests.swift']
 all_files += [file(source, 'sourcecode.swift') for source in test_sources]
@@ -276,6 +288,7 @@ test_product = obj('test-product', '{isa = PBXFileReference; explicitFileType = 
 products.append(test_product)
 test_builds = [obj('test-build-' + source, '{isa = PBXBuildFile; fileRef = ' + ident(source) + ';}') for source in test_sources]
 test_phase = obj('test-phase', '{isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ' + refs(test_builds) + '; runOnlyForDeploymentPostprocessing = 0;}')
+test_frameworks = obj('test-frameworks', '{isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (' + seto_test_build + ',); runOnlyForDeploymentPostprocessing = 0;}')
 test_configs = []
 for config in ['Debug', 'Release']:
     cfg = {'PRODUCT_NAME': 'Sebeol390Tests', 'PRODUCT_BUNDLE_IDENTIFIER': 'com.ias.seto.tests', 'GENERATE_INFOPLIST_FILE': 'YES', 'CODE_SIGN_STYLE': 'Automatic', 'TARGETED_DEVICE_FAMILY': '1,2', 'TEST_HOST': '$(BUILT_PRODUCTS_DIR)/Sebeol390.app/Sebeol390', 'BUNDLE_LOADER': '$(TEST_HOST)'}
@@ -284,7 +297,7 @@ for config in ['Debug', 'Release']:
 test_config_list = obj('test-configs', '{isa = XCConfigurationList; buildConfigurations = ' + refs(test_configs) + '; defaultConfigurationName = Release;}')
 test_proxy = obj('test-proxy', '{isa = PBXContainerItemProxy; containerPortal = ' + ident('project') + '; proxyType = 1; remoteGlobalIDString = ' + ident('Sebeol390-target') + '; remoteInfo = Sebeol390;}')
 test_dependency = obj('test-dependency', '{isa = PBXTargetDependency; target = ' + ident('Sebeol390-target') + '; targetProxy = ' + test_proxy + ';}')
-targets.append(obj('test-target', '{isa = PBXNativeTarget; buildConfigurationList = ' + test_config_list + '; buildPhases = (' + test_phase + ',); buildRules = (); dependencies = (' + test_dependency + ',); name = Sebeol390Tests; productName = Sebeol390Tests; productReference = ' + test_product + '; productType = "com.apple.product-type.bundle.unit-test";}'))
+targets.append(obj('test-target', '{isa = PBXNativeTarget; buildConfigurationList = ' + test_config_list + '; buildPhases = (' + test_phase + ', ' + test_frameworks + ',); packageProductDependencies = (' + seto_test + ',); buildRules = (); dependencies = (' + test_dependency + ',); name = Sebeol390Tests; productName = Sebeol390Tests; productReference = ' + test_product + '; productType = "com.apple.product-type.bundle.unit-test";}'))
 product_group = obj('products', '{isa = PBXGroup; children = ' + refs(products) + '; name = Products; sourceTree = "<group>";}')
 group = obj('main-group', '{isa = PBXGroup; children = ' + refs(all_files + [product_group]) + '; sourceTree = "<group>";}')
 obj('project', '{isa = PBXProject; attributes = {LastUpgradeCheck = 1600;}; buildConfigurationList = ' + project_config_list + '; compatibilityVersion = "Xcode 14.0"; developmentRegion = ko; knownRegions = (ko, en, Base); mainGroup = ' + group + '; productRefGroup = ' + product_group + '; packageReferences = ' + refs(packages) + '; projectDirPath = ""; projectRoot = ""; targets = ' + refs(targets) + ';}')

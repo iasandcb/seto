@@ -1,4 +1,7 @@
-//! Android-facing adapter only. All composition and language decisions stay in seto-core.
+//! FFI adapter for Android and Apple. Composition and language decisions stay in seto-core.
+//!
+//! `load_lexicon` + `FieldSession::new` is the Android process-global lexicon.
+//! `SharedLexicon` + `FieldSession::open` is a per-field lexicon for the Swift adapter.
 use seto_core::{Lexicon, Session, SessionOptions, TypoMemory};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
@@ -6,13 +9,15 @@ use std::sync::{Arc, Mutex};
 
 uniffi::setup_scaffolding!();
 
+mod apple;
+
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum EngineError {
     #[error("{detail}")]
     Failure { detail: String },
 }
-type Result<T> = std::result::Result<T, EngineError>;
-fn failure(message: impl Into<String>) -> EngineError {
+pub(crate) type Result<T> = std::result::Result<T, EngineError>;
+pub(crate) fn failure(message: impl Into<String>) -> EngineError {
     EngineError::Failure { detail: message.into() }
 }
 fn boundary<T>(f: impl FnOnce() -> Result<T>) -> Result<T> {
@@ -149,12 +154,12 @@ impl TypoMemory for CallbackMemory {
 }
 #[derive(uniffi::Object)]
 pub struct FieldSession {
-    session: Mutex<Option<Session>>,
-    memory: Arc<CallbackMemory>,
-    logger: Option<Box<dyn TypoLogger>>,
+    pub(crate) session: Mutex<Option<Session>>,
+    pub(crate) memory: Arc<CallbackMemory>,
+    pub(crate) logger: Option<Box<dyn TypoLogger>>,
 }
 impl FieldSession {
-    fn access<T>(&self, f: impl FnOnce(&mut Session) -> T) -> Result<T> {
+    pub(crate) fn access<T>(&self, f: impl FnOnce(&mut Session) -> T) -> Result<T> {
         boundary(|| {
             let result = {
                 let mut guard =
@@ -248,6 +253,33 @@ impl FieldSession {
             auto_switch: s.auto_switch,
             corrects_typos: s.corrects_typos,
         })
+    }
+
+    /// One Swift `Session`: its own lexicon, layout, and typo store.
+    /// Android keeps using [`FieldSession::new`].
+    #[uniffi::constructor]
+    pub fn open(
+        lexicon: Arc<apple::SharedLexicon>,
+        auto_switch: bool,
+        mode: Language,
+        layout: apple::LayoutKind,
+        store: Option<Box<dyn apple::TypoStore>>,
+    ) -> Arc<Self> {
+        let typos = store.map(|store| Arc::new(apple::DirectStore { store }) as Arc<dyn seto_core::TypoMemory>);
+        let session = Session::with_options(
+            lexicon.lexicon(),
+            SessionOptions { auto_switch, mode: mode.into(), typos, layout: layout.into() },
+        );
+        Arc::new(Self { session: Mutex::new(Some(session)), memory: Arc::new(CallbackMemory::default()), logger: None })
+    }
+
+    pub fn input_atom(&self, atom: apple::Atom) -> Result<SessionUpdate> {
+        let key = apple::to_key_atom(atom)?;
+        self.access(|session| session.input(key).into())
+    }
+
+    pub fn debug_line(&self) -> Result<String> {
+        self.access(|session| session.debug_line())
     }
 }
 

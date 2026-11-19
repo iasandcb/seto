@@ -1,6 +1,6 @@
 # 한/영 전환 코어
 
-이 문서는 현재 구현의 전환 흐름을 설명합니다. 핵심 로직은 `Sources/SetoCore/Session.swift`에 있고, macOS의 키 이벤트 연결은 `Sources/SetoIME/InputController.swift`가 맡습니다. iOS 앱의 하드웨어 키보드 편집기(`iOS/App/HardwareTextEditor.swift`)와 SSH 터미널 입력(`iOS/App/TerminalInput.swift`)도 같은 `Session`을 사용합니다.
+이 문서는 현재 구현의 전환 흐름을 설명합니다. macOS(`Sources/SetoIME/InputController.swift`)와 iOS 앱·키보드는 같은 Swift `Session` API를 쓰며, 그 구현은 Rust `FieldSession`(`core-rs/seto-ffi`) 위의 얇은 어댑터(`Sources/SetoCore/Engine.swift`)입니다. 조합·자동 전환·오타 교정의 Swift 원본은 `Sources/SetoOracle`에 남아 골든 코퍼스 기준입니다.
 
 ## 전환 모델
 
@@ -126,7 +126,7 @@ sequenceDiagram
 | `preedit` | 편집기가 표시하는 미확정 한글·문장 부호 조합 | `Session` |
 | `contextLanguage` | 같은 문장 안의 앞 단어 언어 | `Session` |
 | `FieldEdit` | 편집기에 전달할 삽입·교체·조합 명령 | `Session` |
-| 자동 후보 비교 | 우선 규칙, 후보 읽기, 경계, 문맥, 특수 토큰 처리 | `Session.recompute`, `selectBestPath` |
+| 자동 후보 비교 | 우선 규칙, 후보 읽기, 경계, 문맥, 특수 토큰 처리 | Rust `Session` (Swift 원본: `Sources/SetoOracle/Session.swift`) |
 | 물리 키 처리 | macOS 키 코드에서 QWERTY 문자 추출 | `Keymap`, `InputController` |
 | Shift+Space 판정 | Shift 누름 동안 다른 키 입력 여부 확인 | `ShiftSpaceToggleTracker` |
 | 키별 한글 읽기 | 선택 자판의 한글·영문 `KeyAtom` 생성 | `KeyboardLayout`, `Layout390`, `LayoutDubeol`, `LayoutFinal` |

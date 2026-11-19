@@ -1,4 +1,5 @@
 import Foundation
+import SetoCore
 
 /// Unsent text only: the remote application never receives composition rewrites.
 final class TerminalInput {

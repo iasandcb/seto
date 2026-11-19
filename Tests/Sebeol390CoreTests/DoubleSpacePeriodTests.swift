@@ -1,6 +1,10 @@
 import Foundation
 import Testing
+#if SETO_ORACLE
+@testable import SetoOracle
+#else
 @testable import SetoCore
+#endif
 
 @Test func convertsAnEligibleSecondSpaceWithinFourTenthsOfASecond() {
     let first = Date(timeIntervalSince1970: 100)

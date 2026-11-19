@@ -1,3 +1,4 @@
+import SetoCore
 import XCTest
 import WebKit
 @testable import Sebeol390

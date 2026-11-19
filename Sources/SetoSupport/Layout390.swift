@@ -11,6 +11,14 @@ public struct KeyAtom: Equatable, Sendable {
     public var english: Character
     public var korean: KeyOutput
 
+    /// Memberwise initializers are internal unless declared. The touch keyboard
+    /// builds plain QWERTY atoms from another module.
+    public init(layout: KeyboardLayout = .sebeol390, english: Character, korean: KeyOutput) {
+        self.layout = layout
+        self.english = english
+        self.korean = korean
+    }
+
     public var isNeutralBreaker: Bool {
         guard case .character(let koreanChar) = korean, koreanChar == english else { return false }
         if koreanChar.isLetter || koreanChar.isNumber { return false }

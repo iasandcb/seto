@@ -6,25 +6,26 @@
 //     SETO_GOLDEN_DUMP=1 swift test --filter SetoGoldenDump
 //
 // The other files in this directory are symlinks to the real test files.
-// Inside this module, `Session` and `Lexicon` below shadow the SetoCore types:
-// each wrapper forwards every call to the real `SetoCore.Session` /
-// `SetoCore.Lexicon` and records the key, the returned `SessionUpdate`, and
-// the session state after it. SetoCore itself is not changed.
+// Inside this module, `Session` and `Lexicon` below shadow the oracle types:
+// each wrapper forwards every call to the real `SetoOracle.Session` /
+// `SetoSupport.Lexicon` and records the key, the returned `SessionUpdate`, and
+// the session state after it. The Swift oracle is not changed.
 //
 // Output: core-rs/testdata/session-golden.json (override with SETO_GOLDEN_OUT).
 
 import Foundation
+import SetoSupport
 import Testing
-@testable import SetoCore
+@testable import SetoOracle
 
 // MARK: - Shadow Lexicon
 
 /// Records how the lexicon was built so a replay can rebuild the same one.
 final class Lexicon: @unchecked Sendable {
-    let real: SetoCore.Lexicon
+    let real: SetoSupport.Lexicon
     let spec: GoldenLexicon
 
-    private init(real: SetoCore.Lexicon, spec: GoldenLexicon) {
+    private init(real: SetoSupport.Lexicon, spec: GoldenLexicon) {
         self.real = real
         self.spec = spec
     }
@@ -37,7 +38,7 @@ final class Lexicon: @unchecked Sendable {
         validKorean: [String] = []
     ) {
         self.init(
-            real: SetoCore.Lexicon(english: english, korean: korean, abbreviations: abbreviations,
+            real: SetoSupport.Lexicon(english: english, korean: korean, abbreviations: abbreviations,
                                    techStems: techStems, validKorean: validKorean),
             spec: GoldenLexicon(kind: "words", english: english, korean: korean,
                                 abbreviations: abbreviations, techStems: techStems, validKorean: validKorean)
@@ -45,15 +46,15 @@ final class Lexicon: @unchecked Sendable {
     }
 
     static func load(from directory: URL) throws -> Lexicon {
-        Lexicon(real: try SetoCore.Lexicon.load(from: directory), spec: GoldenLexicon(kind: "resources"))
+        Lexicon(real: try SetoSupport.Lexicon.load(from: directory), spec: GoldenLexicon(kind: "resources"))
     }
 
     static func loadForKeyboard(from directory: URL) throws -> Lexicon {
-        Lexicon(real: try SetoCore.Lexicon.loadForKeyboard(from: directory), spec: GoldenLexicon(kind: "keyboard"))
+        Lexicon(real: try SetoSupport.Lexicon.loadForKeyboard(from: directory), spec: GoldenLexicon(kind: "keyboard"))
     }
 
-    static var defaultAbbreviations: [String] { SetoCore.Lexicon.defaultAbbreviations }
-    static var defaultTechStems: [String] { SetoCore.Lexicon.defaultTechStems }
+    static var defaultAbbreviations: [String] { SetoSupport.Lexicon.defaultAbbreviations }
+    static var defaultTechStems: [String] { SetoSupport.Lexicon.defaultTechStems }
 
     func isEnglishWord(_ word: String) -> Bool { real.isEnglishWord(word) }
     func isEnglishPrefix(_ prefix: String) -> Bool { real.isEnglishPrefix(prefix) }
@@ -78,9 +79,9 @@ extension TypoCorrector {
 
 // MARK: - Shadow Session
 
-/// Forwards to `SetoCore.Session` and records one golden step per call.
+/// Forwards to `SetoOracle.Session` and records one golden step per call.
 final class Session {
-    private let real: SetoCore.Session
+    private let real: SetoOracle.Session
     private let scenario: GoldenScenario
 
     init(
@@ -105,7 +106,7 @@ final class Session {
         )
         self.scenario = scenario
         let proxy = typos.map { RecordingTypos(inner: $0, scenario: scenario) }
-        real = SetoCore.Session(lexicon: lexicon.real, autoSwitch: autoSwitch, mode: mode, typos: proxy, layout: layout)
+        real = SetoOracle.Session(lexicon: lexicon.real, autoSwitch: autoSwitch, mode: mode, typos: proxy, layout: layout)
     }
 
     var layout: KeyboardLayout { real.layout }
@@ -163,7 +164,7 @@ final class Session {
         perform(GoldenEvent(type: "discard")) { $0.discard() }
     }
 
-    private func perform(_ event: GoldenEvent, _ body: (SetoCore.Session) -> SessionUpdate) -> SessionUpdate {
+    private func perform(_ event: GoldenEvent, _ body: (SetoOracle.Session) -> SessionUpdate) -> SessionUpdate {
         scenario.beginStep()
         let update = body(real)
         scenario.record(event, update: update, session: real)
@@ -368,7 +369,7 @@ final class GoldenScenario: @unchecked Sendable {
         pendingTypoRecords = []
     }
 
-    func record(_ event: GoldenEvent, update: SessionUpdate?, session: SetoCore.Session) {
+    func record(_ event: GoldenEvent, update: SessionUpdate?, session: SetoOracle.Session) {
         steps.append(GoldenStep(
             event: event,
             update: update.map {
