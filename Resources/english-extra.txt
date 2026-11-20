@@ -96,6 +96,7 @@ gcp
 azure
 kubectl
 kubernetes
+ansible
 ktx
 srt
 mvp

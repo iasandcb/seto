@@ -892,6 +892,15 @@ impl Session {
             return self.install_reading(korean, previous);
         }
 
+        // "ansible" is absent from Webster, so it is not a prefix either.
+        // 두벌식 keeps the leading syllable 무 and spells the tail with short
+        // English hits (sib, le) → 무sible. `splunk` does the same (네lunk).
+        // A letter run that starts with that fragment stays Latin. An English
+        // word plus a particle (`api는`) is a different split and stays.
+        if self.prefers_latin_over_mixed_hangul(word_final) {
+            return self.install_reading(english, previous);
+        }
+
         self.select_best_path(previous, word_final)
     }
 
@@ -1347,6 +1356,68 @@ impl Session {
             !(pair[0].lang == Language::Korean || pair[1].lang == Language::Korean)
                 || self.preserves_composition_at(pair[1].start)
         })
+    }
+
+    /// A scored path glued a short Hangul fragment onto Latin letters.
+    /// `무` + `sible` and `ansib` + `져` are that shape. A particle
+    /// (`github에서`) or a multi-syllable Korean word stays Hangul.
+    fn prefers_latin_over_mixed_hangul(&self, word_final: bool) -> bool {
+        let spelling = self.english_text(0, self.keys.len());
+        let lower = spelling.to_lowercase();
+        if lower.chars().count() < 5 || !lower.chars().all(char::is_alphabetic) || !has_vowel(&lower) {
+            return false;
+        }
+        let korean_text = compose(&self.keys).text;
+        if self.lexicon.is_korean_word(&korean_text)
+            || self.lexicon.is_valid_korean(&korean_text)
+            || is_common_polite_yo(&korean_text)
+        {
+            return false;
+        }
+        // 수ㅗ / 수ㅗㄱ already returned above when this is reached from
+        // select_reading. The check also covers a direct call.
+        if self.prefers_hangul_with_orphan_vowels() {
+            return false;
+        }
+        if self.unwanted_hangul_latin_mix(&self.best_path(word_final).unwrap_or_default()) {
+            return true;
+        }
+        // At a boundary, prefix scores drop, so `lunk` may no longer justify
+        // the mix and the fallback would commit the Hangul fragment. The
+        // in-progress segmentation is the same token.
+        word_final && self.unwanted_hangul_latin_mix(&self.best_path(false).unwrap_or_default())
+    }
+
+    fn unwanted_hangul_latin_mix(&self, parts: &[Segment]) -> bool {
+        if parts.len() < 2 {
+            return false;
+        }
+        // Only a Hangul fragment in front of Latin (`무` + `sible`, `네` +
+        // `lunk`). An English word followed by a particle (`api는`,
+        // `github에서`) starts with Latin and must keep that split, including
+        // while the particle is still one jamo short (`api느`, `github엣`).
+        if parts[0].lang != Language::Korean {
+            return false;
+        }
+        let english_keys: usize =
+            parts.iter().filter(|part| part.lang == Language::English).map(|part| part.end - part.start).sum();
+        if english_keys < 2 {
+            return false;
+        }
+        parts
+            .iter()
+            .filter(|part| part.lang == Language::Korean)
+            .all(|part| !self.korean_reading_should_stay(part.start, part.end))
+    }
+
+    /// Particles and multi-syllable dictionary words are intentional Hangul.
+    /// One syllable (`무`, `유`, `져`) is how a Latin token gets stuck.
+    fn korean_reading_should_stay(&self, start: usize, end: usize) -> bool {
+        let text = compose(&self.keys[start..end]).text;
+        if is_particle(&text) {
+            return true;
+        }
+        text.chars().count() >= 2 && (self.lexicon.is_korean_word(&text) || self.lexicon.is_valid_korean(&text))
     }
 
     /// Syllables plus a vowel that could not join, optionally with the next
