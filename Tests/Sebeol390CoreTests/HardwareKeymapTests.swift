@@ -1,9 +1,5 @@
 import Testing
-#if SETO_ORACLE
-@testable import SetoOracle
-#else
 @testable import SetoCore
-#endif
 
 @Test func hardwareUsesPhysicalQwertyPositions() {
     for (offset, key) in "abcdefghijklmnopqrstuvwxyz".enumerated() {

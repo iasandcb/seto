@@ -1,6 +1,6 @@
 //! Mirrors Tests/Sebeol390CoreTests/KeyboardReplacementTests.swift. The
-//! session replay uses the documents the Swift Session produced for the same
-//! keys, recorded in testdata/session-golden.json.
+//! session replay uses the documents recorded for the same keys in
+//! testdata/session-golden.json.
 
 mod common;
 

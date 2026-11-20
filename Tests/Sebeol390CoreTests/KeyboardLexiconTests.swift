@@ -1,10 +1,6 @@
 import Foundation
 import Testing
-#if SETO_ORACLE
-@testable import SetoOracle
-#else
 @testable import SetoCore
-#endif
 
 @Test func mappedKeyboardLexiconMatchesDesktop() throws {
     let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()

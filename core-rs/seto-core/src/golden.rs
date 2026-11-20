@@ -1,6 +1,6 @@
-//! Schema of `core-rs/testdata/session-golden.json`, written by the Swift
-//! dumper in `Tests/SetoGoldenDump`. Each scenario is one real Swift `Session`
-//! driven by a SetoCore test, recorded call by call.
+//! Schema of `core-rs/testdata/session-golden.json`. Each scenario is one
+//! session driven by a SetoCore test, recorded call by call. The file is a
+//! checked-in expectation; replay it with `cargo test --test golden_replay`.
 
 use serde::{Deserialize, Serialize};
 
@@ -37,7 +37,7 @@ pub struct GoldenScenario {
     /// Other test sessions that recorded exactly the same config and steps.
     #[serde(default)]
     pub aliases: Vec<String>,
-    /// Where the Swift `Session` was created (`File.swift:line`).
+    /// Source location recorded with the scenario (`File.swift:line`).
     pub source: String,
     /// Human-readable key line: ⌫ backspace, ⇧ toggle, ⇥ commit, ↵ newline.
     pub keys: String,

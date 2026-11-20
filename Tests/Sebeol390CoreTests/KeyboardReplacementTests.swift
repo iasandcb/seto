@@ -1,9 +1,5 @@
 import Testing
-#if SETO_ORACLE
-@testable import SetoOracle
-#else
 @testable import SetoCore
-#endif
 
 @Test func keyboardReplacementUsesGraphemes() {
     let change = KeyboardReplacement.between("가족 👨‍👩‍👧‍👦가", "가족 👨‍👩‍👧‍👦각")

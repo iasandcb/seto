@@ -6,7 +6,7 @@ Shift+Space toggles only if no other key was typed during that Shift hold;
 autorepeat does not toggle again. Password/raw fields pass through on a hardware
 keyboard and, on the soft keyboard, insert the visible character directly.
 Navigation, Enter, Tab and shortcuts commit the displayed composition and pass
-through, as in the desktop oracle.
+through, as on the desktop.
 
 The soft keyboard follows the iOS touch keyboard: number row, QWERTY letters,
 a nine-key home row inset like iOS, Shift and backspace around `zxcvbnm`, and
@@ -35,15 +35,13 @@ visibility depends on the device's system status bar. There is no launcher activ
 The on-screen keyboard is a separate window and is hidden while a hardware
 keyboard is the active input.
 
-The `jj` follow-up exposed a shared Swift/Rust core issue, rather than an Android
-key or commit bug: `ㅇㅇ` was already a recognized chat reaction, but `jj` is also
-a prefix of the bundled English entry `jjs`. English-prefix preference masked
-the reaction before it could be selected. Both cores now let that existing
-reaction outrank the prefix. Complete words (`jjs`), uppercase input, manual
-English mode, and period/domain handling retain their existing behavior.
-Regression tests cover open `jj`, space/newline boundaries, and Rust with both
-the desktop and Android keyboard lexicons. Swift core changes were necessary
-because the new oracle test reproduced the same failure there.
+The `jj` follow-up was a core issue, rather than an Android key or commit bug:
+`ㅇㅇ` was already a recognized chat reaction, but `jj` is also a prefix of the
+bundled English entry `jjs`. English-prefix preference masked the reaction
+before it could be selected. That reaction now outranks the prefix. Complete
+words (`jjs`), uppercase input, manual English mode, and period/domain handling
+retain their existing behavior. Regression tests cover open `jj`, space/newline
+boundaries, and both the desktop and Android keyboard lexicons.
 
 ## Build
 

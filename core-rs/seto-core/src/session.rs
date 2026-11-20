@@ -1,8 +1,7 @@
-//! Port of `Sources/SetoCore/Session.swift`.
+//! Korean/English session: composition, auto-switch, and typo correction.
 //!
-//! The Swift `Session` is the oracle: every rule below is kept in the same
-//! order and with the same conditions, and `tests/golden_replay.rs` replays
-//! the recorded Swift sessions against this one, call by call.
+//! `tests/golden_replay.rs` replays the checked-in session corpus against
+//! this implementation, call by call.
 //!
 //! Swift `Character` properties map to `char` as follows: `isLetter` is
 //! `is_alphabetic`, `isNumber` is `is_numeric`, `isUppercase` /

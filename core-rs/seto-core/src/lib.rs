@@ -1,11 +1,10 @@
 //! Shared core of Seto, a Sebeolsik 390 input method with Korean/English
 //! auto-switching.
 //!
-//! A port of `Sources/SetoCore` (the Swift oracle): Hangul jamo, the
-//! composer, the 390 / 최종 / 두벌식 layouts and key maps, the lexicon, the
-//! Shift+Space tracker, and (phase 2) [`Session`] with [`TypoCorrector`] and
-//! the typo memory it logs to. [`golden`] describes the corpus recorded from
-//! the Swift `Session`; `tests/golden_replay.rs` replays it against this one.
+//! Hangul jamo, the composer, the 390 / 최종 / 두벌식 layouts and key maps,
+//! the lexicon, the Shift+Space tracker, and [`Session`] with [`TypoCorrector`]
+//! and the typo memory it logs to. [`golden`] describes the checked-in session
+//! corpus; `tests/golden_replay.rs` replays it against this `Session`.
 
 pub mod composer;
 pub mod golden;

@@ -1,5 +1,5 @@
 {
-"generator": "Tests/SetoGoldenDump (SETO_GOLDEN_DUMP=1 swift test --filter SetoGoldenDump)",
+"generator": "checked-in session corpus",
 "schema": 1,
 "sampled": [{"kept":498,"recorded":47003,"stride":95,"test":"SessionTests/commonEnglishWordsDoNotFlipMidWord()"},{"kept":483,"recorded":20097,"stride":41,"test":"SessionTests/dictionaryWordsAreNotAutoCorrected()"},{"kept":480,"recorded":13860,"stride":28,"test":"SessionTests/koreanWordsStayKoreanBeforeParticles()"}],
 "scenarioCount": 3654,

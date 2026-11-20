@@ -62,7 +62,7 @@ pub fn golden() -> &'static seto_core::golden::GoldenFile {
     static GOLDEN: OnceLock<seto_core::golden::GoldenFile> = OnceLock::new();
     GOLDEN.get_or_init(|| {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../testdata/session-golden.json");
-        let text = std::fs::read_to_string(&path).expect("golden corpus; run the Swift dumper");
+        let text = std::fs::read_to_string(&path).expect("golden corpus testdata/session-golden.json");
         serde_json::from_str(&text).expect("golden corpus matches the Rust schema")
     })
 }

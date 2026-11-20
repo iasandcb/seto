@@ -1,10 +1,6 @@
 import Foundation
 import Testing
-#if SETO_ORACLE
-@testable import SetoOracle
-#else
 @testable import SetoCore
-#endif
 
 @Test func typingStatisticsCountKeysAndPersistAcrossControllers() throws {
     let suite = "Sebeol390.TypingStatisticsTests.\(UUID())"
