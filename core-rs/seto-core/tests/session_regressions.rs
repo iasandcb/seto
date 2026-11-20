@@ -213,6 +213,53 @@ fn sody_and_common_yo_forms_beat_obscure_english() {
     }
 }
 
+/// `e2e` is end-to-end. On 390 the keys are bare jamo ㅕㅆㅕ (ㅕ, ㅆ, ㅕ), not a
+/// syllable, so Hangul mode used to keep that reading. The same letter-2-letter
+/// shape (`b2b`, `p2p`, `b2c`) is an alphanumeric token. A vowel-row digit can
+/// still be a real syllable (`k8s`), and `kvaj5` is still 공유.
+#[test]
+fn e2e_in_hangul_mode() {
+    let lexicons = [
+        Arc::new(Lexicon::load(&common::resources()).unwrap()),
+        Arc::new(
+            Lexicon::load_for_keyboard_files(
+                &common::keyboard_resources().join("keyboard-english.txt"),
+                &common::keyboard_resources().join("keyboard-korean-valid.txt"),
+                &common::resources().join("korean-words.txt"),
+            )
+            .unwrap(),
+        ),
+    ];
+    for lexicon in &lexicons {
+        for token in ["e2e", "b2b", "p2p", "b2c", "c2c"] {
+            assert!(lexicon.is_code_token(token), "{token}");
+        }
+        assert!(!lexicon.is_code_token("k8s"));
+        assert!(!lexicon.is_code_token("v2a"));
+        for layout in [KeyboardLayout::Sebeol390, KeyboardLayout::SebeolFinal, KeyboardLayout::Dubeol] {
+            for mode in [Language::Korean, Language::English] {
+                for token in ["e2e", "b2b", "p2p", "b2c"] {
+                    let (document, _) = type_on(lexicon, layout, mode, token);
+                    assert_eq!(document, token, "{layout:?} {mode:?} {token}");
+                    let keys = format!("{token} ");
+                    let (document, mode_after) = type_on(lexicon, layout, mode, &keys);
+                    assert_eq!(document, keys, "{layout:?} {mode:?} {token}");
+                    assert_eq!(mode_after, Language::English, "{layout:?} {mode:?} {token}");
+                }
+            }
+            // `2` is also ㅆ on 390/최종. `r2h` is the vowel and batchim of 했
+            // plus the next choseong, so that slice must not turn deploy했ㄴ
+            // into Latin. Two-set input spells 했 with different keys.
+            if layout != KeyboardLayout::Dubeol {
+                let (document, mode_after) = type_on(lexicon, layout, Language::Korean, "deploymr2h");
+                assert_eq!(document, "deploy했ㄴ", "{layout:?} {mode_after:?}");
+                let (document, _) = type_on(lexicon, layout, Language::Korean, "deploymr2hgsuc");
+                assert_eq!(document, "deploy했는데", "{layout:?}");
+            }
+        }
+    }
+}
+
 /// `an` is the syllable 무 on 두벌식, and `le` is 져 on 390. Without this,
 /// scoring keeps that syllable and spells the rest with short English hits
 /// (무sible, ansib져). The same split hits other unlisted tech words.

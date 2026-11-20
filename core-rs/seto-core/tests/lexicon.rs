@@ -84,11 +84,15 @@ fn session_tests_lexicon_facts() {
 #[test]
 fn code_tokens_and_abbreviations() {
     let lexicon = desktop_lexicon();
-    for token in ["v2", "V10", "utf8", "mp3", "html5", "page2", "i18n", "a11y", "b12c"] {
+    for token in
+        ["v2", "V10", "utf8", "mp3", "html5", "page2", "i18n", "a11y", "b12c", "e2e", "E2E", "b2b", "p2p", "b2c"]
+    {
         assert!(lexicon.is_code_token(token), "{token}");
     }
     // One letter plus one digit is the middle of a syllable (r2 in 했).
-    for token in ["r2", "x", "v", "abc", "2v", "mr2", "ab12c", "i1n", "v2a", "bcd3", "k8s"] {
+    // A vowel digit (`k8s`) or any digit other than the "to" infix 2 (`i1n`)
+    // is not this token, and neither is a letter glued onto a version (`v2a`).
+    for token in ["r2", "x", "v", "abc", "2v", "mr2", "ab12c", "i1n", "v2a", "bcd3", "k8s", "e2", "e2ee", "2e2"] {
         assert!(!lexicon.is_code_token(token), "{token}");
     }
     assert!(lexicon.is_abbreviation("AI"));

@@ -1236,7 +1236,23 @@ impl Session {
         let lower = text.to_lowercase();
         if self.lexicon.is_code_token(text) {
             let strong = count >= 4 || lower.starts_with('v');
-            return quality(if strong { 210 } else { 96 }, strong);
+            // `e2e` / `b2b` / `p2p` are real tokens, but the same three-key
+            // shape is the vowel, ㅆ, and the next choseong of a syllable
+            // (`r2h` inside 했ㄴ). A full code-token score lets that slice
+            // replace the Hangul. Keep the token only strong enough to beat
+            // a reading that is not a syllable.
+            let letter_to_letter = count == 3
+                && lower.as_bytes().first().is_some_and(u8::is_ascii_lowercase)
+                && lower.as_bytes().get(1) == Some(&b'2')
+                && lower.as_bytes().get(2).is_some_and(u8::is_ascii_lowercase);
+            let score = if strong {
+                210
+            } else if letter_to_letter {
+                24
+            } else {
+                96
+            };
+            return quality(score, strong);
         }
         if text.chars().all(char::is_numeric) {
             // One number-row key is a jamo ("2" is ㅆ). A run of them ("2024")

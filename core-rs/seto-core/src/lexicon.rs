@@ -393,8 +393,13 @@ impl Lexicon {
         self.abbreviations.contains(text)
     }
 
-    /// v2, utf8, mp3, i18n, a11y. The number row is jamo on 390, so a single
+    /// v2, utf8, mp3, i18n, a11y, e2e. The number row is jamo on 390, so a single
     /// letter plus one digit ("r2", the middle of 했) is not a version token.
+    /// One letter, the digit 2, and one letter (`e2e`, `b2b`, `p2p`) is: `2` is
+    /// jongseong ㅆ, and a syllable's vowel would have to be that middle key, so
+    /// the shape never composes Hangul. A different single digit can (`k8s` is
+    /// ㄱ+ㅢ+ㄴ, `i1n` stays bare jamo inside a word). A letter after a version
+    /// (`v2a`) is not a token either.
     pub fn is_code_token(&self, text: &str) -> bool {
         let lower = text.to_lowercase();
         let bytes = lower.as_bytes();
@@ -411,6 +416,16 @@ impl Lexicon {
             if stem.bytes().any(|b| b"aeiou".contains(&b)) || self.tech_stems.contains(stem) {
                 return true;
             }
+        }
+        // ^[a-z]2[a-z]$ except v2x. See the comment above.
+        if letters == 1
+            && digits == 1
+            && bytes[0] != b'v'
+            && bytes[1] == b'2'
+            && rest.len() == 1
+            && rest[0].is_ascii_lowercase()
+        {
+            return true;
         }
         // ^[a-z]\d{2,}[a-z]+$
         letters == 1 && digits >= 2 && !rest.is_empty() && rest.iter().all(u8::is_ascii_lowercase)
