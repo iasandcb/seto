@@ -1,4 +1,4 @@
-//! Checks the Swift golden corpus (testdata/session-golden.json): it parses
+//! Checks the session corpus (testdata/session-golden.json): it parses
 //! into the shared Rust schema, its key atoms match the Rust layouts, and its
 //! FieldEdits (UTF-16 spans) rebuild every recorded document.
 

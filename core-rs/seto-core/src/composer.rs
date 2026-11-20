@@ -1,4 +1,4 @@
-//! Port of `Sources/SetoCore/Composer.swift`.
+//! Hangul composition from 390, 최종, and 두벌식 key atoms.
 
 use crate::hangul::{self, Jamo, JamoKind};
 use crate::layout::{KeyAtom, KeyOutput, dubeol};

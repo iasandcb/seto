@@ -1,10 +1,6 @@
 import Foundation
 import Testing
-#if SETO_ORACLE
-@testable import SetoOracle
-#else
 @testable import SetoCore
-#endif
 
 private func isolatedStore(capacity: Int = LearnedWords.defaultCapacity) throws -> (LearnedWords, UserDefaults, String) {
     let suite = "Sebeol390.LearnedWords.\(UUID())"

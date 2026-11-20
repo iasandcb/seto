@@ -1,10 +1,6 @@
 import Foundation
 import Testing
-#if SETO_ORACLE
-@testable import SetoOracle
-#else
 @testable import SetoCore
-#endif
 
 @Test func suggestionsCompleteOpenKoreanSyllablesAndCorrectTypos() {
     let engine = WordSuggestions(lexicon: Lexicon(english: [], korean: ["안녕", "안녕하세요", "가방", "감사합니다"]))

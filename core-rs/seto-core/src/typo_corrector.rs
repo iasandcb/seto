@@ -1,4 +1,4 @@
-//! Port of `Sources/SetoCore/TypoCorrector.swift`.
+//! One-key typo correction of a finished word against the lexicon.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;

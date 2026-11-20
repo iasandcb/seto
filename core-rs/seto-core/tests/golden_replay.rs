@@ -1,5 +1,5 @@
 //! Replay every golden keystroke against the Rust `Session`, and compare
-//! document, mode, preedit, and FieldEdit to the Swift recording.
+//! document, mode, preedit, and FieldEdit to the checked-in corpus.
 
 mod common;
 

@@ -1,8 +1,7 @@
 # seto-core (Rust)
 
-Shared core of Seto. `Sources/SetoOracle` is the Swift oracle used only to
-regenerate the golden corpus. macOS and iOS call this crate through
-`seto-ffi`'s `FieldSession` (`scripts/build-apple-xcframework.sh`).
+Shared core of Seto. macOS and iOS call this crate through `seto-ffi`'s
+`FieldSession` (`scripts/build-apple-xcframework.sh`).
 
 Phase 2 (this crate today): everything in phase 1, plus `Session`,
 `TypoCorrector`, and typo memory/policy (`TypoMemory`, `MemoryTypos`,
@@ -27,22 +26,16 @@ lists are memory-mapped from files already in the repository:
 
 ## Golden corpus
 
-`testdata/session-golden.json` records the real Swift `Session`, call by call,
-for every Session-driving test in `SessionTests.swift`,
+`testdata/session-golden.json` is a checked-in expectation of `Session`, call
+by call, for the Session-driving tests in `SessionTests.swift`,
 `TransitionCorpusTests.swift`, `DubeolTests.swift`, `KeyboardLayoutTests.swift`,
 `KeyboardReplacementTests.swift` and `HardwareKeymapTests.swift`. The schema is
 `seto_core::golden`; every `FieldEdit` span is in UTF-16 code units.
 
-Regenerate it from the repository root (the dump target is only part of the
-package when the variable is set, so a plain `swift test` never rewrites it):
-
-```sh
-SETO_GOLDEN_DUMP=1 swift test --filter SetoGoldenDump
-```
-
 The three dictionary sweeps (`commonEnglishWordsDoNotFlipMidWord`,
 `dictionaryWordsAreNotAutoCorrected`, `koreanWordsStayKoreanBeforeParticles`)
 are sampled to about 500 sessions each by content hash; the file header lists
-them. `SETO_GOLDEN_FULL=1` keeps every session (about 110 MB).
+them.
 
 `cargo test --test golden_replay` replays the corpus against the Rust `Session`.
+Swift tests in `Tests/Sebeol390CoreTests` call the same core through `SetoCore`.

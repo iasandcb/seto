@@ -1,10 +1,6 @@
 import Foundation
 import Testing
-#if SETO_ORACLE
-@testable import SetoOracle
-#else
 @testable import SetoCore
-#endif
 
 private let endingLexicon: Lexicon = {
     let root = URL(fileURLWithPath: #filePath)

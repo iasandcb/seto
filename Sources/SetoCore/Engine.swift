@@ -76,7 +76,7 @@ public struct Composition: Equatable, Sendable {
     }
 }
 
-/// Rust `Composer`. The Swift implementation remains in `SetoOracle` for the golden dump.
+/// Rust `Composer`.
 public enum Composer {
     static func preservesBoundary(_ index: Int, in atoms: [KeyAtom]) -> Bool {
         let value = UInt32(exactly: index) ?? 0
