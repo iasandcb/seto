@@ -18255,6 +18255,8 @@ anserines
 anserous
 anserouses
 ansers
+ansible
+ansibles
 anspessade
 anspessades
 ansu

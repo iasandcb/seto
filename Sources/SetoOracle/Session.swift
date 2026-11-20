@@ -611,6 +611,16 @@ public final class Session {
             return installReading(korean, previous: previous)
         }
 
+        // "ansible" is absent from Webster, so it is not a prefix either.
+        // 두벌식 keeps the leading syllable 무 and spells the tail with short
+        // English hits (sib, le) → 무sible. `splunk` does the same (네lunk).
+        // A letter run that starts with that fragment stays Latin. An English
+        // word plus a particle (`api는`) is a different split and stays.
+        if prefersLatinOverMixedHangul(wordFinal: wordFinal) {
+            let english = [Segment(start: 0, end: keys.count, lang: .english)]
+            return installReading(english, previous: previous)
+        }
+
         return selectBestPath(previous: previous, wordFinal: wordFinal)
     }
 
@@ -978,6 +988,48 @@ public final class Session {
                !preservesComposition(at: parts[index].start) { return false }
         }
         return true
+    }
+
+    /// A scored path glued a short Hangul fragment onto Latin letters.
+    /// `무` + `sible` and `ansib` + `져` are that shape. A particle
+    /// (`github에서`) or a multi-syllable Korean word stays Hangul.
+    private func prefersLatinOverMixedHangul(wordFinal: Bool) -> Bool {
+        let spelling = englishText(0..<keys.count)
+        let lower = spelling.lowercased()
+        guard lower.count >= 5, lower.allSatisfy(\.isLetter), lower.contains(where: { "aeiou".contains($0) }) else {
+            return false
+        }
+        let koreanText = Composer.compose(keys).text
+        if lexicon.isKoreanWord(koreanText) || lexicon.isValidKorean(koreanText) || Self.commonPoliteYo.contains(koreanText) {
+            return false
+        }
+        // 수ㅗ / 수ㅗㄱ already returned above when this is reached from
+        // selectReading. The check also covers a direct call.
+        if prefersHangulWithOrphanVowels() { return false }
+        if unwantedHangulLatinMix(bestPath(wordFinal: wordFinal) ?? []) { return true }
+        // At a boundary, prefix scores drop, so `lunk` may no longer justify
+        // the mix and the fallback would commit the Hangul fragment. The
+        // in-progress segmentation is the same token.
+        return wordFinal && unwantedHangulLatinMix(bestPath(wordFinal: false) ?? [])
+    }
+
+    private func unwantedHangulLatinMix(_ parts: [Segment]) -> Bool {
+        guard parts.count >= 2, parts[0].lang == .korean else { return false }
+        // Only a Hangul fragment in front of Latin (`무` + `sible`, `네` +
+        // `lunk`). An English word followed by a particle (`api는`,
+        // `github에서`) starts with Latin and must keep that split, including
+        // while the particle is still one jamo short (`api느`, `github엣`).
+        let englishKeys = parts.filter { $0.lang == .english }.reduce(0) { $0 + ($1.end - $1.start) }
+        guard englishKeys >= 2 else { return false }
+        return parts.filter { $0.lang == .korean }.allSatisfy { !koreanReadingShouldStay($0.start, $0.end) }
+    }
+
+    /// Particles and multi-syllable dictionary words are intentional Hangul.
+    /// One syllable (`무`, `유`, `져`) is how a Latin token gets stuck.
+    private func koreanReadingShouldStay(_ start: Int, _ end: Int) -> Bool {
+        let text = Composer.compose(keys[start..<end]).text
+        if Self.particles.contains(text) { return true }
+        return text.count >= 2 && (lexicon.isKoreanWord(text) || lexicon.isValidKorean(text))
     }
 
     /// Syllables plus a vowel that could not join, optionally with the next

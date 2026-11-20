@@ -212,3 +212,45 @@ fn sody_and_common_yo_forms_beat_obscure_english() {
         }
     }
 }
+
+/// `an` is the syllable 무 on 두벌식, and `le` is 져 on 390. Without this,
+/// scoring keeps that syllable and spells the rest with short English hits
+/// (무sible, ansib져). The same split hits other unlisted tech words.
+#[test]
+fn ansible_stays_english() {
+    let lexicons = [
+        Arc::new(Lexicon::load(&common::resources()).unwrap()),
+        Arc::new(
+            Lexicon::load_for_keyboard_files(
+                &common::keyboard_resources().join("keyboard-english.txt"),
+                &common::keyboard_resources().join("keyboard-korean-valid.txt"),
+                &common::resources().join("korean-words.txt"),
+            )
+            .unwrap(),
+        ),
+    ];
+    for lexicon in &lexicons {
+        assert!(lexicon.is_english_word("ansible"));
+        assert!(lexicon.is_english_prefix("ansi"));
+        assert!(!lexicon.is_english_word("splunk"));
+        for layout in [KeyboardLayout::Dubeol, KeyboardLayout::Sebeol390, KeyboardLayout::SebeolFinal] {
+            for mode in [Language::Korean, Language::English] {
+                for suffix in ["", " "] {
+                    let keys = format!("ansible{suffix}");
+                    let (document, mode_after) = type_on(lexicon, layout, mode, &keys);
+                    assert_eq!(document, keys, "{layout:?} {mode:?}");
+                    if suffix == " " {
+                        assert_eq!(mode_after, Language::English, "{layout:?} {mode:?}");
+                    }
+                }
+                // Leading syllable 네, then Latin `lunk`. Not a dictionary word, so
+                // this is the same split as ansible rather than the word list.
+                // 390 `splunk` is only bare jamo and stays Korean.
+                if layout == KeyboardLayout::Dubeol {
+                    let (document, _) = type_on(lexicon, layout, mode, "splunk ");
+                    assert_eq!(document, "splunk ", "{mode:?}");
+                }
+            }
+        }
+    }
+}

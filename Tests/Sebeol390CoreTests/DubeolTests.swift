@@ -128,3 +128,33 @@ import Foundation
         }
     }
 }
+
+/// `an` is the syllable 무 on 두벌식, and `le` is 져 on 390. Scoring used to
+/// keep that syllable and spell the rest with short English hits (무sible,
+/// ansib져). Unlisted tech words with the same split stay Latin too.
+@Test func ansibleStaysEnglish() throws {
+    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    let lexicon = try Lexicon.load(from: root.appendingPathComponent("Resources"))
+    #expect(lexicon.isEnglishWord("ansible"))
+    #expect(lexicon.isEnglishPrefix("ansi"))
+    let splunkListed = lexicon.isEnglishWord("splunk")
+    #expect(!splunkListed)
+    for initial in [Language.korean, .english] {
+        for layout in [KeyboardLayout.dubeol, .sebeol390, .sebeolFinal] {
+            for suffix in ["", " "] {
+                let session = Session(lexicon: lexicon, mode: initial, layout: layout)
+                let keys = "ansible" + suffix
+                for key in keys { _ = session.input(key) }
+                #expect(session.document == keys, "\(layout) \(initial) \(keys): \(session.document)")
+                if suffix == " " {
+                    #expect(session.mode == .english, "\(layout) \(initial)")
+                }
+            }
+        }
+        // Leading syllable 네, then Latin `lunk`. Not a dictionary word, so
+        // this is the same split as ansible rather than the word list.
+        let session = Session(lexicon: lexicon, mode: initial, layout: .dubeol)
+        for key in "splunk " { _ = session.input(key) }
+        #expect(session.document == "splunk ", "\(initial) \(session.document)")
+    }
+}
