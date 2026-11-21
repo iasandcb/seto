@@ -27,7 +27,7 @@ use crate::keys::{WinKey, vk};
 
 use super::display;
 use super::edit;
-use super::log;
+use super::{install_panic_hook, log};
 
 pub(crate) struct TipInner {
     pub(crate) engine: Engine,
@@ -50,6 +50,7 @@ pub(crate) struct TextService {
 
 impl TextService {
     pub(crate) fn new() -> Self {
+        install_panic_hook();
         super::lock_module();
         Self {
             tip: Rc::new(RefCell::new(TipInner {
@@ -75,36 +76,49 @@ impl Drop for TextService {
 
 impl ITfTextInputProcessor_Impl for TextService_Impl {
     fn Activate(&self, ptim: Ref<ITfThreadMgr>, tid: u32) -> Result<()> {
-        self.activate(ptim, tid, 0)
+        let thread_mgr = ptim.ok().ok().cloned();
+        super::guard(&format!("Activate tid={tid}"), || match thread_mgr {
+            Some(thread_mgr) => self.activate_with(thread_mgr, tid, 0),
+            None => Ok(()),
+        })
     }
 
     fn Deactivate(&self) -> Result<()> {
-        self.commit_focus();
-        let mut tip = self.tip.borrow_mut();
-        if let Some(thread_mgr) = tip.thread_mgr.take()
-            && let Ok(keys) = thread_mgr.cast::<ITfKeystrokeMgr>()
-        {
-            let _ = unsafe { keys.UnadviseKeyEventSink(tip.client_id) };
-        }
-        if let Some((source, cookie)) = tip.focus.take() {
-            let _ = unsafe { source.UnadviseSink(cookie) };
-        }
-        tip.context = None;
-        tip.client_id = 0;
-        tip.secure = false;
-        Ok(())
+        super::guard("Deactivate", || {
+            self.commit_focus();
+            let mut tip = self.tip.borrow_mut();
+            let client_id = tip.client_id;
+            let thread_mgr = tip.thread_mgr.take();
+            let focus = tip.focus.take();
+            tip.context = None;
+            tip.client_id = 0;
+            tip.secure = false;
+            drop(tip);
+            if let Some(thread_mgr) = thread_mgr
+                && let Ok(keys) = thread_mgr.cast::<ITfKeystrokeMgr>()
+            {
+                let _ = unsafe { keys.UnadviseKeyEventSink(client_id) };
+            }
+            if let Some((source, cookie)) = focus {
+                let _ = unsafe { source.UnadviseSink(cookie) };
+            }
+            Ok(())
+        })
     }
 }
 
 impl ITfTextInputProcessorEx_Impl for TextService_Impl {
     fn ActivateEx(&self, ptim: Ref<ITfThreadMgr>, tid: u32, dwflags: u32) -> Result<()> {
-        self.activate(ptim, tid, dwflags)
+        let thread_mgr = ptim.ok().ok().cloned();
+        super::guard(&format!("ActivateEx tid={tid} flags={dwflags:#x}"), || match thread_mgr {
+            Some(thread_mgr) => self.activate_with(thread_mgr, tid, dwflags),
+            None => Ok(()),
+        })
     }
 }
 
 impl TextService_Impl {
-    fn activate(&self, ptim: Ref<ITfThreadMgr>, tid: u32, flags: u32) -> Result<()> {
-        let thread_mgr = ptim.ok()?.clone();
+    fn activate_with(&self, thread_mgr: ITfThreadMgr, tid: u32, flags: u32) -> Result<()> {
         let sink: ITfKeyEventSink = self.to_interface();
         let keys: ITfKeystrokeMgr = thread_mgr.cast()?;
         unsafe { keys.AdviseKeyEventSink(tid, &sink, true)? };
@@ -139,97 +153,126 @@ impl TextService_Impl {
 
 impl ITfThreadFocusSink_Impl for TextService_Impl {
     fn OnSetThreadFocus(&self) -> Result<()> {
-        Ok(())
+        super::guard("OnSetThreadFocus", || Ok(()))
     }
 
     fn OnKillThreadFocus(&self) -> Result<()> {
-        self.commit_focus();
-        Ok(())
+        super::guard("OnKillThreadFocus", || {
+            self.commit_focus();
+            Ok(())
+        })
     }
 }
 
 impl ITfKeyEventSink_Impl for TextService_Impl {
     fn OnSetFocus(&self, foreground: BOOL) -> Result<()> {
-        if !foreground.as_bool() {
-            self.commit_focus();
-        }
-        Ok(())
+        let foreground = foreground.as_bool();
+        super::guard(&format!("OnSetFocus foreground={foreground}"), || {
+            if !foreground {
+                self.commit_focus();
+            }
+            Ok(())
+        })
     }
 
     fn OnTestKeyDown(&self, pic: Ref<ITfContext>, wparam: WPARAM, lparam: LPARAM) -> Result<BOOL> {
-        let Ok(context) = pic.ok() else {
-            return Ok(false.into());
-        };
-        self.tip.borrow_mut().context = Some(context.clone());
-        if self.blocked(context) {
-            self.commit_focus();
-            return Ok(false.into());
-        }
         let key = decode(wparam, lparam);
-        let eat = self.tip.borrow().engine.will_eat_down(&key);
-        if !eat {
-            let effect = self.tip.borrow_mut().engine.key_down(&key);
-            schedule(&self.tip, context, self.tip.borrow().client_id, &effect);
-        }
-        Ok(eat.into())
+        let context = pic.ok().ok().cloned();
+        super::guard(&format!("OnTestKeyDown vk={:#x} scan={:#x}", key.vk, key.scan), || {
+            let Some(context) = context else {
+                return Ok(false.into());
+            };
+            self.remember_context(&context);
+            if self.blocked(&context) {
+                self.commit_focus();
+                return Ok(false.into());
+            }
+            let eat = {
+                let tip = self.tip.borrow();
+                tip.engine.will_eat_down(&key)
+            };
+            if !eat {
+                let effect = self.tip.borrow_mut().engine.key_down(&key);
+                let client_id = self.tip.borrow().client_id;
+                schedule(&self.tip, &context, client_id, &effect);
+            }
+            log(&format!("OnTestKeyDown vk={:#x} eat={eat}", key.vk));
+            Ok(eat.into())
+        })
     }
 
     fn OnKeyDown(&self, pic: Ref<ITfContext>, wparam: WPARAM, lparam: LPARAM) -> Result<BOOL> {
-        let Ok(context) = pic.ok() else {
-            return Ok(false.into());
-        };
-        self.tip.borrow_mut().context = Some(context.clone());
         let key = decode(wparam, lparam);
-        let effect = self.tip.borrow_mut().engine.key_down(&key);
-        let client_id = self.tip.borrow().client_id;
-        schedule(&self.tip, context, client_id, &effect);
-        Ok(true.into())
+        let context = pic.ok().ok().cloned();
+        super::guard(&format!("OnKeyDown vk={:#x} scan={:#x}", key.vk, key.scan), || {
+            let Some(context) = context else {
+                return Ok(false.into());
+            };
+            self.remember_context(&context);
+            let effect = self.tip.borrow_mut().engine.key_down(&key);
+            let client_id = self.tip.borrow().client_id;
+            schedule(&self.tip, &context, client_id, &effect);
+            Ok(true.into())
+        })
     }
 
     fn OnTestKeyUp(&self, pic: Ref<ITfContext>, wparam: WPARAM, lparam: LPARAM) -> Result<BOOL> {
-        let Ok(context) = pic.ok() else {
-            return Ok(false.into());
-        };
         let key = decode(wparam, lparam);
-        let eat = self.tip.borrow().engine.will_eat_up(&key);
-        if !eat {
-            let effect = self.tip.borrow_mut().engine.key_up(&key);
-            schedule(&self.tip, context, self.tip.borrow().client_id, &effect);
-        }
-        Ok(eat.into())
+        let context = pic.ok().ok().cloned();
+        super::guard(&format!("OnTestKeyUp vk={:#x}", key.vk), || {
+            let Some(context) = context else {
+                return Ok(false.into());
+            };
+            let eat = self.tip.borrow().engine.will_eat_up(&key);
+            if !eat {
+                let effect = self.tip.borrow_mut().engine.key_up(&key);
+                let client_id = self.tip.borrow().client_id;
+                schedule(&self.tip, &context, client_id, &effect);
+            }
+            Ok(eat.into())
+        })
     }
 
     fn OnKeyUp(&self, pic: Ref<ITfContext>, wparam: WPARAM, lparam: LPARAM) -> Result<BOOL> {
-        let Ok(context) = pic.ok() else {
-            return Ok(false.into());
-        };
         let key = decode(wparam, lparam);
-        let effect = self.tip.borrow_mut().engine.key_up(&key);
-        schedule(&self.tip, context, self.tip.borrow().client_id, &effect);
-        Ok(true.into())
+        let context = pic.ok().ok().cloned();
+        super::guard(&format!("OnKeyUp vk={:#x}", key.vk), || {
+            let Some(context) = context else {
+                return Ok(false.into());
+            };
+            let effect = self.tip.borrow_mut().engine.key_up(&key);
+            let client_id = self.tip.borrow().client_id;
+            schedule(&self.tip, &context, client_id, &effect);
+            Ok(true.into())
+        })
     }
 
     fn OnPreservedKey(&self, _pic: Ref<ITfContext>, _rguid: *const GUID) -> Result<BOOL> {
-        Ok(false.into())
+        super::guard("OnPreservedKey", || Ok(false.into()))
     }
 }
 
 impl ITfDisplayAttributeProvider_Impl for TextService_Impl {
     fn EnumDisplayAttributeInfo(&self) -> Result<windows::Win32::UI::TextServices::IEnumTfDisplayAttributeInfo> {
-        Ok(display::enumerator())
+        super::guard("EnumDisplayAttributeInfo", || Ok(display::enumerator()))
     }
 
     fn GetDisplayAttributeInfo(
         &self,
         guid: *const GUID,
     ) -> Result<windows::Win32::UI::TextServices::ITfDisplayAttributeInfo> {
-        display::info_for(guid)
+        super::guard("GetDisplayAttributeInfo", || display::info_for(guid))
     }
 }
 
 impl TextService_Impl {
+    fn remember_context(&self, context: &ITfContext) {
+        self.tip.borrow_mut().context = Some(context.clone());
+    }
+
     fn blocked(&self, context: &ITfContext) -> bool {
-        self.tip.borrow().secure || keyboard_disabled(context)
+        let secure = self.tip.borrow().secure;
+        secure || keyboard_disabled(context)
     }
 }
 
@@ -318,7 +361,16 @@ fn key_down(vk: u16) -> bool {
 
 fn lexicon() -> Arc<Lexicon> {
     static LEXICON: OnceLock<Arc<Lexicon>> = OnceLock::new();
-    LEXICON.get_or_init(|| Arc::new(load_lexicon())).clone()
+    LEXICON
+        .get_or_init(|| match std::panic::catch_unwind(std::panic::AssertUnwindSafe(load_lexicon)) {
+            Ok(lexicon) => Arc::new(lexicon),
+            Err(payload) => {
+                log("lexicon load panicked; composing without dictionaries");
+                let _ = payload;
+                Arc::new(Lexicon::new(&[], &[]))
+            }
+        })
+        .clone()
 }
 
 fn load_lexicon() -> Lexicon {

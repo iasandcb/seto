@@ -10,8 +10,8 @@ use std::rc::Rc;
 use windows::Win32::Foundation::E_FAIL;
 use windows::Win32::UI::TextServices::{
     ITfComposition, ITfCompositionSink, ITfCompositionSink_Impl, ITfContext, ITfContextComposition, ITfEditSession,
-    ITfEditSession_Impl, ITfRange, TF_AE_END, TF_ANCHOR_END, TF_DEFAULT_SELECTION, TF_ES_READWRITE, TF_SELECTION,
-    TF_SELECTIONSTYLE,
+    ITfEditSession_Impl, ITfRange, TF_AE_END, TF_ANCHOR_END, TF_DEFAULT_SELECTION, TF_ES_ASYNC, TF_ES_READWRITE,
+    TF_SELECTION, TF_SELECTIONSTYLE,
 };
 use windows::core::{Interface, Ref, Result, implement};
 
@@ -22,7 +22,10 @@ use super::service::SharedTip;
 
 pub(crate) fn request(context: &ITfContext, slot: SharedTip, client_id: u32, plan: EditPlan) -> Result<()> {
     let session: ITfEditSession = ApplySession { context: context.clone(), slot, plan }.into();
-    unsafe { context.RequestEditSession(client_id, &session, TF_ES_READWRITE)? }.ok()
+    // ASYNC, not ASYNCDONTCARE. ASYNCDONTCARE is 0, so the manager may run the
+    // session inside OnKeyDown. That re-enters this DLL on the same stack; a
+    // panic there cannot unwind through the vtable thunk and fail-fasts the host.
+    unsafe { context.RequestEditSession(client_id, &session, TF_ES_ASYNC | TF_ES_READWRITE)? }.ok()
 }
 
 #[implement(ITfEditSession)]
@@ -34,15 +37,10 @@ struct ApplySession {
 
 impl ITfEditSession_Impl for ApplySession_Impl {
     fn DoEditSession(&self, ec: u32) -> Result<()> {
-        let result =
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| apply(&self.slot, &self.context, ec, &self.plan)));
-        match result {
-            Ok(result) => result,
-            Err(_) => {
-                super::log("edit session panicked");
-                Err(E_FAIL.into())
-            }
-        }
+        let slot = self.slot.clone();
+        let context = self.context.clone();
+        let plan = self.plan.clone();
+        super::guard(&format!("DoEditSession ec={ec}"), move || apply(&slot, &context, ec, &plan))
     }
 }
 
@@ -63,7 +61,11 @@ fn apply(slot: &SharedTip, context: &ITfContext, ec: u32, plan: &EditPlan) -> Re
     let compose = plan.compose_utf16.min(utf16.len());
     let marked = tail(context, ec, &range, compose)?;
     ensure_composition(slot, context, ec, &marked)?;
-    if let Some(composition) = slot.borrow().composition.clone()
+    // Clone the composition out before any further COM call. An `if let` scrutinee
+    // keeps the RefCell guard alive for the whole block, and SetSelection / the
+    // display-attribute property call back into this DLL.
+    let composition = slot.borrow().composition.clone();
+    if let Some(composition) = composition
         && let Ok(live) = unsafe { composition.GetRange() }
     {
         display::mark(context, ec, &live);
@@ -123,13 +125,11 @@ fn tail(context: &ITfContext, ec: u32, range: &ITfRange, compose: usize) -> Resu
 }
 
 fn ensure_composition(slot: &SharedTip, context: &ITfContext, ec: u32, range: &ITfRange) -> Result<()> {
-    if slot.borrow().composition.is_some() {
-        let current = slot.borrow().composition.clone();
-        if let Some(composition) = current {
-            let _ = unsafe { composition.ShiftStart(ec, range) };
-            let _ = unsafe { composition.ShiftEnd(ec, range) };
-            return Ok(());
-        }
+    let existing = slot.borrow().composition.clone();
+    if let Some(composition) = existing {
+        let _ = unsafe { composition.ShiftStart(ec, range) };
+        let _ = unsafe { composition.ShiftEnd(ec, range) };
+        return Ok(());
     }
     let sink: ITfCompositionSink = CompositionSink { slot: Rc::downgrade(slot) }.into();
     let composition_context: ITfContextComposition = context.cast()?;
@@ -176,9 +176,11 @@ fn select_end(context: &ITfContext, ec: u32, range: &ITfRange) -> Result<()> {
 }
 
 fn range_len(range: &ITfRange, ec: u32) -> usize {
-    let mut buf = [0u16; 512];
+    // Heap buffer: a host that writes a null one past cchMax must not smash
+    // this frame's stack cookie (that also surfaces as 0xc0000409).
+    let mut buf = vec![0u16; 65];
     let mut fetched = 0u32;
-    if unsafe { range.GetText(ec, 0, &mut buf, &mut fetched) }.is_err() {
+    if unsafe { range.GetText(ec, 0, &mut buf[..64], &mut fetched) }.is_err() {
         return 0;
     }
     fetched as usize
@@ -190,17 +192,20 @@ struct CompositionSink {
 }
 
 impl ITfCompositionSink_Impl for CompositionSink_Impl {
-    fn OnCompositionTerminated(&self, _ecwrite: u32, _composition: Ref<ITfComposition>) -> Result<()> {
-        let Some(slot) = self.slot.upgrade() else {
-            return Ok(());
-        };
-        let mut state = slot.borrow_mut();
-        state.composition = None;
-        if state.ending {
-            return Ok(());
-        }
-        state.composition_utf16 = 0;
-        state.engine.note_external_composition_end();
-        Ok(())
+    fn OnCompositionTerminated(&self, ecwrite: u32, _composition: Ref<ITfComposition>) -> Result<()> {
+        let slot = self.slot.clone();
+        super::guard(&format!("OnCompositionTerminated ec={ecwrite}"), move || {
+            let Some(slot) = slot.upgrade() else {
+                return Ok(());
+            };
+            let mut state = slot.borrow_mut();
+            state.composition = None;
+            if state.ending {
+                return Ok(());
+            }
+            state.composition_utf16 = 0;
+            state.engine.note_external_composition_end();
+            Ok(())
+        })
     }
 }

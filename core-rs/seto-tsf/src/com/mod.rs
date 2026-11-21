@@ -21,7 +21,7 @@ use windows::Win32::Foundation::{CLASS_E_CLASSNOTAVAILABLE, E_FAIL, HINSTANCE, H
 use windows::Win32::System::Com::IClassFactory;
 use windows::Win32::System::LibraryLoader::GetModuleFileNameW;
 use windows::Win32::System::SystemServices::DLL_PROCESS_ATTACH;
-use windows::core::{BOOL, GUID, HRESULT, Interface};
+use windows::core::{BOOL, GUID, HRESULT, Interface, Result};
 
 /// Text service CLSID. InprocServer32, the profile, and `DllGetClassObject` share it.
 pub(crate) const CLSID_SETO: GUID = GUID::from_u128(0x8f3c1e90_390b_4a6e_b7d2_5e70a11e0001);
@@ -56,29 +56,90 @@ pub(crate) fn module_path() -> Option<std::path::PathBuf> {
 }
 
 pub(crate) fn log(message: &str) {
-    let Some(dir) = std::env::var_os("LOCALAPPDATA") else {
-        return;
-    };
-    let path = std::path::PathBuf::from(dir).join("Seto").join("seto-tsf.log");
-    let _ = std::fs::create_dir_all(path.parent().unwrap_or(std::path::Path::new(".")));
-    let line = format!("{message}\r\n");
-    let _ = std::fs::OpenOptions::new().create(true).append(true).open(path).and_then(|mut file| {
+    fn write_line(message: &str) -> std::io::Result<()> {
+        let Some(dir) = std::env::var_os("LOCALAPPDATA") else {
+            return Ok(());
+        };
+        let path = std::path::PathBuf::from(dir).join("Seto").join("seto-tsf.log");
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let mut file = std::fs::OpenOptions::new().create(true).append(true).open(path)?;
         use std::io::Write;
-        file.write_all(line.as_bytes())
+        writeln!(file, "{message}")?;
+        file.flush()?;
+        Ok(())
+    }
+    // Logging must not itself panic: a panic inside the hook would abort.
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = write_line(message);
+    }));
+}
+
+pub(crate) fn install_panic_hook() {
+    use std::sync::Once;
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let location = info.location().map(|loc| format!("{loc}")).unwrap_or_else(|| "unknown location".into());
+            log(&format!("panic hook at {location}: {info}"));
+            previous(info);
+        }));
     });
+}
+
+/// Run COM entry-point work. A panic must not unwind through the `extern "system"`
+/// vtable thunk: that calls `__fastfail` and the host dies with 0xc0000409.
+pub(crate) fn guard<T>(name: &str, body: impl FnOnce() -> Result<T>) -> Result<T> {
+    log(&format!("enter {name}"));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(body));
+    match result {
+        Ok(Ok(value)) => {
+            log(&format!("leave {name}"));
+            Ok(value)
+        }
+        Ok(Err(error)) => {
+            log(&format!("leave {name} hresult={error}"));
+            Err(error)
+        }
+        Err(payload) => {
+            log(&format!("panic in {name}: {}", panic_message(&payload)));
+            Err(E_FAIL.into())
+        }
+    }
+}
+
+fn panic_message(payload: &Box<dyn std::any::Any + Send>) -> String {
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        (*message).to_owned()
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        "non-string panic payload".to_owned()
+    }
 }
 
 #[unsafe(no_mangle)]
 extern "system" fn DllGetClassObject(rclsid: *const GUID, riid: *const GUID, ppv: *mut *mut c_void) -> HRESULT {
-    if rclsid.is_null() || riid.is_null() || ppv.is_null() {
-        return E_FAIL;
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if rclsid.is_null() || riid.is_null() || ppv.is_null() {
+            return E_FAIL;
+        }
+        unsafe { *ppv = core::ptr::null_mut() };
+        if unsafe { *rclsid } != CLSID_SETO {
+            return CLASS_E_CLASSNOTAVAILABLE;
+        }
+        let factory: IClassFactory = factory::ClassFactory::new().into();
+        unsafe { factory.query(riid, ppv) }
+    }));
+    match result {
+        Ok(code) => code,
+        Err(payload) => {
+            log(&format!("panic in DllGetClassObject: {}", panic_message(&payload)));
+            E_FAIL
+        }
     }
-    unsafe { *ppv = core::ptr::null_mut() };
-    if unsafe { *rclsid } != CLSID_SETO {
-        return CLASS_E_CLASSNOTAVAILABLE;
-    }
-    let factory: IClassFactory = factory::ClassFactory::new().into();
-    unsafe { factory.query(riid, ppv) }
 }
 
 #[unsafe(no_mangle)]
@@ -112,6 +173,7 @@ extern "system" fn DllUnregisterServer() -> HRESULT {
 extern "system" fn DllMain(hinst: HINSTANCE, reason: u32, _reserved: *mut c_void) -> BOOL {
     if reason == DLL_PROCESS_ATTACH {
         DLL_MODULE.store(hinst.0, Ordering::SeqCst);
+        install_panic_hook();
     }
     true.into()
 }
