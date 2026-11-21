@@ -62,6 +62,7 @@ powershell -ExecutionPolicy Bypass -File scripts\windows\uninstall.ps1
 - 공백·문장 부호·단어 경계는 코어가 확정합니다. Enter·Tab·Esc·방향키·포커스를 잃으면 조합을 확정한 뒤 그 키는 앱으로 넘깁니다.
 - Backspace는 코어를 거칩니다. 조합이 없으면 앱이 지웁니다.
 - 한/영은 `VK_HANGUL`(한/영 키)과 **오른쪽 Alt** 탭입니다. Shift+Space도 전환입니다. Shift를 누른 뒤 다른 글쇠를 치고 Space를 누르면 일반 공백입니다(macOS `ShiftSpaceToggleTracker`와 같음).
+- 작업 표시줄 입력 표시기는 한글일 때 **가**, 영문일 때 **A**입니다. Microsoft 한글 IME와 같이 `GUID_LBI_INPUTMODE` 버튼과 변환 모드 구획(`TF_CONVERSIONMODE_NATIVE`가 한글)을 같이 갱신합니다. 한/영 키, 오른쪽 Alt, Shift+Space, 모드가 바뀌는 자동 전환, 포커스가 바뀔 때 바뀝니다. 표시기를 누르면 한/영이 전환됩니다.
 - 오른쪽 Alt를 누른 채 다른 키를 치면 전환하지 않고, 그 키는 Alt 단축키로 넘깁니다. 왼쪽 Alt·Ctrl·Win 단축키는 조합만 확정하고 앱에 그대로 전달합니다.
 - 암호 칸과 TSF 보안 모드에서는 조합하지 않고 키를 넘깁니다.
 
@@ -69,7 +70,7 @@ powershell -ExecutionPolicy Bypass -File scripts\windows\uninstall.ps1
 
 - 서명되지 않은 DLL입니다. 조직 정책이 미서명 텍스트 서비스를 막으면 목록에 나타나지 않습니다. 활성화, 키, 편집 세션, 패닉은 `%LOCALAPPDATA%\Seto\seto-tsf.log`에 남습니다. 앱이 죽으면 그 파일을 보내 주세요.
 - 편집은 비동기 TSF 편집 세션으로 넣습니다. Windows 11 메모장 같은 몰입형 앱은 동기 세션에서 프로세스가 죽을 수 있어 그렇게 했습니다. 키가 매우 빨리 이어져도 세션은 순서대로 적용됩니다. 앱이 그 사이에 커서를 옮기면 조합이 어긋날 수 있고, 포커스를 잃으면 세션을 비웁니다.
-- 후보 창, 소프트 키보드, 언어 표시줄 버튼, Caps Lock 한/영 전환은 없습니다. Caps Lock은 대문자 고정을 만들지 않도록 먹습니다.
+- 후보 창, 소프트 키보드, Caps Lock 한/영 전환은 없습니다. Caps Lock은 대문자 고정을 만들지 않도록 먹습니다.
 - 오른쪽 Alt는 한/영 키로 쓰므로 AltGr이 아닙니다. 단축키는 왼쪽 Alt를 씁니다.
 - 숫자 패드와 F키는 조합하지 않고 앱으로 넘깁니다.
 - 오타 기록 파일, 자판 전환 UI, 터미널·주소창 전용 모드는 이 단계에 없습니다. 터미널도 일반 한글 모드로 시작합니다.
@@ -81,7 +82,7 @@ powershell -ExecutionPolicy Bypass -File scripts\windows\uninstall.ps1
 
 | 앱 | 확인할 것 |
 | --- | --- |
-| 메모장 | `kf`가 밑줄 그은 `가`로 보이다가 Space로 `가 `가 확정되는지. Backspace가 음절을 되돌리는지. Enter가 줄을 바꾸며 조합을 끝는지. 한/영 키, 오른쪽 Alt 탭, Shift+Space가 다음 글의 한/영을 바꾸는지. Ctrl+C가 글자를 집어넣지 않는지. |
+| 메모장 | `kf`가 밑줄 그은 `가`로 보이다가 Space로 `가 `가 확정되는지. Backspace가 음절을 되돌리는지. Enter가 줄을 바꾸며 조합을 끝는지. 한/영 키, 오른쪽 Alt 탭, Shift+Space가 다음 글의 한/영을 바꾸는지. 작업 표시줄 입력 표시기가 그에 맞춰 가와 A로 바뀌고, 표시기를 누르면 모드가 바뀌는지. Ctrl+C가 글자를 집어넣지 않는지. |
 | Chrome | 웹 페이지 입력칸과 주소창에서 조합 밑줄과 확정이 같은지. Ctrl+T 같은 단축키가 페이지로 가는지. 암호 칸은 쿼티 그대로인지. |
 | VS Code | 편집기에서 `했어`(글쇠 `mr2jt`)가 조합되다 Space나 Enter로 확정되는지. 확정된 영문이 자동 전환으로 바뀌는지(사전을 설치했을 때). |
 | Windows Terminal | Enter가 조합을 확정하고 셸에 줄을 넘기는지. Ctrl+C가 셸 단축키로 동작하는지. 방향키가 커서를 옮기는지. |

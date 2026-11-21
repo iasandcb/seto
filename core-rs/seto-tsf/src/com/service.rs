@@ -14,12 +14,13 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::TextServices::{
     GUID_COMPARTMENT_EMPTYCONTEXT, GUID_COMPARTMENT_KEYBOARD_DISABLED, ITfCompartmentMgr, ITfContext,
     ITfDisplayAttributeProvider, ITfDisplayAttributeProvider_Impl, ITfKeyEventSink, ITfKeyEventSink_Impl,
-    ITfKeystrokeMgr, ITfSource, ITfTextInputProcessor_Impl, ITfTextInputProcessorEx, ITfTextInputProcessorEx_Impl,
-    ITfThreadFocusSink, ITfThreadFocusSink_Impl, ITfThreadMgr, TF_TMAE_SECUREMODE,
+    ITfKeystrokeMgr, ITfLangBarItem, ITfLangBarItemMgr, ITfLangBarItemSink, ITfSource, ITfTextInputProcessor_Impl,
+    ITfTextInputProcessorEx, ITfTextInputProcessorEx_Impl, ITfThreadFocusSink, ITfThreadFocusSink_Impl, ITfThreadMgr,
+    TF_TMAE_SECUREMODE,
 };
 use windows::core::{BOOL, GUID, IUnknownImpl, Interface, Ref, Result, implement};
 
-use seto_core::{FieldEdit, Lexicon, utf16_len};
+use seto_core::{FieldEdit, Language, Lexicon, utf16_len};
 
 use crate::apply::{EditPlan, plan_edit};
 use crate::engine::{Engine, KeyEffect};
@@ -35,12 +36,20 @@ pub(crate) struct TipInner {
     pub(crate) composition_utf16: usize,
     pub(crate) ending: bool,
     pub(crate) client_id: u32,
-    thread_mgr: Option<ITfThreadMgr>,
+    pub(crate) thread_mgr: Option<ITfThreadMgr>,
     focus: Option<(ITfSource, u32)>,
-    context: Option<ITfContext>,
+    pub(crate) context: Option<ITfContext>,
     secure: bool,
     /// OnTestKeyDown already applied a pass-through key. OnKeyDown must not do it again.
     pass_handled: bool,
+    pub(crate) langbar_item: Option<ITfLangBarItem>,
+    pub(crate) langbar_mgr: Option<ITfLangBarItemMgr>,
+    pub(crate) langbar_sink: Option<ITfLangBarItemSink>,
+    pub(crate) compartment_event: Option<(ITfSource, u32)>,
+    /// Set around our own compartment writes so the sink does not toggle again.
+    pub(crate) updating_mode: bool,
+    pub(crate) published: Option<Language>,
+    pub(crate) indicator_shown: bool,
 }
 
 pub(crate) type SharedTip = Rc<RefCell<TipInner>>;
@@ -66,6 +75,13 @@ impl TextService {
                 context: None,
                 secure: false,
                 pass_handled: false,
+                langbar_item: None,
+                langbar_mgr: None,
+                langbar_sink: None,
+                compartment_event: None,
+                updating_mode: false,
+                published: None,
+                indicator_shown: true,
             })),
         }
     }
@@ -89,6 +105,7 @@ impl ITfTextInputProcessor_Impl for TextService_Impl {
     fn Deactivate(&self) -> Result<()> {
         super::guard("Deactivate", || {
             self.commit_focus();
+            super::indicator::remove(&self.tip);
             let mut tip = self.tip.borrow_mut();
             let client_id = tip.client_id;
             let thread_mgr = tip.thread_mgr.take();
@@ -137,6 +154,7 @@ impl TextService_Impl {
             tip.engine.sync_modifiers(key_down(VK_SHIFT.0), key_down(VK_RMENU.0));
         }
         log(&format!("activated tid={tid} secure={}", flags & TF_TMAE_SECUREMODE != 0));
+        super::indicator::install(&self.tip);
         Ok(())
     }
 
@@ -162,12 +180,16 @@ impl TextService_Impl {
 
 impl ITfThreadFocusSink_Impl for TextService_Impl {
     fn OnSetThreadFocus(&self) -> Result<()> {
-        super::guard("OnSetThreadFocus", || Ok(()))
+        super::guard("OnSetThreadFocus", || {
+            super::indicator::publish(&self.tip, true);
+            Ok(())
+        })
     }
 
     fn OnKillThreadFocus(&self) -> Result<()> {
         super::guard("OnKillThreadFocus", || {
             self.commit_focus();
+            super::indicator::publish(&self.tip, true);
             Ok(())
         })
     }
@@ -180,6 +202,7 @@ impl ITfKeyEventSink_Impl for TextService_Impl {
             if !foreground {
                 self.commit_focus();
             }
+            super::indicator::publish(&self.tip, true);
             Ok(())
         })
     }
@@ -227,6 +250,7 @@ impl ITfKeyEventSink_Impl for TextService_Impl {
                     self.apply_passthrough(&key, &context);
                 }
                 self.tip.borrow_mut().pass_handled = false;
+                super::indicator::publish(&self.tip, false);
                 log(&format!("OnKeyDown vk={:#x} scan={:#x} eat=false", key.vk, key.scan));
                 return Ok(false.into());
             }
@@ -240,6 +264,7 @@ impl ITfKeyEventSink_Impl for TextService_Impl {
                 ));
             }
             schedule(&self.tip, &context, client_id, &effect, key.vk == vk::BACK);
+            super::indicator::publish(&self.tip, false);
             log(&format!("OnKeyDown vk={:#x} scan={:#x} eat=true", key.vk, key.scan));
             Ok(true.into())
         })
@@ -272,6 +297,7 @@ impl ITfKeyEventSink_Impl for TextService_Impl {
             let effect = self.tip.borrow_mut().engine.key_up(&key);
             let client_id = self.tip.borrow().client_id;
             schedule(&self.tip, &context, client_id, &effect, false);
+            super::indicator::publish(&self.tip, false);
             Ok(true.into())
         })
     }
@@ -331,6 +357,7 @@ impl TextService_Impl {
         let client_id = self.tip.borrow().client_id;
         schedule(&self.tip, context, client_id, &effect, true);
         self.finish_committed_composition(context);
+        super::indicator::publish(&self.tip, false);
     }
 
     /// A committed syllable can leave an ITfComposition behind until its async
@@ -388,7 +415,7 @@ fn log_passthrough(key: &WinKey, effect: &KeyEffect) {
     ));
 }
 
-fn schedule(slot: &SharedTip, context: &ITfContext, client_id: u32, effect: &KeyEffect, sync: bool) {
+pub(crate) fn schedule(slot: &SharedTip, context: &ITfContext, client_id: u32, effect: &KeyEffect, sync: bool) {
     let plan = {
         let mut tip = slot.borrow_mut();
         let before = tip.composition_utf16;

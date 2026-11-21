@@ -10,6 +10,20 @@ use seto_core::{FieldEdit, Language, Lexicon, Session, SessionOptions, SessionUp
 
 use crate::keys::{self, DecisionState, DownClass, UpClass, WinKey, eaten_down, eaten_up};
 
+/// Taskbar glyph. Hangul is `가` and English is `A`, the same pair the
+/// Microsoft Korean IME shows.
+pub fn indicator_label(mode: Language) -> &'static str {
+    match mode {
+        Language::Korean => "가",
+        Language::English => "A",
+    }
+}
+
+/// Hangul uses native conversion mode. English is alphanumeric.
+pub fn conversion_native(mode: Language) -> bool {
+    matches!(mode, Language::Korean)
+}
+
 /// Result of one key transition.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum KeyEffect {
@@ -50,6 +64,25 @@ impl Engine {
 
     pub fn mode(&self) -> Language {
         self.session.mode()
+    }
+
+    /// Same transition as the Hangul key. Used when the input indicator is clicked.
+    pub fn toggle_mode(&mut self) -> SessionUpdate {
+        let update = self.session.toggle();
+        self.sync_decision();
+        update
+    }
+
+    /// Commit the open word and leave the session in `language`.
+    pub fn force_mode(&mut self, language: Language) -> SessionUpdate {
+        let update = self.session.force_mode(language);
+        self.sync_decision();
+        update
+    }
+
+    fn sync_decision(&mut self) {
+        self.decision.open_word = self.session.has_open_word();
+        self.decision.composing = !self.session.preedit().is_empty();
     }
 
     pub fn has_open_word(&self) -> bool {
@@ -275,6 +308,20 @@ mod tests {
         press(&mut engine, &mut doc, WinKey::bare(vk::BACK));
         assert_eq!(doc.text(), "가");
         assert!(!engine.will_eat_down(&WinKey::bare(vk::BACK)));
+    }
+
+    #[test]
+    fn indicator_label_tracks_hangul_and_english() {
+        assert!(conversion_native(Language::Korean));
+        assert!(!conversion_native(Language::English));
+        let mut engine = engine();
+        let mut doc = Document::new();
+        assert_eq!(indicator_label(engine.mode()), "가");
+        let _ = engine.toggle_mode();
+        assert_eq!(engine.mode(), Language::English);
+        assert_eq!(indicator_label(engine.mode()), "A");
+        press(&mut engine, &mut doc, WinKey::bare(vk::HANGUL));
+        assert_eq!(indicator_label(engine.mode()), "가");
     }
 
     #[test]

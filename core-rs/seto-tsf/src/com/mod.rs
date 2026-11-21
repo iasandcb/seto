@@ -11,6 +11,7 @@
 mod display;
 mod edit;
 mod factory;
+mod indicator;
 mod registry;
 mod service;
 
@@ -87,6 +88,18 @@ pub(crate) fn install_panic_hook() {
             previous(info);
         }));
     });
+}
+
+/// Like [`guard`], without an enter/leave line. The language-bar asks for the
+/// icon and the label on every paint.
+pub(crate) fn catch_com<T>(name: &str, body: impl FnOnce() -> Result<T>) -> Result<T> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(body)) {
+        Ok(result) => result,
+        Err(payload) => {
+            log(&format!("panic in {name}: {}", panic_message(&payload)));
+            Err(E_FAIL.into())
+        }
+    }
 }
 
 /// Run COM entry-point work. A panic must not unwind through the `extern "system"`
