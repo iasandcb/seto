@@ -42,6 +42,12 @@ impl Engine {
         self.session.preedit()
     }
 
+    /// Drop the composing bit. Called when an edit commits (`compose=0`) or
+    /// the host ends the composition. An empty preedit is not composing.
+    pub fn clear_composing(&mut self) {
+        self.decision.composing = !self.session.preedit().is_empty();
+    }
+
     pub fn mode(&self) -> Language {
         self.session.mode()
     }
@@ -229,6 +235,10 @@ mod tests {
         press_char(&mut engine, &mut doc, ' ', false);
         assert_eq!(doc.text(), "가 ");
         assert_eq!(doc.composition(), "");
+        assert_eq!(engine.preedit(), "");
+        for vk_code in [vk::BACK, vk::RETURN, vk::TAB, vk::LEFT, vk::RIGHT, vk::UP, vk::DOWN, vk::ESCAPE] {
+            assert!(!engine.will_eat_down(&WinKey::bare(vk_code)), "{vk_code:#x} eaten after commit");
+        }
     }
 
     #[test]

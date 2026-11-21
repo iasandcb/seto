@@ -213,10 +213,13 @@ impl ITfCompositionSink_Impl for CompositionSink_Impl {
             };
             let mut state = slot.borrow_mut();
             state.composition = None;
+            state.composition_utf16 = 0;
+            state.engine.clear_composing();
             if state.ending {
+                super::log("OnCompositionTerminated (our EndComposition)");
                 return Ok(());
             }
-            state.composition_utf16 = 0;
+            super::log("OnCompositionTerminated (host ended composition)");
             state.engine.note_external_composition_end();
             Ok(())
         })

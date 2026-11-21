@@ -35,6 +35,18 @@ GitHub Actions 산출물(`seto-windows-x64`)을 푼 경우, `seto_tsf.dll`과 `R
 2. 한국어 옵션 → 키보드에서 **세토**를 추가합니다. 목록에 없으면 한 번 로그아웃했다가 다시 로그인합니다.
 3. 작업 표시줄 입력 표시기에서 세토를 고릅니다. 프로필 언어는 ko-KR(`0x0412`)입니다.
 
+## 최신 빌드로 바꾸기
+
+`gh`가 로그인되어 있으면 한 번에 최신 성공 빌드를 받아 등록합니다. 실행 중인 앱이 DLL을 잡고 있으면 그 파일을 `seto_tsf.dll.old-<시각>`으로 이름을 바꾼 뒤 새 DLL을 등록하므로 Windows 로그아웃은 필요 없습니다. 이미 켜 둔 앱은 예전 DLL을 그대로 쓰니, 시험하는 앱만 다시 열면 됩니다.
+
+저장소 안에서 이 브랜치의 PR을 기준으로:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\windows\update.ps1 -Branch cursor/windows-tsf-stage1-14ef
+```
+
+`-Branch`를 생략하면 `gh pr view`가 가리키는 PR 브랜치, 그것도 없으면 현재 git 브랜치를 씁니다. `gh`가 없으면 [GitHub CLI](https://cli.github.com/)를 설치한 뒤 `gh auth login`을 실행하세요.
+
 ## 제거
 
 ```powershell

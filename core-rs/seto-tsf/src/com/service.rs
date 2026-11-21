@@ -39,6 +39,8 @@ pub(crate) struct TipInner {
     focus: Option<(ITfSource, u32)>,
     context: Option<ITfContext>,
     secure: bool,
+    /// OnTestKeyDown already applied a pass-through key. OnKeyDown must not do it again.
+    pass_handled: bool,
 }
 
 pub(crate) type SharedTip = Rc<RefCell<TipInner>>;
@@ -63,6 +65,7 @@ impl TextService {
                 focus: None,
                 context: None,
                 secure: false,
+                pass_handled: false,
             })),
         }
     }
@@ -191,22 +194,20 @@ impl ITfKeyEventSink_Impl for TextService_Impl {
             self.remember_context(&context);
             if self.blocked(&context) {
                 self.commit_focus();
+                self.tip.borrow_mut().pass_handled = true;
+                log(&format!("OnTestKeyDown vk={:#x} eat=false blocked", key.vk));
                 return Ok(false.into());
             }
-            let eat = {
-                let tip = self.tip.borrow();
-                tip.engine.will_eat_down(&key)
-            };
+            let eat = self.should_eat(&key);
             if !eat {
-                let effect = self.tip.borrow_mut().engine.key_down(&key);
-                let client_id = self.tip.borrow().client_id;
-                log_passthrough(&key, &effect);
-                // Commit finishes before we return not-eaten, so Enter's newline
-                // is not swallowed by a composition that is still open.
-                schedule(&self.tip, &context, client_id, &effect, true);
+                self.apply_passthrough(&key, &context);
+                self.tip.borrow_mut().pass_handled = true;
+                log(&format!("OnTestKeyDown vk={:#x} scan={:#x} eat=false", key.vk, key.scan));
+                return Ok(false.into());
             }
-            log(&format!("OnTestKeyDown vk={:#x} scan={:#x} eat={eat}", key.vk, key.scan));
-            Ok(eat.into())
+            self.tip.borrow_mut().pass_handled = false;
+            log(&format!("OnTestKeyDown vk={:#x} scan={:#x} eat=true", key.vk, key.scan));
+            Ok(true.into())
         })
     }
 
@@ -218,15 +219,28 @@ impl ITfKeyEventSink_Impl for TextService_Impl {
                 return Ok(false.into());
             };
             self.remember_context(&context);
+            // Same decision as OnTestKeyDown. Some hosts call OnKeyDown even
+            // after a not-eaten test, and that return value is what they honor.
+            if !self.should_eat(&key) {
+                let already = self.tip.borrow().pass_handled;
+                if !already {
+                    self.apply_passthrough(&key, &context);
+                }
+                self.tip.borrow_mut().pass_handled = false;
+                log(&format!("OnKeyDown vk={:#x} scan={:#x} eat=false", key.vk, key.scan));
+                return Ok(false.into());
+            }
+            let preedit_before = self.tip.borrow().engine.preedit().to_owned();
             let effect = self.tip.borrow_mut().engine.key_down(&key);
             let client_id = self.tip.borrow().client_id;
             if key.vk == vk::BACK {
-                log(&format!("backspace composing preedit={} eaten=true", self.tip.borrow().engine.preedit()));
+                log(&format!(
+                    "backspace edit preedit_before={preedit_before:?} preedit_after={:?} eaten=true",
+                    self.tip.borrow().engine.preedit()
+                ));
             }
-            // Backspace must update the composition before we return. Inserts
-            // can stay asynchronous; the key is not delivered to the app.
-            let sync = key.vk == vk::BACK;
-            schedule(&self.tip, &context, client_id, &effect, sync);
+            schedule(&self.tip, &context, client_id, &effect, key.vk == vk::BACK);
+            log(&format!("OnKeyDown vk={:#x} scan={:#x} eat=true", key.vk, key.scan));
             Ok(true.into())
         })
     }
@@ -289,6 +303,71 @@ impl TextService_Impl {
         let secure = self.tip.borrow().secure;
         secure || keyboard_disabled(context)
     }
+
+    /// Underlined text still in the session, or a composition we have not yet
+    /// decided to end. `composition_utf16 == 0` means the last edit committed it.
+    fn visibly_composing(&self) -> bool {
+        let tip = self.tip.borrow();
+        !tip.engine.preedit().is_empty() || (tip.composition.is_some() && tip.composition_utf16 > 0)
+    }
+
+    fn should_eat(&self, key: &WinKey) -> bool {
+        if key.control || key.win || key.left_alt {
+            return false;
+        }
+        if is_pass_through_key(key.vk) {
+            return false;
+        }
+        if key.vk == vk::BACK {
+            return self.visibly_composing();
+        }
+        let tip = self.tip.borrow();
+        tip.engine.will_eat_down(key)
+    }
+
+    fn apply_passthrough(&self, key: &WinKey, context: &ITfContext) {
+        let effect = self.tip.borrow_mut().engine.key_down(key);
+        log_passthrough(key, &effect);
+        let client_id = self.tip.borrow().client_id;
+        schedule(&self.tip, context, client_id, &effect, true);
+        self.finish_committed_composition(context);
+    }
+
+    /// A committed syllable can leave an ITfComposition behind until its async
+    /// edit runs. End that now so Enter, Tab, and arrows are not ignored.
+    fn finish_committed_composition(&self, context: &ITfContext) {
+        let (stale, client_id) = {
+            let tip = self.tip.borrow();
+            let stale = tip.composition.is_some() && tip.engine.preedit().is_empty() && tip.composition_utf16 == 0;
+            (stale, tip.client_id)
+        };
+        if !stale || client_id == 0 {
+            return;
+        }
+        log("ending composition after commit (empty preedit)");
+        let plan = EditPlan { delete_utf16: 0, insert: String::new(), compose_utf16: 0 };
+        if let Err(error) = edit::request(context, Rc::clone(&self.tip), client_id, plan, true) {
+            log(&format!("ending composition failed: {error}"));
+        }
+    }
+}
+
+fn is_pass_through_key(vk_code: u16) -> bool {
+    matches!(
+        vk_code,
+        vk::RETURN
+            | vk::TAB
+            | vk::ESCAPE
+            | vk::LEFT
+            | vk::RIGHT
+            | vk::UP
+            | vk::DOWN
+            | vk::DELETE
+            | vk::HOME
+            | vk::END
+            | vk::PRIOR
+            | vk::NEXT
+    )
 }
 
 fn log_passthrough(key: &WinKey, effect: &KeyEffect) {
@@ -321,6 +400,12 @@ fn schedule(slot: &SharedTip, context: &ITfContext, client_id: u32, effect: &Key
         log("schedule: no document change");
         return;
     };
+    // compose=0 means the text is committed. Finish that before returning so
+    // the next Backspace/Enter is not eaten against a leftover composition.
+    let sync = sync || plan.compose_utf16 == 0;
+    if plan.compose_utf16 == 0 {
+        log("composition cleared (compose=0)");
+    }
     log(&format!(
         "schedule sync={sync} delete={} insert={} compose={}",
         plan.delete_utf16, plan.insert, plan.compose_utf16
