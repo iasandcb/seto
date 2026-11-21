@@ -118,7 +118,12 @@ impl WordList {
         let mut line_start = 0usize;
         while line_start < data.len() {
             let line_end = memchr_newline(&data[line_start..]).map_or(data.len(), |at| line_start + at);
-            let line = &data[line_start..line_end];
+            let mut line = &data[line_start..line_end];
+            // Windows checkouts may store the same sorted lists with CRLF.
+            // The `\r` is not part of the word.
+            if line.last() == Some(&b'\r') {
+                line = &line[..line.len() - 1];
+            }
             let skippable = line.is_empty() || line[0] == b'#' || line.iter().all(u8::is_ascii_whitespace);
             if in_header && skippable {
                 line_start = line_end + 1;
@@ -168,6 +173,9 @@ impl WordList {
         let start = self.starts[index] as usize;
         let mut end = self.starts[index + 1] as usize;
         if end > start && self.data[end - 1] == b'\n' {
+            end -= 1;
+        }
+        if end > start && self.data[end - 1] == b'\r' {
             end -= 1;
         }
         &self.data[start..end]
@@ -463,4 +471,22 @@ fn read_lines(path: &Path) -> io::Result<Vec<String>> {
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
         .map(str::to_owned)
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn crlf_word_list_strips_the_carriage_return() {
+        let path = std::env::temp_dir().join(format!("seto-crlf-{}", std::process::id()));
+        std::fs::write(&path, b"# comment\r\n\r\napple\r\nbanana\r\n").unwrap();
+        let list = WordList::open(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(list.len(), 2);
+        assert_eq!(list.word(0), "apple");
+        assert_eq!(list.word(1), "banana");
+        assert!(list.contains("apple"));
+        assert!(!list.contains("apple\r"));
+    }
 }
