@@ -114,6 +114,8 @@ impl WinKey {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DecisionState {
     pub open_word: bool,
+    /// Visible composition (underlined preedit). Backspace is eaten only then.
+    pub composing: bool,
     pub shift_tracker: ShiftSpaceToggleTracker,
     pub right_alt_down: bool,
     pub right_alt_used: bool,
@@ -186,7 +188,7 @@ pub fn step_up(state: &mut DecisionState, key: &WinKey) -> UpClass {
         state.right_alt_used = false;
         return UpClass::Eat { toggle: tap };
     }
-    if is_hangul_key(key) || key.vk == vk::CAPITAL {
+    if is_hangul_key(key) {
         return UpClass::Eat { toggle: false };
     }
     UpClass::Pass
@@ -226,10 +228,11 @@ pub fn classify_down(key: &WinKey, state: &DecisionState) -> DownClass {
         return DownClass::Toggle;
     }
     if key.vk == vk::CAPITAL {
-        return DownClass::Swallow { begin_right_alt: false };
+        return DownClass::Pass { commit: false, ending_run: false, mark_right_alt_used: false };
     }
     if key.vk == vk::BACK {
-        return if state.open_word { DownClass::Backspace } else { DownClass::AppBackspace };
+        // Only a visible composition is ours. Otherwise the app deletes.
+        return if state.composing { DownClass::Backspace } else { DownClass::AppBackspace };
     }
     if is_navigation(key.vk) {
         return DownClass::Pass { commit: true, ending_run: key.vk == vk::RETURN, mark_right_alt_used: false };
@@ -528,21 +531,30 @@ mod tests {
 
     #[test]
     fn backspace_enter_and_navigation() {
-        let mut state = DecisionState { open_word: true, ..DecisionState::default() };
+        let mut state = DecisionState { open_word: true, composing: true, ..DecisionState::default() };
         assert!(matches!(down(WinKey::bare(vk::BACK), &mut state), DownClass::Backspace));
-        state.open_word = false;
+        assert!(eaten_down(classify_down(&WinKey::bare(vk::BACK), &state)));
+        state.composing = false;
+        state.open_word = true;
         assert!(matches!(down(WinKey::bare(vk::BACK), &mut state), DownClass::AppBackspace));
+        assert!(!eaten_down(classify_down(&WinKey::bare(vk::BACK), &state)));
+        for vk in [vk::RETURN, vk::TAB, vk::ESCAPE, vk::LEFT, vk::DELETE] {
+            let class = classify_down(&WinKey::bare(vk), &state);
+            assert!(!eaten_down(class), "{vk:#x} must not be swallowed");
+            assert!(matches!(class, DownClass::Pass { commit: true, .. }));
+        }
         assert!(matches!(
-            down(WinKey::bare(vk::RETURN), &mut state),
+            classify_down(&WinKey::bare(vk::RETURN), &state),
             DownClass::Pass { commit: true, ending_run: true, .. }
         ));
-        assert!(matches!(
-            down(WinKey::bare(vk::LEFT), &mut state),
-            DownClass::Pass { commit: true, ending_run: false, .. }
-        ));
+        assert!(!eaten_down(classify_down(&WinKey::bare(vk::CAPITAL), &state)));
         let mut ctrl_back = WinKey::bare(vk::BACK);
         ctrl_back.control = true;
-        state.open_word = true;
+        state.composing = true;
         assert!(matches!(down(ctrl_back, &mut state), DownClass::Pass { commit: true, .. }));
+        assert!(!eaten_down(classify_down(&ctrl_back, &state)));
+        let mut alt_left = WinKey::bare(vk::LEFT);
+        alt_left.left_alt = true;
+        assert!(!eaten_down(classify_down(&alt_left, &state)));
     }
 }

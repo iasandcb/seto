@@ -11,7 +11,7 @@ use windows::Win32::Foundation::E_FAIL;
 use windows::Win32::UI::TextServices::{
     ITfComposition, ITfCompositionSink, ITfCompositionSink_Impl, ITfContext, ITfContextComposition, ITfEditSession,
     ITfEditSession_Impl, ITfRange, TF_AE_END, TF_ANCHOR_END, TF_DEFAULT_SELECTION, TF_ES_ASYNC, TF_ES_READWRITE,
-    TF_SELECTION, TF_SELECTIONSTYLE,
+    TF_ES_SYNC, TF_SELECTION, TF_SELECTIONSTYLE,
 };
 use windows::core::{Interface, Ref, Result, implement};
 
@@ -20,12 +20,14 @@ use crate::apply::EditPlan;
 use super::display;
 use super::service::SharedTip;
 
-pub(crate) fn request(context: &ITfContext, slot: SharedTip, client_id: u32, plan: EditPlan) -> Result<()> {
+pub(crate) fn request(context: &ITfContext, slot: SharedTip, client_id: u32, plan: EditPlan, sync: bool) -> Result<()> {
     let session: ITfEditSession = ApplySession { context: context.clone(), slot, plan }.into();
-    // ASYNC, not ASYNCDONTCARE. ASYNCDONTCARE is 0, so the manager may run the
-    // session inside OnKeyDown. That re-enters this DLL on the same stack; a
-    // panic there cannot unwind through the vtable thunk and fail-fasts the host.
-    unsafe { context.RequestEditSession(client_id, &session, TF_ES_ASYNC | TF_ES_READWRITE)? }.ok()
+    // Character inserts stay asynchronous. Backspace and commits that must be
+    // visible before the key is delivered (Enter, arrows, shortcuts) are
+    // synchronous: otherwise the app still sees the old composition and drops
+    // the key. ASYNCDONTCARE is 0 and does not force either mode.
+    let flags = if sync { TF_ES_SYNC | TF_ES_READWRITE } else { TF_ES_ASYNC | TF_ES_READWRITE };
+    unsafe { context.RequestEditSession(client_id, &session, flags)? }.ok()
 }
 
 #[implement(ITfEditSession)]
@@ -92,7 +94,7 @@ fn replace_before_caret(
         adjust_start(&range, ec, delete, 0)?;
         range
     };
-    unsafe { range.SetText(ec, 0, text)? };
+    set_range_text(&range, ec, text)?;
     Ok(range)
 }
 
@@ -173,6 +175,17 @@ fn select_end(context: &ITfContext, ec: u32, range: &ITfRange) -> Result<()> {
     drop(unsafe { ManuallyDrop::take(&mut selection.range) });
     core::mem::forget(selection);
     result
+}
+
+fn set_range_text(range: &ITfRange, ec: u32, text: &[u16]) -> Result<()> {
+    if text.is_empty() {
+        // A real NUL behind cch 0. An empty slice's pointer is dangling, and a
+        // host that peeks one unit then refuses to clear the composition.
+        let nul = [0u16];
+        unsafe { range.SetText(ec, 0, &nul[..0]) }
+    } else {
+        unsafe { range.SetText(ec, 0, text) }
+    }
 }
 
 fn range_len(range: &ITfRange, ec: u32) -> usize {

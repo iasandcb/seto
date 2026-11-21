@@ -63,6 +63,7 @@ impl Engine {
     pub fn will_eat_down(&self, key: &WinKey) -> bool {
         let mut state = self.decision;
         state.open_word = self.session.has_open_word();
+        state.composing = !self.session.preedit().is_empty();
         eaten_down(keys::step_down(&mut state, key))
     }
 
@@ -73,6 +74,7 @@ impl Engine {
 
     pub fn key_down(&mut self, key: &WinKey) -> KeyEffect {
         self.decision.open_word = self.session.has_open_word();
+        self.decision.composing = !self.session.preedit().is_empty();
         let class = keys::step_down(&mut self.decision, key);
         let effect = match class {
             DownClass::Pass { commit, ending_run, .. } => {
@@ -105,6 +107,7 @@ impl Engine {
             _ => effect,
         };
         self.decision.open_word = self.session.has_open_word();
+        self.decision.composing = !self.session.preedit().is_empty();
         effect
     }
 
@@ -119,6 +122,7 @@ impl Engine {
             }
         };
         self.decision.open_word = self.session.has_open_word();
+        self.decision.composing = !self.session.preedit().is_empty();
         effect
     }
 
@@ -127,6 +131,7 @@ impl Engine {
     pub fn commit_for_focus_loss(&mut self) -> SessionUpdate {
         let update = self.session.commit_displayed(true);
         self.decision.open_word = self.session.has_open_word();
+        self.decision.composing = !self.session.preedit().is_empty();
         self.decision.right_alt_down = false;
         self.decision.right_alt_used = false;
         update
@@ -145,6 +150,7 @@ impl Engine {
         session.corrects_typos = corrects_typos;
         self.session = session;
         self.decision.open_word = false;
+        self.decision.composing = false;
     }
 }
 
@@ -211,9 +217,15 @@ mod tests {
         let mut doc = Document::new();
         press_char(&mut engine, &mut doc, 'k', false);
         assert_eq!(doc.composition(), "ㄱ");
+        assert!(engine.will_eat_down(&WinKey::bare(vk::BACK)));
         press_char(&mut engine, &mut doc, 'f', false);
         assert_eq!(doc.text(), "가");
         assert_eq!(doc.composition(), "가");
+        assert!(engine.will_eat_down(&WinKey::bare(vk::BACK)));
+        assert!(!engine.will_eat_down(&WinKey::bare(vk::RETURN)));
+        press(&mut engine, &mut doc, WinKey::bare(vk::BACK));
+        assert_eq!(doc.composition(), "ㄱ");
+        press_char(&mut engine, &mut doc, 'f', false);
         press_char(&mut engine, &mut doc, ' ', false);
         assert_eq!(doc.text(), "가 ");
         assert_eq!(doc.composition(), "");

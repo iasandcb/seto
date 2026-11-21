@@ -146,7 +146,13 @@ impl TextService_Impl {
             (update, context, client_id)
         };
         if let Some(context) = context {
-            schedule(&self.tip, &context, client_id, &KeyEffect::Pass { commit: Some(update), app_deletes: false });
+            schedule(
+                &self.tip,
+                &context,
+                client_id,
+                &KeyEffect::Pass { commit: Some(update), app_deletes: false },
+                true,
+            );
         }
     }
 }
@@ -194,9 +200,12 @@ impl ITfKeyEventSink_Impl for TextService_Impl {
             if !eat {
                 let effect = self.tip.borrow_mut().engine.key_down(&key);
                 let client_id = self.tip.borrow().client_id;
-                schedule(&self.tip, &context, client_id, &effect);
+                log_passthrough(&key, &effect);
+                // Commit finishes before we return not-eaten, so Enter's newline
+                // is not swallowed by a composition that is still open.
+                schedule(&self.tip, &context, client_id, &effect, true);
             }
-            log(&format!("OnTestKeyDown vk={:#x} eat={eat}", key.vk));
+            log(&format!("OnTestKeyDown vk={:#x} scan={:#x} eat={eat}", key.vk, key.scan));
             Ok(eat.into())
         })
     }
@@ -211,7 +220,13 @@ impl ITfKeyEventSink_Impl for TextService_Impl {
             self.remember_context(&context);
             let effect = self.tip.borrow_mut().engine.key_down(&key);
             let client_id = self.tip.borrow().client_id;
-            schedule(&self.tip, &context, client_id, &effect);
+            if key.vk == vk::BACK {
+                log(&format!("backspace composing preedit={} eaten=true", self.tip.borrow().engine.preedit()));
+            }
+            // Backspace must update the composition before we return. Inserts
+            // can stay asynchronous; the key is not delivered to the app.
+            let sync = key.vk == vk::BACK;
+            schedule(&self.tip, &context, client_id, &effect, sync);
             Ok(true.into())
         })
     }
@@ -227,7 +242,7 @@ impl ITfKeyEventSink_Impl for TextService_Impl {
             if !eat {
                 let effect = self.tip.borrow_mut().engine.key_up(&key);
                 let client_id = self.tip.borrow().client_id;
-                schedule(&self.tip, &context, client_id, &effect);
+                schedule(&self.tip, &context, client_id, &effect, false);
             }
             Ok(eat.into())
         })
@@ -242,7 +257,7 @@ impl ITfKeyEventSink_Impl for TextService_Impl {
             };
             let effect = self.tip.borrow_mut().engine.key_up(&key);
             let client_id = self.tip.borrow().client_id;
-            schedule(&self.tip, &context, client_id, &effect);
+            schedule(&self.tip, &context, client_id, &effect, false);
             Ok(true.into())
         })
     }
@@ -276,7 +291,25 @@ impl TextService_Impl {
     }
 }
 
-fn schedule(slot: &SharedTip, context: &ITfContext, client_id: u32, effect: &KeyEffect) {
+fn log_passthrough(key: &WinKey, effect: &KeyEffect) {
+    let commit = matches!(effect, KeyEffect::Pass { commit: Some(_), .. });
+    let kind = match key.vk {
+        vk::RETURN => "enter",
+        vk::BACK => "backspace",
+        vk::TAB => "tab",
+        vk::ESCAPE => "esc",
+        vk::DELETE => "delete",
+        vk::LEFT | vk::RIGHT | vk::UP | vk::DOWN => "arrow",
+        _ if key.control || key.left_alt || key.win => "shortcut",
+        _ => "passthrough",
+    };
+    log(&format!(
+        "{kind} pass-through vk={:#x} scan={:#x} commit={commit} ctrl={} alt={} win={}",
+        key.vk, key.scan, key.control, key.left_alt, key.win
+    ));
+}
+
+fn schedule(slot: &SharedTip, context: &ITfContext, client_id: u32, effect: &KeyEffect, sync: bool) {
     let plan = {
         let mut tip = slot.borrow_mut();
         let before = tip.composition_utf16;
@@ -285,12 +318,18 @@ fn schedule(slot: &SharedTip, context: &ITfContext, client_id: u32, effect: &Key
         plan
     };
     let Some(plan) = plan else {
+        log("schedule: no document change");
         return;
     };
+    log(&format!(
+        "schedule sync={sync} delete={} insert={} compose={}",
+        plan.delete_utf16, plan.insert, plan.compose_utf16
+    ));
     if client_id == 0 {
+        log("schedule skipped: client id is 0");
         return;
     }
-    if let Err(error) = edit::request(context, Rc::clone(slot), client_id, plan) {
+    if let Err(error) = edit::request(context, Rc::clone(slot), client_id, plan, sync) {
         log(&format!("edit session rejected: {error}"));
     }
 }
