@@ -11,13 +11,23 @@
 
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
+use std::sync::atomic::{AtomicBool, Ordering};
 
-use windows::Win32::Foundation::{COLORREF, E_FAIL, E_NOINTERFACE, E_POINTER, POINT, RECT};
-use windows::Win32::Graphics::Gdi::{
-    CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateBitmap, CreateCompatibleBitmap, CreateCompatibleDC, CreateFontW,
-    DeleteDC, DeleteObject, GetDC, HANGUL_CHARSET, HBITMAP, HDC, HGDIOBJ, OUT_DEFAULT_PRECIS, PatBlt, ReleaseDC,
-    SelectObject, SetBkMode, SetTextColor, TRANSPARENT, TextOutW, WHITENESS,
+use windows::Win32::Foundation::{
+    COLORREF, CloseHandle, E_FAIL, E_NOINTERFACE, E_POINTER, ERROR_SUCCESS, HANDLE, HWND, LPARAM, LRESULT, POINT, RECT,
+    SIZE, WAIT_OBJECT_0, WPARAM,
 };
+use windows::Win32::Graphics::Gdi::{
+    ANTIALIASED_QUALITY, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CLIP_DEFAULT_PRECIS, CreateBitmap, CreateCompatibleDC,
+    CreateDIBSection, CreateFontW, DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, GetTextExtentPoint32W,
+    HANGUL_CHARSET, HBITMAP, HDC, HGDIOBJ, OUT_DEFAULT_PRECIS, ReleaseDC, SelectObject, SetBkMode, SetTextColor,
+    TRANSPARENT, TextOutW,
+};
+use windows::Win32::System::Registry::{
+    HKEY, HKEY_CURRENT_USER, KEY_NOTIFY, KEY_QUERY_VALUE, REG_NOTIFY_CHANGE_LAST_SET, RRF_RT_REG_DWORD, RegCloseKey,
+    RegGetValueW, RegNotifyChangeKeyValue, RegOpenKeyExW,
+};
+use windows::Win32::System::Threading::{CreateEventW, INFINITE, SetEvent, WaitForMultipleObjects};
 use windows::Win32::System::Variant::{VARIANT, VT_EMPTY, VT_I4, VT_INT, VT_UI4, VariantClear};
 use windows::Win32::UI::TextServices::{
     GUID_COMPARTMENT_KEYBOARD_INPUTMODE_CONVERSION, GUID_COMPARTMENT_KEYBOARD_OPENCLOSE, GUID_LBI_INPUTMODE,
@@ -25,10 +35,14 @@ use windows::Win32::UI::TextServices::{
     ITfLangBarItem_Impl, ITfLangBarItemButton, ITfLangBarItemButton_Impl, ITfLangBarItemMgr, ITfLangBarItemSink,
     ITfSource, ITfSource_Impl, ITfThreadMgr, TF_CONVERSIONMODE_ALPHANUMERIC, TF_CONVERSIONMODE_NATIVE,
     TF_LANGBARITEMINFO, TF_LBI_CLK_RIGHT, TF_LBI_ICON, TF_LBI_STATUS, TF_LBI_STATUS_BTN_TOGGLED, TF_LBI_STATUS_HIDDEN,
-    TF_LBI_STYLE_BTN_BUTTON, TF_LBI_STYLE_SHOWNINTRAY, TF_LBI_STYLE_TEXTCOLORICON, TF_LBI_TEXT, TF_LBI_TOOLTIP,
-    TfLBIClick,
+    TF_LBI_STYLE_BTN_BUTTON, TF_LBI_STYLE_SHOWNINTRAY, TF_LBI_TEXT, TF_LBI_TOOLTIP, TfLBIClick,
 };
-use windows::Win32::UI::WindowsAndMessaging::{HICON, ICONINFO};
+use windows::Win32::UI::WindowsAndMessaging::{
+    CreateIconFromResourceEx, CreateIconIndirect, CreateWindowExW, DefWindowProcW, DestroyWindow, GWLP_USERDATA,
+    GetSystemMetrics, GetWindowLongPtrW, HICON, HWND_MESSAGE, ICONINFO, IMAGE_FLAGS, LookupIconIdFromDirectoryEx,
+    PostMessageW, RegisterClassW, SM_CXSMICON, SetWindowLongPtrW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_DESTROY,
+    WNDCLASSW,
+};
 use windows::core::{BOOL, BSTR, Error, GUID, IUnknown, Interface, PCWSTR, Ref, Result, implement};
 
 use seto_core::Language;
@@ -77,7 +91,7 @@ impl ITfLangBarItem_Impl for ModeButton_Impl {
             let mut info = TF_LANGBARITEMINFO {
                 clsidService: CLSID_SETO,
                 guidItem: GUID_LBI_INPUTMODE,
-                dwStyle: TF_LBI_STYLE_BTN_BUTTON | TF_LBI_STYLE_SHOWNINTRAY | TF_LBI_STYLE_TEXTCOLORICON,
+                dwStyle: TF_LBI_STYLE_BTN_BUTTON | TF_LBI_STYLE_SHOWNINTRAY,
                 ulSort: 0,
                 szDescription: [0; 32],
             };
@@ -257,14 +271,14 @@ pub(crate) fn install(slot: &SharedTip) {
             Err(error) => {
                 log(&format!("indicator compartment source: {error}"));
                 store_button(slot, item, mgr, None);
-                publish(slot, true);
+                finish_install(slot);
                 return;
             }
         },
         Err(error) => {
             log(&format!("indicator GetCompartment: {error}"));
             store_button(slot, item, mgr, None);
-            publish(slot, true);
+            finish_install(slot);
             return;
         }
     };
@@ -276,10 +290,26 @@ pub(crate) fn install(slot: &SharedTip) {
         }
     };
     store_button(slot, item, mgr, event_sink);
+    finish_install(slot);
+}
+
+fn finish_install(slot: &SharedTip) {
     publish(slot, true);
+    let already = slot.borrow().theme_watch.is_some();
+    if already {
+        return;
+    }
+    let Some(watch) = start_theme_watch(slot) else {
+        return;
+    };
+    slot.borrow_mut().theme_watch = Some(watch);
 }
 
 pub(crate) fn remove(slot: &SharedTip) {
+    let watch = slot.borrow_mut().theme_watch.take();
+    if let Some(watch) = watch {
+        stop_theme_watch(watch);
+    }
     let (mgr, item, event, thread_mgr, client_id) = {
         let mut tip = slot.borrow_mut();
         tip.updating_mode = true;
@@ -478,79 +508,489 @@ fn variant_dword(value: &VARIANT) -> Option<u32> {
     }
 }
 
+const ICON_SIZES: [i32; 4] = [16, 20, 24, 32];
+const CLASS_NAME: [u16; 13] = [
+    b'S' as u16,
+    b'e' as u16,
+    b't' as u16,
+    b'o' as u16,
+    b'M' as u16,
+    b'o' as u16,
+    b'd' as u16,
+    b'e' as u16,
+    b'I' as u16,
+    b'c' as u16,
+    b'o' as u16,
+    b'n' as u16,
+    0,
+];
+
+pub(crate) struct ThemeWatch {
+    stop: HANDLE,
+    hwnd: HWND,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
 fn mode_icon(label: &str) -> Option<HICON> {
+    let light = system_uses_light_theme();
+    let desired = crate::snap_tray_icon_px(unsafe { GetSystemMetrics(SM_CXSMICON) });
+    let mut images = Vec::new();
+    for size in ICON_SIZES {
+        if let Some(bytes) = render_icon_image(label, size, light) {
+            images.push((size, bytes));
+        }
+    }
+    if images.is_empty() {
+        return None;
+    }
+    let directory = group_icon_directory(&images);
+    let id = unsafe { LookupIconIdFromDirectoryEx(directory.as_ptr(), true, desired, desired, IMAGE_FLAGS(0)) };
+    let index = images
+        .iter()
+        .position(|(size, _)| *size == id)
+        .unwrap_or_else(|| images.iter().position(|(size, _)| *size == desired).unwrap_or(0));
+    let side = images[index].0;
+    let created =
+        unsafe { CreateIconFromResourceEx(&images[index].1, true, 0x0003_0000, side, side, IMAGE_FLAGS(0)).ok() };
+    created.or_else(|| icon_indirect(label, side, light))
+}
+
+fn icon_indirect(label: &str, size: i32, light: bool) -> Option<HICON> {
+    let coverage = draw_coverage(label, size)?;
     unsafe {
-        let screen = GetDC(None);
-        if screen.is_invalid() {
-            return None;
-        }
-        let dc = CreateCompatibleDC(Some(screen));
-        let color = CreateCompatibleBitmap(screen, 16, 16);
-        let _ = ReleaseDC(None, screen);
-        if dc.is_invalid() || color.is_invalid() {
-            release_dc(dc);
+        let dc = memory_dc()?;
+        let info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: 40,
+                biWidth: size,
+                biHeight: -size,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..BITMAPINFOHEADER::default()
+            },
+            ..BITMAPINFO::default()
+        };
+        let mut bits: *mut core::ffi::c_void = core::ptr::null_mut();
+        let color = match CreateDIBSection(Some(dc), &info, DIB_RGB_COLORS, &mut bits, None, 0) {
+            Ok(bitmap) => bitmap,
+            Err(_) => {
+                release_dc(dc);
+                return None;
+            }
+        };
+        if bits.is_null() {
             release_bitmap(color);
-            return None;
-        }
-        let zeros = [0u8; 64];
-        let mask = CreateBitmap(16, 16, 1, 1, Some(zeros.as_ptr().cast()));
-        if mask.is_invalid() {
-            release_bitmap(color);
             release_dc(dc);
             return None;
         }
-        let previous = SelectObject(dc, HGDIOBJ::from(color));
-        let _ = PatBlt(dc, 0, 0, 16, 16, WHITENESS);
-        draw_label(dc, label);
-        let _ = SelectObject(dc, previous);
-        let icon = windows::Win32::UI::WindowsAndMessaging::CreateIconIndirect(&ICONINFO {
-            fIcon: true.into(),
-            xHotspot: 0,
-            yHotspot: 0,
-            hbmMask: mask,
-            hbmColor: color,
-        })
-        .ok();
-        release_bitmap(color);
+        let dest = bits as *mut u8;
+        for index in 0..(size * size) as usize {
+            let alpha = coverage[index];
+            let channel = if light { 0u16 } else { 255 };
+            let premultiplied = (channel * u16::from(alpha) / 255) as u8;
+            let offset = index * 4;
+            *dest.add(offset) = premultiplied;
+            *dest.add(offset + 1) = premultiplied;
+            *dest.add(offset + 2) = premultiplied;
+            *dest.add(offset + 3) = alpha;
+        }
+        let mask_stride = ((size + 31) / 32) * 4;
+        let mut mask_bits = vec![0u8; (mask_stride * size) as usize];
+        for y in 0..size {
+            for x in 0..size {
+                if coverage[(y * size + x) as usize] == 0 {
+                    let row = (y * mask_stride) as usize;
+                    mask_bits[row + (x / 8) as usize] |= 1 << (7 - (x % 8));
+                }
+            }
+        }
+        let mask = CreateBitmap(size, size, 1, 1, Some(mask_bits.as_ptr().cast()));
+        let icon = if mask.is_invalid() {
+            None
+        } else {
+            CreateIconIndirect(&ICONINFO {
+                fIcon: true.into(),
+                xHotspot: 0,
+                yHotspot: 0,
+                hbmMask: mask,
+                hbmColor: color,
+            })
+            .ok()
+        };
         release_bitmap(mask);
+        release_bitmap(color);
         release_dc(dc);
         icon
     }
 }
 
-unsafe fn draw_label(dc: HDC, label: &str) {
-    let mut face: Vec<u16> = "Malgun Gothic".encode_utf16().collect();
-    face.push(0);
-    let font = unsafe {
-        CreateFontW(
-            -12,
-            0,
-            0,
-            0,
-            400,
-            0,
-            0,
-            0,
-            HANGUL_CHARSET,
-            OUT_DEFAULT_PRECIS,
-            CLIP_DEFAULT_PRECIS,
-            CLEARTYPE_QUALITY,
-            0,
-            PCWSTR(face.as_ptr()),
+fn system_uses_light_theme() -> bool {
+    let mut subkey: Vec<u16> =
+        "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize".encode_utf16().collect();
+    subkey.push(0);
+    let mut value: Vec<u16> = "SystemUsesLightTheme".encode_utf16().collect();
+    value.push(0);
+    let mut data = 1u32;
+    let mut size = 4u32;
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            PCWSTR(subkey.as_ptr()),
+            PCWSTR(value.as_ptr()),
+            RRF_RT_REG_DWORD,
+            None,
+            Some((&mut data as *mut u32).cast()),
+            Some(&mut size),
         )
     };
-    if font.is_invalid() {
-        return;
+    if status != ERROR_SUCCESS {
+        return true;
     }
-    let previous = unsafe { SelectObject(dc, HGDIOBJ::from(font)) };
+    data != 0
+}
+
+fn render_icon_image(label: &str, size: i32, light: bool) -> Option<Vec<u8>> {
+    let coverage = draw_coverage(label, size)?;
+    let mask_stride = ((size + 31) / 32) * 4;
+    let xor_bytes = (size * size * 4) as usize;
+    let mask_bytes = (mask_stride * size) as usize;
+    let mut image = Vec::with_capacity(40 + xor_bytes + mask_bytes);
+    image.extend_from_slice(&40u32.to_le_bytes());
+    image.extend_from_slice(&size.to_le_bytes());
+    image.extend_from_slice(&(size * 2).to_le_bytes());
+    image.extend_from_slice(&1u16.to_le_bytes());
+    image.extend_from_slice(&32u16.to_le_bytes());
+    image.extend_from_slice(&0u32.to_le_bytes());
+    image.extend_from_slice(&((xor_bytes + mask_bytes) as u32).to_le_bytes());
+    image.extend_from_slice(&[0u8; 16]);
+    for y in (0..size).rev() {
+        for x in 0..size {
+            let alpha = coverage[(y * size + x) as usize];
+            let channel = if light { 0u16 } else { 255 };
+            let premultiplied = (channel * u16::from(alpha) / 255) as u8;
+            image.extend_from_slice(&[premultiplied, premultiplied, premultiplied, alpha]);
+        }
+    }
+    for y in (0..size).rev() {
+        let mut row = vec![0u8; mask_stride as usize];
+        for x in 0..size {
+            if coverage[(y * size + x) as usize] == 0 {
+                row[(x / 8) as usize] |= 1 << (7 - (x % 8));
+            }
+        }
+        image.extend_from_slice(&row);
+    }
+    Some(image)
+}
+
+fn draw_coverage(label: &str, size: i32) -> Option<Vec<u8>> {
+    unsafe {
+        let dc = memory_dc()?;
+        let info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: 40,
+                biWidth: size,
+                biHeight: -size,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..BITMAPINFOHEADER::default()
+            },
+            ..BITMAPINFO::default()
+        };
+        let mut bits: *mut core::ffi::c_void = core::ptr::null_mut();
+        let bitmap = match CreateDIBSection(Some(dc), &info, DIB_RGB_COLORS, &mut bits, None, 0) {
+            Ok(bitmap) => bitmap,
+            Err(_) => {
+                release_dc(dc);
+                return None;
+            }
+        };
+        if bits.is_null() {
+            release_bitmap(bitmap);
+            release_dc(dc);
+            return None;
+        }
+        core::ptr::write_bytes(bits, 0, (size * size * 4) as usize);
+        let previous = SelectObject(dc, HGDIOBJ::from(bitmap));
+        draw_white_glyph(dc, label, size);
+        let _ = SelectObject(dc, previous);
+        let src = bits as *const u8;
+        let mut coverage = vec![0u8; (size * size) as usize];
+        for index in 0..(size * size) as usize {
+            let offset = index * 4;
+            let blue = *src.add(offset);
+            let green = *src.add(offset + 1);
+            let red = *src.add(offset + 2);
+            coverage[index] = blue.max(green).max(red);
+        }
+        release_bitmap(bitmap);
+        release_dc(dc);
+        Some(coverage)
+    }
+}
+
+fn memory_dc() -> Option<HDC> {
+    unsafe {
+        let screen = GetDC(None);
+        let dc = if screen.is_invalid() { CreateCompatibleDC(None) } else { CreateCompatibleDC(Some(screen)) };
+        if !screen.is_invalid() {
+            let _ = ReleaseDC(None, screen);
+        }
+        if dc.is_invalid() { None } else { Some(dc) }
+    }
+}
+
+fn draw_white_glyph(dc: HDC, label: &str, size: i32) {
+    let units: Vec<u16> = label.encode_utf16().collect();
+    let mut face: Vec<u16> = "Malgun Gothic".encode_utf16().collect();
+    face.push(0);
+    let mut height = (size * 3 / 4).max(8);
     unsafe {
         let _ = SetBkMode(dc, TRANSPARENT);
-        let _ = SetTextColor(dc, COLORREF(0));
-        let units: Vec<u16> = label.encode_utf16().collect();
-        let _ = TextOutW(dc, 1, 1, &units);
-        let _ = SelectObject(dc, previous);
-        let _ = DeleteObject(HGDIOBJ::from(font));
+        let _ = SetTextColor(dc, COLORREF(0x00FF_FFFF));
     }
+    while height >= 6 {
+        let font = unsafe {
+            CreateFontW(
+                -height,
+                0,
+                0,
+                0,
+                700,
+                0,
+                0,
+                0,
+                HANGUL_CHARSET,
+                OUT_DEFAULT_PRECIS,
+                CLIP_DEFAULT_PRECIS,
+                ANTIALIASED_QUALITY,
+                0,
+                PCWSTR(face.as_ptr()),
+            )
+        };
+        if font.is_invalid() {
+            return;
+        }
+        let previous = unsafe { SelectObject(dc, HGDIOBJ::from(font)) };
+        let mut extent = SIZE::default();
+        let measured = unsafe { GetTextExtentPoint32W(dc, &units, &mut extent).as_bool() };
+        if measured && extent.cx <= size - 1 && extent.cy <= size - 1 {
+            let x = (size - extent.cx) / 2;
+            let y = (size - extent.cy) / 2;
+            unsafe {
+                let _ = TextOutW(dc, x, y, &units);
+                let _ = SelectObject(dc, previous);
+                let _ = DeleteObject(HGDIOBJ::from(font));
+            }
+            return;
+        }
+        unsafe {
+            let _ = SelectObject(dc, previous);
+            let _ = DeleteObject(HGDIOBJ::from(font));
+        }
+        height -= 1;
+    }
+}
+
+fn group_icon_directory(images: &[(i32, Vec<u8>)]) -> Vec<u8> {
+    let mut directory = Vec::with_capacity(6 + images.len() * 14);
+    directory.extend_from_slice(&0u16.to_le_bytes());
+    directory.extend_from_slice(&1u16.to_le_bytes());
+    directory.extend_from_slice(&(images.len() as u16).to_le_bytes());
+    for (size, bytes) in images {
+        let dim = if *size >= 256 { 0 } else { *size as u8 };
+        directory.push(dim);
+        directory.push(dim);
+        directory.push(0);
+        directory.push(0);
+        directory.extend_from_slice(&1u16.to_le_bytes());
+        directory.extend_from_slice(&32u16.to_le_bytes());
+        directory.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
+        directory.extend_from_slice(&(*size as u16).to_le_bytes());
+    }
+    directory
+}
+
+fn start_theme_watch(slot: &SharedTip) -> Option<ThemeWatch> {
+    let hwnd = theme_window(slot)?;
+    let stop = unsafe { CreateEventW(None, true, false, PCWSTR::null()).ok()? };
+    let changed = match unsafe { CreateEventW(None, false, false, PCWSTR::null()) } {
+        Ok(changed) => changed,
+        Err(error) => {
+            log(&format!("indicator theme event: {error}"));
+            unsafe {
+                let _ = DestroyWindow(hwnd);
+                let _ = CloseHandle(stop);
+            }
+            return None;
+        }
+    };
+    let key = match open_personalize_key() {
+        Some(key) => key,
+        None => {
+            unsafe {
+                let _ = DestroyWindow(hwnd);
+                let _ = CloseHandle(stop);
+                let _ = CloseHandle(changed);
+            }
+            return None;
+        }
+    };
+    let armed = unsafe { RegNotifyChangeKeyValue(key, false, REG_NOTIFY_CHANGE_LAST_SET, Some(changed), true) };
+    if armed != ERROR_SUCCESS {
+        log(&format!("indicator theme watch failed: {armed:?}"));
+        unsafe {
+            let _ = RegCloseKey(key);
+            let _ = DestroyWindow(hwnd);
+            let _ = CloseHandle(stop);
+            let _ = CloseHandle(changed);
+        }
+        return None;
+    }
+    let hwnd_bits = hwnd.0 as usize;
+    let key_bits = key.0 as usize;
+    let changed_bits = changed.0 as usize;
+    let stop_bits = stop.0 as usize;
+    let thread = std::thread::spawn(move || {
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            theme_loop(
+                HWND(hwnd_bits as *mut _),
+                HKEY(key_bits as *mut _),
+                HANDLE(changed_bits as *mut _),
+                HANDLE(stop_bits as *mut _),
+            );
+        }));
+    });
+    Some(ThemeWatch { stop, hwnd, thread: Some(thread) })
+}
+
+fn stop_theme_watch(mut watch: ThemeWatch) {
+    unsafe {
+        let _ = SetEvent(watch.stop);
+    }
+    if let Some(thread) = watch.thread.take() {
+        let _ = thread.join();
+    }
+    if !watch.hwnd.is_invalid() {
+        unsafe {
+            let _ = DestroyWindow(watch.hwnd);
+        }
+    }
+    unsafe {
+        let _ = CloseHandle(watch.stop);
+    }
+}
+
+fn theme_loop(hwnd: HWND, key: HKEY, changed: HANDLE, stop: HANDLE) {
+    loop {
+        let status = unsafe { WaitForMultipleObjects(&[changed, stop], false, INFINITE) };
+        if status != WAIT_OBJECT_0 {
+            break;
+        }
+        unsafe {
+            let _ = PostMessageW(Some(hwnd), WM_APP, WPARAM(0), LPARAM(0));
+        }
+        let armed = unsafe { RegNotifyChangeKeyValue(key, false, REG_NOTIFY_CHANGE_LAST_SET, Some(changed), true) };
+        if armed != ERROR_SUCCESS {
+            break;
+        }
+    }
+    unsafe {
+        let _ = RegCloseKey(key);
+        let _ = CloseHandle(changed);
+    }
+}
+
+fn theme_window(slot: &SharedTip) -> Option<HWND> {
+    ensure_theme_class();
+    let hwnd = unsafe {
+        CreateWindowExW(
+            WINDOW_EX_STYLE(0),
+            PCWSTR(CLASS_NAME.as_ptr()),
+            PCWSTR::null(),
+            WINDOW_STYLE(0),
+            0,
+            0,
+            0,
+            0,
+            Some(HWND_MESSAGE),
+            None,
+            Some(super::module_instance()),
+            None,
+        )
+        .ok()?
+    };
+    let boxed = Box::into_raw(Box::new(Rc::downgrade(slot)));
+    unsafe {
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, boxed as isize);
+    }
+    Some(hwnd)
+}
+
+fn ensure_theme_class() {
+    static READY: AtomicBool = AtomicBool::new(false);
+    if READY.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    let class = WNDCLASSW {
+        lpfnWndProc: Some(theme_wndproc),
+        hInstance: super::module_instance(),
+        lpszClassName: PCWSTR(CLASS_NAME.as_ptr()),
+        ..WNDCLASSW::default()
+    };
+    let atom = unsafe { RegisterClassW(&class) };
+    if atom == 0 {
+        READY.store(false, Ordering::Release);
+        log("indicator theme window class was not registered");
+    }
+}
+
+unsafe extern "system" fn theme_wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if msg == WM_APP {
+            refresh_theme_icon(hwnd);
+        } else if msg == WM_DESTROY {
+            let raw = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) };
+            if raw != 0 {
+                unsafe {
+                    SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+                    drop(Box::from_raw(raw as *mut Weak<RefCell<TipInner>>));
+                }
+            }
+        }
+    }));
+    unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+}
+
+fn refresh_theme_icon(hwnd: HWND) {
+    let raw = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) };
+    if raw == 0 {
+        return;
+    }
+    let weak = unsafe { &*(raw as *const Weak<RefCell<TipInner>>) };
+    let Some(slot) = weak.upgrade() else {
+        return;
+    };
+    let sink = slot.borrow().langbar_sink.clone();
+    log(&format!("indicator theme light={}", system_uses_light_theme()));
+    notify(sink);
+}
+
+fn open_personalize_key() -> Option<HKEY> {
+    let mut subkey: Vec<u16> =
+        "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize".encode_utf16().collect();
+    subkey.push(0);
+    let mut key = HKEY::default();
+    let status = unsafe {
+        RegOpenKeyExW(HKEY_CURRENT_USER, PCWSTR(subkey.as_ptr()), None, KEY_QUERY_VALUE | KEY_NOTIFY, &mut key)
+    };
+    if status != ERROR_SUCCESS {
+        log(&format!("indicator theme key: {status:?}"));
+        return None;
+    }
+    Some(key)
 }
 
 fn release_bitmap(bitmap: HBITMAP) {

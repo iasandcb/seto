@@ -17,7 +17,7 @@ cargo build -p seto-tsf --release --target x86_64-pc-windows-msvc
 
 ## 설치
 
-관리자 권한이 필요한 부분은 `regsvr32`입니다. 스크립트는 DLL과 사전을 먼저 `%LOCALAPPDATA%\Seto`에 복사한 뒤, 필요하면 그 경로만 상승된 `regsvr32`로 등록합니다.
+관리자 권한이 필요한 부분은 `regsvr32`입니다. 스크립트는 DLL을 `%LOCALAPPDATA%\Seto\seto_tsf-<시각>.dll`에 두고, 사전은 그 옆의 `seto_tsf-<시각>\Resources`에 파일마다 복사한 뒤 그 DLL만 등록합니다. 실행 중인 프로세스가 `korean-valid.txt`를 메모리에 매핑하고 있어도 새 폴더라 복사가 막히지 않습니다. 같은 내용의 파일은 건너뛰고, 잠긴 파일은 경고만 남긴 채 등록을 계속합니다.
 
 저장소를 빌드한 경우:
 
@@ -37,7 +37,7 @@ GitHub Actions 산출물(`seto-windows-x64`)을 푼 경우, `seto_tsf.dll`과 `R
 
 ## 최신 빌드로 바꾸기
 
-`gh`가 로그인되어 있으면 한 번에 최신 성공 빌드를 받아 등록합니다. 실행 중인 앱이 DLL을 잡고 있으면 그 파일을 `seto_tsf.dll.old-<시각>`으로 이름을 바꾼 뒤 새 DLL을 등록하므로 Windows 로그아웃은 필요 없습니다. 이미 켜 둔 앱은 예전 DLL을 그대로 쓰니, 시험하는 앱만 다시 열면 됩니다.
+`gh`가 로그인되어 있으면 한 번에 최신 성공 빌드를 받아 등록합니다. 새 DLL과 사전은 항상 새 `seto_tsf-<시각>` 이름에 들어가므로, 이미 켜 둔 앱이 예전 사전을 잡고 있어도 로그아웃할 필요가 없습니다. 사전 복사가 실패해도 DLL 등록은 진행됩니다. 시험하는 앱만 다시 열면 됩니다.
 
 저장소 안에서 이 브랜치의 PR을 기준으로:
 
@@ -53,7 +53,7 @@ powershell -ExecutionPolicy Bypass -File scripts\windows\update.ps1 -Branch curs
 powershell -ExecutionPolicy Bypass -File scripts\windows\uninstall.ps1
 ```
 
-`%LOCALAPPDATA%\Seto\seto_tsf.dll` 등록을 지우고 파일을 삭제합니다. `Resources` 사전은 남겨 둡니다. DLL이 사용 중이면 로그아웃한 뒤 같은 경로를 지우면 됩니다.
+`%LOCALAPPDATA%\Seto` 아래의 `seto_tsf*.dll` 등록을 지우고, 지울 수 있는 DLL과 `seto_tsf-<시각>` 사전 폴더를 삭제합니다. 사용 중인 파일은 경고만 남기고 넘어갑니다. 로그아웃한 뒤 같은 경로를 지우면 됩니다.
 
 ## 동작
 
@@ -62,7 +62,7 @@ powershell -ExecutionPolicy Bypass -File scripts\windows\uninstall.ps1
 - 공백·문장 부호·단어 경계는 코어가 확정합니다. Enter·Tab·Esc·방향키·포커스를 잃으면 조합을 확정한 뒤 그 키는 앱으로 넘깁니다.
 - Backspace는 코어를 거칩니다. 조합이 없으면 앱이 지웁니다.
 - 한/영은 `VK_HANGUL`(한/영 키)과 **오른쪽 Alt** 탭입니다. Shift+Space도 전환입니다. Shift를 누른 뒤 다른 글쇠를 치고 Space를 누르면 일반 공백입니다(macOS `ShiftSpaceToggleTracker`와 같음).
-- 작업 표시줄 입력 표시기는 한글일 때 **가**, 영문일 때 **A**입니다. Microsoft 한글 IME와 같이 `GUID_LBI_INPUTMODE` 버튼과 변환 모드 구획(`TF_CONVERSIONMODE_NATIVE`가 한글)을 같이 갱신합니다. 한/영 키, 오른쪽 Alt, Shift+Space, 모드가 바뀌는 자동 전환, 포커스가 바뀔 때 바뀝니다. 표시기를 누르면 한/영이 전환됩니다.
+- 작업 표시줄 입력 표시기는 한글일 때 **가**, 영문일 때 **A**입니다. Microsoft 한글 IME와 같이 `GUID_LBI_INPUTMODE` 버튼과 변환 모드 구획(`TF_CONVERSIONMODE_NATIVE`가 한글)을 같이 갱신합니다. 한/영 키, 오른쪽 Alt, Shift+Space, 모드가 바뀌는 자동 전환, 포커스가 바뀔 때 바뀝니다. 표시기를 누르면 한/영이 전환됩니다. 글자는 굵고 배경은 투명입니다. 작업 표시줄이 밝으면(`SystemUsesLightTheme`) 검은 글자, 어두우면 흰 글자이며, 테마가 바뀌면 다시 그립니다. 16·20·24·32px를 갖춰 DPI에 맞는 크기를 씁니다.
 - 오른쪽 Alt를 누른 채 다른 키를 치면 전환하지 않고, 그 키는 Alt 단축키로 넘깁니다. 왼쪽 Alt·Ctrl·Win 단축키는 조합만 확정하고 앱에 그대로 전달합니다.
 - 암호 칸과 TSF 보안 모드에서는 조합하지 않고 키를 넘깁니다.
 
@@ -87,4 +87,4 @@ powershell -ExecutionPolicy Bypass -File scripts\windows\uninstall.ps1
 | VS Code | 편집기에서 `했어`(글쇠 `mr2jt`)가 조합되다 Space나 Enter로 확정되는지. 확정된 영문이 자동 전환으로 바뀌는지(사전을 설치했을 때). |
 | Windows Terminal | Enter가 조합을 확정하고 셸에 줄을 넘기는지. Ctrl+C가 셸 단축키로 동작하는지. 방향키가 커서를 옮기는지. |
 
-자동 전환을 보려면 `install.ps1`이 `Resources`를 복사했는지 확인합니다. 사전이 없으면 한글 조합만 기대하면 됩니다.
+자동 전환을 보려면 `%LOCALAPPDATA%\Seto\seto_tsf-<시각>\Resources`에 사전이 있는지 확인합니다. 사전이 없으면 한글 조합만 기대하면 됩니다.

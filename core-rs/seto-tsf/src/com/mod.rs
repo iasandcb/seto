@@ -46,6 +46,10 @@ pub(crate) fn unlock_module() {
     DLL_REFERENCES.fetch_sub(1, Ordering::SeqCst);
 }
 
+pub(crate) fn module_instance() -> HINSTANCE {
+    HINSTANCE(DLL_MODULE.load(Ordering::SeqCst))
+}
+
 pub(crate) fn module_path() -> Option<std::path::PathBuf> {
     let module = HMODULE(DLL_MODULE.load(Ordering::SeqCst));
     let mut buf = [0u16; 1024];

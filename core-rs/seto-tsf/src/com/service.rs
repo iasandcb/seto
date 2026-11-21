@@ -50,6 +50,7 @@ pub(crate) struct TipInner {
     pub(crate) updating_mode: bool,
     pub(crate) published: Option<Language>,
     pub(crate) indicator_shown: bool,
+    pub(crate) theme_watch: Option<super::indicator::ThemeWatch>,
 }
 
 pub(crate) type SharedTip = Rc<RefCell<TipInner>>;
@@ -82,6 +83,7 @@ impl TextService {
                 updating_mode: false,
                 published: None,
                 indicator_shown: true,
+                theme_watch: None,
             })),
         }
     }
@@ -525,16 +527,9 @@ fn lexicon() -> Arc<Lexicon> {
 }
 
 fn load_lexicon() -> Lexicon {
-    let mut candidates = Vec::new();
-    if let Some(module) = super::module_path().and_then(|path| path.parent().map(PathBuf::from)) {
-        candidates.push(module.join("Resources"));
-        candidates.push(module);
-    }
-    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
-        let base = PathBuf::from(local).join("Seto");
-        candidates.push(base.join("Resources"));
-        candidates.push(base);
-    }
+    let dll = super::module_path();
+    let local = std::env::var_os("LOCALAPPDATA").map(|dir| PathBuf::from(dir).join("Seto"));
+    let candidates = crate::lexicon_directories(dll.as_deref(), local.as_deref());
     for directory in candidates {
         if directory.join("english-words.txt").is_file() && directory.join("korean-words.txt").is_file() {
             match Lexicon::load(&directory) {

@@ -1,8 +1,11 @@
 # Download the latest successful Windows TSF build and register it.
 # UAC may prompt for regsvr32. Everything else is non-interactive.
-# If the installed DLL is loaded, it is renamed to seto_tsf.dll.old-<timestamp>
-# and the new file is registered at a free path so a Windows logout is not required.
-# Restart the app you are testing; processes that already loaded the old DLL keep it.
+# The DLL and its dictionaries go in a new folder pair:
+#   %LOCALAPPDATA%\Seto\seto_tsf-<stamp>.dll
+#   %LOCALAPPDATA%\Seto\seto_tsf-<stamp>\Resources
+# A running process keeps korean-valid.txt memory-mapped, so this copy never
+# overwrites that file. A dictionary that cannot be copied is skipped with a
+# warning. Registration still runs. Restart the app you are testing.
 
 [CmdletBinding()]
 param(
@@ -27,6 +30,57 @@ gh is installed but not logged in. Run:
   gh auth login
 Then rerun this script.
 "@
+    }
+}
+
+function New-SetoLayout([string]$DestDir) {
+    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $stem = "seto_tsf-$stamp"
+    $dll = Join-Path $DestDir "$stem.dll"
+    $suffix = 1
+    while (Test-Path -LiteralPath $dll) {
+        $stem = "seto_tsf-$stamp-$suffix"
+        $dll = Join-Path $DestDir "$stem.dll"
+        $suffix++
+    }
+    [pscustomobject]@{
+        Dll       = $dll
+        Resources = Join-Path $DestDir "$stem\Resources"
+    }
+}
+
+function Copy-SetoResources([string]$SourceDir, [string]$Destination) {
+    if (-not (Test-Path -LiteralPath $SourceDir)) {
+        Write-Warning "No dictionary folder at $SourceDir. Registering the DLL anyway."
+        return
+    }
+    try {
+        New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    } catch {
+        Write-Warning "Could not create ${Destination}: $($_.Exception.Message). Registering the DLL anyway."
+        return
+    }
+    $files = @(Get-ChildItem -LiteralPath $SourceDir -File -ErrorAction SilentlyContinue)
+    if ($files.Count -eq 0) {
+        Write-Warning "No dictionary files in $SourceDir. Registering the DLL anyway."
+        return
+    }
+    foreach ($file in $files) {
+        $target = Join-Path $Destination $file.Name
+        try {
+            if (Test-Path -LiteralPath $target) {
+                $srcHash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
+                $dstHash = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash
+                if ($srcHash -eq $dstHash) {
+                    Write-Host "Unchanged $($file.Name)"
+                    continue
+                }
+            }
+            Copy-Item -LiteralPath $file.FullName -Destination $target -Force -ErrorAction Stop
+            Write-Host "Copied $($file.Name)"
+        } catch {
+            Write-Warning "Skipped $($file.Name): $($_.Exception.Message)"
+        }
     }
 }
 
@@ -72,10 +126,8 @@ if (-not (Test-Path -LiteralPath $source)) { throw "Artifact has no seto_tsf.dll
 
 $destDir = Join-Path $env:LOCALAPPDATA 'Seto'
 New-Item -ItemType Directory -Force -Path $destDir | Out-Null
-$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-$installed = Join-Path $destDir 'seto_tsf.dll'
 
-Get-ChildItem -LiteralPath $destDir -Filter 'seto_tsf*.dll' -ErrorAction SilentlyContinue | ForEach-Object {
+Get-ChildItem -LiteralPath $destDir -Filter 'seto_tsf*.dll' -File -ErrorAction SilentlyContinue | ForEach-Object {
     try {
         Invoke-RegSvr @('/s', '/u', $_.FullName)
         Write-Host "Unregistered $($_.FullName)"
@@ -84,29 +136,15 @@ Get-ChildItem -LiteralPath $destDir -Filter 'seto_tsf*.dll' -ErrorAction Silentl
     }
 }
 
-if (Test-Path -LiteralPath $installed) {
-    try {
-        Remove-Item -LiteralPath $installed -Force -ErrorAction Stop
-    } catch {
-        $old = Join-Path $destDir "seto_tsf.dll.old-$stamp"
-        Rename-Item -LiteralPath $installed -NewName (Split-Path -Leaf $old) -ErrorAction Stop
-        Write-Host "Locked DLL renamed to $old"
-    }
+$layout = New-SetoLayout $destDir
+Copy-Item -LiteralPath $source -Destination $layout.Dll -Force
+try {
+    Copy-SetoResources -SourceDir (Join-Path $stage 'Resources') -Destination $layout.Resources
+} catch {
+    Write-Warning "Dictionary copy failed ($($_.Exception.Message)). Registering the DLL anyway."
 }
 
-$dest = Join-Path $destDir 'seto_tsf.dll'
-if (Test-Path -LiteralPath $dest) {
-    $dest = Join-Path $destDir "seto_tsf-$stamp.dll"
-}
-Copy-Item -LiteralPath $source -Destination $dest -Force
-$resources = Join-Path $stage 'Resources'
-if (Test-Path -LiteralPath $resources) {
-    $resourceDest = Join-Path $destDir 'Resources'
-    New-Item -ItemType Directory -Force -Path $resourceDest | Out-Null
-    Copy-Item -Path (Join-Path $resources '*') -Destination $resourceDest -Force
-}
-
-Invoke-RegSvr @('/s', $dest)
-Write-Host "Registered $dest from $($run.headSha)"
+Invoke-RegSvr @('/s', $layout.Dll)
+Write-Host "Registered $($layout.Dll) from $($run.headSha)"
 Write-Host "Restart the app you are testing. A Windows logout is not required."
 Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue

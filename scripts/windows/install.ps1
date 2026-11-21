@@ -36,29 +36,78 @@ function Find-Dll {
     throw "seto_tsf.dll not found. Build it or pass -DllPath."
 }
 
-function Copy-Dictionaries([string]$Destination) {
+function Find-ResourceDir {
     $candidates = @()
     if ($Resources) { $candidates += $Resources }
     $candidates += (Join-Path $here 'Resources')
     $candidates += (Join-Path $here '..\..\Resources')
     foreach ($dir in $candidates) {
-        $words = Join-Path $dir 'korean-words.txt'
-        if (Test-Path -LiteralPath $words) {
-            New-Item -ItemType Directory -Force -Path $Destination | Out-Null
-            Copy-Item -Path (Join-Path $dir '*.txt') -Destination $Destination -Force
-            Write-Host "Dictionaries: $Destination"
-            return
+        if (Test-Path -LiteralPath (Join-Path $dir 'korean-words.txt')) {
+            return (Resolve-Path -LiteralPath $dir).Path
         }
     }
-    Write-Warning "No Resources\korean-words.txt next to the script. Hangul still composes; auto-switch needs the dictionaries."
+    return $null
+}
+
+function New-SetoLayout([string]$DestDir) {
+    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $stem = "seto_tsf-$stamp"
+    $dll = Join-Path $DestDir "$stem.dll"
+    $suffix = 1
+    while (Test-Path -LiteralPath $dll) {
+        $stem = "seto_tsf-$stamp-$suffix"
+        $dll = Join-Path $DestDir "$stem.dll"
+        $suffix++
+    }
+    [pscustomobject]@{
+        Dll       = $dll
+        Resources = Join-Path $DestDir "$stem\Resources"
+    }
+}
+
+function Copy-SetoResources([string]$SourceDir, [string]$Destination) {
+    if (-not $SourceDir) {
+        Write-Warning "No Resources\korean-words.txt next to the script. Hangul still composes; auto-switch needs the dictionaries."
+        return
+    }
+    try {
+        New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    } catch {
+        Write-Warning "Could not create ${Destination}: $($_.Exception.Message). Registering the DLL anyway."
+        return
+    }
+    $files = @(Get-ChildItem -LiteralPath $SourceDir -File -ErrorAction SilentlyContinue)
+    foreach ($file in $files) {
+        $target = Join-Path $Destination $file.Name
+        try {
+            if (Test-Path -LiteralPath $target) {
+                $srcHash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
+                $dstHash = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash
+                if ($srcHash -eq $dstHash) {
+                    Write-Host "Unchanged $($file.Name)"
+                    continue
+                }
+            }
+            Copy-Item -LiteralPath $file.FullName -Destination $target -Force -ErrorAction Stop
+            Write-Host "Copied $($file.Name)"
+        } catch {
+            Write-Warning "Skipped $($file.Name): $($_.Exception.Message)"
+        }
+    }
+    Write-Host "Dictionaries: $Destination"
 }
 
 $source = Find-Dll
 $destDir = Join-Path $env:LOCALAPPDATA 'Seto'
 New-Item -ItemType Directory -Force -Path $destDir | Out-Null
-$dest = Join-Path $destDir 'seto_tsf.dll'
-Copy-Item -LiteralPath $source -Destination $dest -Force
-Copy-Dictionaries (Join-Path $destDir 'Resources')
+$layout = New-SetoLayout $destDir
+Copy-Item -LiteralPath $source -Destination $layout.Dll -Force
+try {
+    Copy-SetoResources -SourceDir (Find-ResourceDir) -Destination $layout.Resources
+} catch {
+    Write-Warning "Dictionary copy failed ($($_.Exception.Message)). Registering the DLL anyway."
+}
+$dest = $layout.Dll
 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = [Security.Principal.WindowsPrincipal]$identity

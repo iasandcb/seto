@@ -7,6 +7,8 @@
 mod apply;
 mod engine;
 mod keys;
+mod lexicon_path;
+mod tray;
 
 #[cfg(windows)]
 mod com;
@@ -14,3 +16,5 @@ mod com;
 pub use apply::{Document, EditPlan, plan_edit};
 pub use engine::{Engine, KeyEffect};
 pub use keys::{DecisionState, DownClass, UpClass, WinKey};
+pub use lexicon_path::lexicon_directories;
+pub use tray::snap_tray_icon_px;
