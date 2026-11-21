@@ -1,0 +1,40 @@
+name: Windows TSF
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  x64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Test workspace
+        working-directory: core-rs
+        run: cargo test --workspace
+
+      - name: Build x64 release DLL
+        working-directory: core-rs
+        run: cargo build -p seto-tsf --release --target x86_64-pc-windows-msvc
+
+      - name: Stage artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifact, artifact/Resources | Out-Null
+          Copy-Item core-rs/target/x86_64-pc-windows-msvc/release/seto_tsf.dll artifact/
+          Copy-Item scripts/windows/install.ps1, scripts/windows/uninstall.ps1 artifact/
+          Copy-Item docs/windows.md artifact/
+          Copy-Item Resources/english-words.txt, Resources/english-extra.txt, Resources/korean-words.txt, Resources/korean-valid.txt artifact/Resources/
+          if (-not (Test-Path artifact/seto_tsf.dll)) { throw 'seto_tsf.dll missing' }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: seto-windows-x64
+          path: artifact/
+          if-no-files-found: error

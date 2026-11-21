@@ -1,0 +1,30 @@
+[package]
+name = "seto-tsf"
+version = "0.1.0"
+description = "Windows TSF text input processor for Seto (세벌식 390)."
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# rlib so `cargo test` can run the key driver on macOS and Linux.
+# cdylib is the COM server (seto_tsf.dll) on Windows.
+[lib]
+name = "seto_tsf"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+seto-core = { path = "../seto-core" }
+
+[target.'cfg(windows)'.dependencies]
+windows-core = "0.62.2"
+windows-registry = "0.5"
+windows = { version = "0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Ole",
+    "Win32_System_SystemServices",
+    "Win32_System_Variant",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_TextServices",
+] }
