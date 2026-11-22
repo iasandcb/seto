@@ -271,6 +271,11 @@ pub struct Session {
     pub auto_switch: bool,
     /// When false, a finished word stays as typed. Retype logging still runs.
     pub corrects_typos: bool,
+    /// When false, the host cannot keep a composing span (Android `TYPE_NULL`,
+    /// or an editor that drops the span with `finishComposingText` / `setText`).
+    /// The Hangul reading is unchanged; edits only insert and replace committed
+    /// text, so the client can `commitText` and `deleteSurroundingText`.
+    composing: bool,
     /// Confirmed input language. Tentative readings do not change the keyboard mode.
     mode: Language,
     /// Open Hangul or an undecided shifted-punctuation reading.
@@ -314,6 +319,7 @@ impl Session {
             layout: options.layout,
             auto_switch: options.auto_switch,
             corrects_typos: true,
+            composing: true,
             mode: options.mode,
             preedit: String::new(),
             lexicon,
@@ -444,6 +450,20 @@ impl Session {
     /// or typo correction, this restores what was typed and holds it.
     /// Otherwise it flips the reading of the current word, or the mode for the next word.
     pub fn toggle(&mut self) -> SessionUpdate {
+        if !self.composing {
+            // The buffered syllable cannot be rewritten in place. Commit it and
+            // switch the language for the next word.
+            let flushed = self.commit_displayed(true);
+            self.mode = self.mode.flipped();
+            self.word_mode = self.mode;
+            self.locked = None;
+            return SessionUpdate {
+                mode: self.mode,
+                did_auto_convert: false,
+                preedit: String::new(),
+                field: flushed.field,
+            };
+        }
         // A mixed token such as `AI로` can also have an automatic-conversion
         // undo snapshot. Resolve the explicit whole-word toggle first; using
         // that snapshot would restore the earlier reading instead of flipping
@@ -489,6 +509,18 @@ impl Session {
     /// flip it back. A finished word is left alone: with no open keys, only
     /// the mode changes.
     pub fn convert_open_word(&mut self) -> SessionUpdate {
+        if !self.composing {
+            let flushed = self.commit_displayed(true);
+            self.mode = self.mode.flipped();
+            self.word_mode = self.mode;
+            self.locked = None;
+            return SessionUpdate {
+                mode: self.mode,
+                did_auto_convert: false,
+                preedit: String::new(),
+                field: flushed.field,
+            };
+        }
         if self.keys.is_empty() {
             self.mode = self.mode.flipped();
             self.word_mode = self.mode;
@@ -514,8 +546,15 @@ impl Session {
         let displayed = self.render(&self.segments);
         self.note_retype(&displayed);
         self.pending_undo = None;
-        let field =
-            if self.preedit.is_empty() { FieldEdit::None } else { FieldEdit::Unmark { text: self.preedit.clone() } };
+        // A host with no composing span never received `preedit`. Insert it.
+        // `plain` is already on screen, so inserting it again would duplicate.
+        let field = if self.preedit.is_empty() {
+            FieldEdit::None
+        } else if self.composing {
+            FieldEdit::Unmark { text: self.preedit.clone() }
+        } else {
+            FieldEdit::Insert { text: self.preedit.clone() }
+        };
         self.finished.push_str(&self.plain);
         self.finished.push_str(&self.preedit);
         self.clear_token();
@@ -523,6 +562,33 @@ impl Session {
             self.context_language = None;
         }
         self.make(field, String::new(), false)
+    }
+
+    /// Turn composing spans on or off without changing the Hangul reading.
+    ///
+    /// `already_committed` means the current preedit is already in the field
+    /// (the host finished composing, or the client just wrote it with
+    /// `commitText`). It is folded into the committed prefix and no edit is
+    /// returned. Pass `false` when a `setComposingText` was rejected: the
+    /// returned edit commits that preedit.
+    pub fn set_composing(&mut self, enabled: bool, already_committed: bool) -> SessionUpdate {
+        if enabled {
+            self.composing = true;
+            return self.make(FieldEdit::None, self.preedit.clone(), false);
+        }
+        let was_composing = self.composing;
+        self.composing = false;
+        if already_committed {
+            if !self.preedit.is_empty() {
+                self.plain.push_str(&self.preedit);
+                self.preedit.clear();
+            }
+            return self.make(FieldEdit::None, String::new(), false);
+        }
+        if !was_composing || self.preedit.is_empty() {
+            return self.make(FieldEdit::None, String::new(), false);
+        }
+        self.sync_client(false)
     }
 
     pub fn force_mode(&mut self, language: Language) -> SessionUpdate {
@@ -603,6 +669,11 @@ impl Session {
         {
             word = fixed;
         }
+        // Already-sent syllables cannot be deleted on a raw field. Keep them
+        // and only append the buffered tail.
+        if !self.composing && !word.starts_with(&self.plain) {
+            word = format!("{}{}", self.plain, self.preedit);
+        }
         let mut suffix = word.clone();
         suffix.push(breaker);
         let carried = match &self.pending_undo {
@@ -670,6 +741,12 @@ impl Session {
     }
 
     fn finish_field(&self, word: &str, breaker: char) -> FieldEdit {
+        if !self.composing {
+            let rest = word.strip_prefix(self.plain.as_str()).unwrap_or(self.preedit.as_str());
+            let mut text = rest.to_owned();
+            text.push(breaker);
+            return FieldEdit::Insert { text };
+        }
         let with_breaker = |text: &str| {
             let mut text = text.to_owned();
             text.push(breaker);
@@ -1997,6 +2074,11 @@ impl Session {
     /// share a segment with a syllable ("1개") stay inserted; only the
     /// syllable is marked.
     fn client_split(&self) -> (String, String) {
+        let split = self.live_split();
+        if self.composing { split } else { buffer_open_syllable(split.0, split.1) }
+    }
+
+    fn live_split(&self) -> (String, String) {
         if self.segments.is_empty() {
             return (String::new(), String::new());
         }
@@ -2136,7 +2218,39 @@ impl Session {
             .any(|piece| !matches!(piece, CompositionPiece::Digit | CompositionPiece::Symbol))
     }
 
+    /// Append newly finished text. The open syllable stays in `preedit` and is
+    /// not sent. A raw host cannot delete, so a reading that is not a suffix of
+    /// what was already committed does not touch the field.
+    fn emit_append_only(&mut self, to_plain: String, to_marked: String, did_auto_convert: bool) -> SessionUpdate {
+        let extends = to_plain.starts_with(&self.plain);
+        let field = if extends {
+            let delta = &to_plain[self.plain.len()..];
+            if delta.is_empty() { FieldEdit::None } else { FieldEdit::Insert { text: delta.to_owned() } }
+        } else {
+            FieldEdit::None
+        };
+        if extends {
+            self.plain = to_plain;
+            self.preedit = to_marked;
+        } else {
+            let full = format!("{to_plain}{to_marked}");
+            if let Some(rest) = full.strip_prefix(self.plain.as_str()) {
+                self.preedit = rest.to_owned();
+            } else if self.plain.starts_with(&to_plain) && to_marked.is_empty() {
+                // Backspace removed a character the host will delete itself.
+                self.plain = to_plain;
+                self.preedit.clear();
+            } else {
+                self.preedit = to_marked;
+            }
+        }
+        self.make(field, self.preedit.clone(), did_auto_convert)
+    }
+
     fn emit(&mut self, to_plain: String, to_marked: String, did_auto_convert: bool) -> SessionUpdate {
+        if !self.composing {
+            return self.emit_append_only(to_plain, to_marked, did_auto_convert);
+        }
         let mut field = client_diff(&self.plain, &self.preedit, &to_plain, &to_marked);
         let mut next_plain = to_plain;
         let mut next_marked = to_marked;
@@ -2166,6 +2280,13 @@ impl Session {
     fn make(&self, field: FieldEdit, marked: String, did_auto_convert: bool) -> SessionUpdate {
         SessionUpdate { mode: self.mode, did_auto_convert, preedit: marked, field }
     }
+}
+
+/// Keep the whole open Hangul or undecided tail off the host. A boundary can
+/// reread it (`jj` is ㅇㅇ until `.`), and a raw field cannot delete what was
+/// already committed. Confirmed plain text is stable and may be inserted.
+fn buffer_open_syllable(plain: String, marked: String) -> (String, String) {
+    (plain, marked)
 }
 
 fn is_sentence_boundary(breaker: char) -> bool {

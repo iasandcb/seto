@@ -239,6 +239,11 @@ impl FieldSession {
     pub fn force_mode(&self, mode: Language) -> Result<SessionUpdate> {
         self.access(|s| s.force_mode(mode.into()).into())
     }
+    /// `enabled == false` keeps Hangul but stops emitting composing spans.
+    /// `already_committed` folds the current preedit into committed text.
+    pub fn set_composing(&self, enabled: bool, already_committed: bool) -> Result<SessionUpdate> {
+        self.access(|s| s.set_composing(enabled, already_committed).into())
+    }
     pub fn set_options(&self, auto_switch: bool, corrects_typos: bool) -> Result<()> {
         self.access(|s| {
             s.auto_switch = auto_switch;

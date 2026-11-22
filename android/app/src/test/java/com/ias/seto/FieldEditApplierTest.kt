@@ -15,22 +15,34 @@ class FieldEditApplierTest {
         var cursor = initial.length
         var markStart: Int? = null
         var markEnd: Int? = null
+        var acceptComposing = true
         val calls = mutableListOf<String>()
+        private fun write(value: String, composing: Boolean) {
+            val start = markStart ?: cursor
+            val end = markEnd ?: cursor
+            text = text.replaceRange(start, end, value)
+            cursor = start + value.length
+            if (composing && value.isNotEmpty()) {
+                markStart = start
+                markEnd = cursor
+            } else {
+                markStart = null
+                markEnd = null
+            }
+        }
         val connection = Proxy.newProxyInstance(InputConnection::class.java.classLoader,
             arrayOf(InputConnection::class.java)) { _, method, args ->
             calls.add(method.name)
             when (method.name) {
                 "beginBatchEdit", "endBatchEdit" -> true
                 "finishComposingText" -> { markStart = null; markEnd = null; true }
-                "commitText", "setComposingText" -> {
-                    val value = args!![0].toString()
-                    val start = markStart ?: cursor
-                    val end = markEnd ?: cursor
-                    text = text.replaceRange(start, end, value)
-                    cursor = start + value.length
-                    if (method.name == "setComposingText" && value.isNotEmpty()) {
-                        markStart = start; markEnd = cursor
-                    } else { markStart = null; markEnd = null }
+                "setComposingText" -> {
+                    if (!acceptComposing) return@newProxyInstance false
+                    write(args!![0].toString(), composing = true)
+                    true
+                }
+                "commitText" -> {
+                    write(args!![0].toString(), composing = false)
                     true
                 }
                 "deleteSurroundingText" -> {
@@ -94,5 +106,48 @@ class FieldEditApplierTest {
         assertTrue(adapter.acknowledgesSelection(4, 4))
         assertFalse(adapter.acknowledgesSelection(1, 1))
         assertFalse(adapter.acknowledgesSelection(0, 4))
+    }
+
+    @Test fun rejectedComposingSpanCommitsTheSyllable() {
+        val editor = Editor("")
+        editor.acceptComposing = false
+        val adapter = FieldEditApplier(editor.connection, 0, 0)
+        adapter.apply(SessionUpdate(Language.KOREAN, false, "ㄱ", FieldEdit.Mark("ㄱ")))
+        assertEquals("ㄱ", editor.text)
+        assertNull(editor.markStart)
+        assertTrue(adapter.fellBackToCommit)
+        adapter.noteComposingFolded()
+        adapter.apply(SessionUpdate(Language.KOREAN, false, "", FieldEdit.Insert("나")))
+        assertEquals("ㄱ나", editor.text)
+        assertFalse(editor.calls.contains("deleteSurroundingText"))
+    }
+
+    @Test fun commitOnlySendsFinishedTextAndDoesNotDelete() {
+        val editor = Editor("")
+        val adapter = FieldEditApplier(editor.connection, 0, 0)
+        adapter.commitOnly = true
+        adapter.apply(SessionUpdate(Language.KOREAN, false, "ㄱ", FieldEdit.Mark("ㄱ")))
+        assertEquals("", editor.text)
+        adapter.apply(SessionUpdate(Language.KOREAN, false, "", FieldEdit.Insert("가")))
+        adapter.apply(SessionUpdate(Language.KOREAN, false, "ㄴ", FieldEdit.InsertReplacing(1u, "간")))
+        adapter.apply(SessionUpdate(Language.KOREAN, false, "", FieldEdit.Insert(" ")))
+        assertEquals("가 ", editor.text)
+        assertFalse(editor.calls.contains("deleteSurroundingText"))
+        assertFalse(editor.calls.contains("setComposingText"))
+        assertFalse(editor.calls.contains("beginBatchEdit"))
+    }
+
+    @Test fun finishedComposingSpanIsReplacedInsteadOfDoubled() {
+        val editor = Editor("")
+        val adapter = FieldEditApplier(editor.connection, 0, 0)
+        adapter.apply(SessionUpdate(Language.KOREAN, false, "ㄱ", FieldEdit.Mark("ㄱ")))
+        assertEquals("ㄱ", editor.text)
+        editor.connection.finishComposingText()
+        adapter.noteComposingSpan(false)
+        assertTrue(adapter.composingSpanStale())
+        adapter.apply(SessionUpdate(Language.KOREAN, false, "가", FieldEdit.Mark("가")))
+        assertEquals("가", editor.text)
+        assertTrue(adapter.fellBackToCommit)
+        assertTrue(adapter.expectsSelection(editor.cursor, editor.cursor))
     }
 }

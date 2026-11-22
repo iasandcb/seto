@@ -3,8 +3,15 @@
 `com.ias.seto`, minSdk 34 (Android 14), target/compile SDK 35. Hardware QWERTY
 and the on-screen keyboard both feed the existing Sebeolsik 390 Rust Session.
 Shift+Space toggles only if no other key was typed during that Shift hold;
-autorepeat does not toggle again. Password/raw fields pass through on a hardware
-keyboard and, on the soft keyboard, insert the visible character directly.
+autorepeat does not toggle again. Masked password fields pass through on a
+hardware keyboard and, on the soft keyboard, insert the visible character
+directly. `TYPE_NULL` and other fields with no text class (X chat, raw and
+Compose editors) keep the Korean session and commit with `commitText` instead
+of a composing span. `IME_FLAG_FORCE_ASCII`, URI, email, web, filter,
+visible-password, and no-suggestion flags do not force English. On those fields Hangul stays in the session until space, punctuation, or a
+mode switch, then one `commitText` sends the finished word. Confirmed English
+is still inserted as it settles. `deleteSurroundingText` is not used: a raw
+editor often reports no text, so a delete-then-recommit erases the Hangul.
 Navigation, Enter, Tab and shortcuts commit the displayed composition and pass
 through, as on the desktop.
 
@@ -28,7 +35,7 @@ word waves.
 
 While a normal input field is active, a small white **한** (Korean) or **A**
 (English) status icon follows every Session mode update, including automatic
-conversion and Shift+Space. The icon is cleared on field finish, password/raw
+conversion and Shift+Space. The icon is cleared on field finish, password
 pass-through, or session failure. This uses
 [InputMethodService.showStatusIcon](https://developer.android.com/reference/android/inputmethodservice/InputMethodService#showStatusIcon(int));
 visibility depends on the device's system status bar. There is no launcher activity.
@@ -102,8 +109,11 @@ edit. A native deletion wider than one UTF-16 unit safely resets the session.
 Typo records leave Rust through a callback with wrong/wrongKeys/finalText/finalKeys.
 Rust retains per-field correction memory and calls foreign code after releasing
 the Session lock. Kotlin owns the private `filesDir/typos.jsonl` file, using JSON
-fields wrong/wrongKeys/final/finalKeys. Password fields never create a session;
-IME_FLAG_NO_PERSONALIZED_LEARNING disables the persistence callback. Logs are
+fields wrong/wrongKeys/final/finalKeys. Masked password fields never create a
+session. `TYPE_NULL` does, using committed text. `IME_FLAG_NO_PERSONALIZED_LEARNING`
+disables the persistence callback and does not change the language.
+`adb logcat -s Seto:I` prints `onStartInput` (`inputType` and `imeOptions` in
+hex, plus `packageName`), `onKeyDown`, and `onUpdateSelection`. Logs are
 local, backup is disabled, and the manifest requests no network permission.
 
 API references: [UniFFI Android configuration](https://mozilla.github.io/uniffi-rs/0.30/kotlin/configuration.html),
