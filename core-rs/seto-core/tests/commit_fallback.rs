@@ -1,10 +1,10 @@
-//! Hosts that cannot keep a composing span (Android TYPE_NULL, or an editor
-//! that finishComposingText/setText drops the span) still get the same Hangul.
-//! Edits only commit and replace; a commitText client can replay them.
+//! Hosts that cannot keep a composing span (Android TYPE_NULL) still compose
+//! Hangul, but the editor only receives `commitText` of finished text.
+//! The open syllable stays in the session. Nothing is deleted.
 
 mod common;
 
-use seto_core::{FieldEdit, Lexicon, Session, utf16_len};
+use seto_core::{FieldEdit, Language, Lexicon, Session};
 use std::sync::{Arc, OnceLock};
 
 fn lexicon() -> Arc<Lexicon> {
@@ -23,43 +23,15 @@ fn lexicon() -> Arc<Lexicon> {
         .clone()
 }
 
-fn composing_edit(field: &FieldEdit) -> bool {
-    match field {
-        FieldEdit::Mark { .. }
-        | FieldEdit::ReplaceBeforeCaret { .. }
-        | FieldEdit::InsertThenMark { .. }
-        | FieldEdit::InsertReplacingThenMark { .. }
-        | FieldEdit::ClearMarkThenMark { .. } => true,
-        FieldEdit::Rewrite { then_mark, .. } => !then_mark.is_empty(),
-        FieldEdit::ClearMarkThenInsert { .. } => true,
-        _ => false,
-    }
+fn append_only(field: &FieldEdit) -> bool {
+    matches!(field, FieldEdit::None | FieldEdit::Insert { .. })
 }
 
-fn pop_utf16(buffer: &mut String, count: usize) {
-    let mut units: Vec<u16> = buffer.encode_utf16().collect();
-    units.truncate(units.len().saturating_sub(count));
-    *buffer = String::from_utf16(&units).expect("utf-16");
-}
-
-/// A client with commitText and deleteSurroundingText, and no composing span.
-fn apply_committed(buffer: &mut String, before: &str, after: &str, field: &FieldEdit) {
-    assert!(!composing_edit(field), "commit-only edit still marks: {field:?}");
-    match field {
-        FieldEdit::None => {
-            if utf16_len(before) == utf16_len(after) + 1 && before.starts_with(after) {
-                pop_utf16(buffer, 1);
-            }
-        }
-        FieldEdit::Unmark { .. } => {}
-        FieldEdit::Insert { text } => buffer.push_str(text),
-        FieldEdit::InsertReplacing { utf16, text } | FieldEdit::Rewrite { utf16, text, .. } => {
-            pop_utf16(buffer, *utf16);
-            buffer.push_str(text);
-        }
-        other => panic!("unhandled commit edit {other:?}"),
+fn push_insert(paper: &mut String, field: &FieldEdit) {
+    assert!(append_only(field), "raw field was asked to delete or mark: {field:?}");
+    if let FieldEdit::Insert { text } = field {
+        paper.push_str(text);
     }
-    assert_eq!(buffer, after, "{field:?}");
 }
 
 fn commit_session() -> Session {
@@ -68,100 +40,60 @@ fn commit_session() -> Session {
     session
 }
 
-fn assert_same_document(keys: &str) {
+fn assert_appends_until_boundary(keys: &str) {
     let mut marked = Session::new(lexicon());
     let mut bare = commit_session();
     let mut paper = String::new();
     for key in keys.chars() {
-        let before = bare.document();
         marked.input_char(key);
         let update = bare.input_char(key);
-        assert_eq!(update.preedit, "", "{keys} preedit after {key}");
-        assert_eq!(bare.document(), marked.document(), "{keys} after {key}");
-        apply_committed(&mut paper, &before, &bare.document(), &update.field);
+        assert_eq!(bare.document(), marked.document(), "{keys} after {key} {}", bare.debug_line());
+        push_insert(&mut paper, &update.field);
+        assert!(bare.document().starts_with(&paper), "{keys} showed {:?}, document {}", paper, bare.document());
+    }
+    assert_eq!(paper, bare.document(), "{keys} did not flush on the boundary");
+}
+
+#[test]
+fn raw_field_commits_finished_syllables_without_deleting() {
+    for keys in ["itld ", "itldmfkv ", "jj ", "jj.", "kvaj5 ", "hello ", "AIhgs ", "k "] {
+        assert_appends_until_boundary(keys);
     }
 }
 
 #[test]
-fn commit_only_matches_composing_hangul() {
-    for keys in ["itld ", "itldmfkv ", "jj ", "jj.", "kvaj5 ", "hello ", "AIhgs ", "k"] {
-        assert_same_document(keys);
-    }
-}
-
-#[test]
-fn commit_only_backspace_matches_composing_session() {
-    let mut marked = Session::new(lexicon());
+fn open_syllable_is_not_sent_and_backspace_does_not_delete() {
     let mut bare = commit_session();
+    let first = bare.input_char('i');
+    assert_eq!(first.field, FieldEdit::None, "the first jamo must stay buffered: {:?}", first.field);
+    assert!(!bare.preedit().is_empty());
+    let erased = bare.backspace();
+    assert!(append_only(&erased.field), "{:?}", erased.field);
+    assert_eq!(bare.document(), "");
+    assert!(matches!(erased.field, FieldEdit::None));
+}
+
+#[test]
+fn english_mode_still_inserts_letters() {
+    let mut bare = commit_session();
+    bare.force_mode(Language::English);
     let mut paper = String::new();
-    for key in "itld".chars() {
-        marked.input_char(key);
-        let before = bare.document();
+    for key in "hello ".chars() {
         let update = bare.input_char(key);
-        apply_committed(&mut paper, &before, &bare.document(), &update.field);
+        push_insert(&mut paper, &update.field);
     }
-    assert_eq!(bare.document(), "머지");
-    for _ in 0..4 {
-        let before = bare.document();
-        marked.backspace();
-        let update = bare.backspace();
-        assert_eq!(update.preedit, "");
-        assert_eq!(bare.document(), marked.document(), "{}", bare.debug_line());
-        apply_committed(&mut paper, &before, &bare.document(), &update.field);
-    }
-    assert_eq!(paper, "");
+    assert_eq!(paper, "hello ");
+    assert_eq!(bare.document(), "hello ");
 }
 
 #[test]
-fn folding_a_live_preedit_keeps_the_syllable() {
-    let mut session = Session::new(lexicon());
+fn mode_switch_flushes_the_buffered_syllable() {
     let mut bare = commit_session();
-    for key in "itl".chars() {
-        session.input_char(key);
-        bare.input_char(key);
-    }
-    assert!(!session.preedit().is_empty());
-    let shown = session.document();
-    let folded = session.set_composing(false, true);
-    assert_eq!(folded.field, FieldEdit::None);
-    assert_eq!(folded.preedit, "");
-    assert_eq!(session.preedit(), "");
-    assert_eq!(session.document(), shown);
-    assert_eq!(session.document(), bare.document());
-
-    let mut paper = shown.clone();
-    for key in "dmfkv ".chars() {
-        let before = session.document();
-        bare.input_char(key);
-        let update = session.input_char(key);
-        assert_eq!(update.preedit, "");
-        assert_eq!(session.document(), bare.document(), "{key}");
-        apply_committed(&mut paper, &before, &session.document(), &update.field);
-    }
-    assert_eq!(session.document(), "머지하고 ");
-}
-
-#[test]
-fn rejected_composing_span_is_committed_instead() {
-    let mut session = Session::new(lexicon());
-    let marked = session.input_char('i');
-    assert!(!marked.preedit.is_empty(), "first jamo is composed");
-    assert!(composing_edit(&marked.field), "a composing host would mark {:?}", marked.field);
-    // setComposingText failed: the editor does not yet show the preedit.
-    let commit = session.set_composing(false, false);
-    assert_eq!(commit.preedit, "");
-    let mut paper = String::new();
-    apply_committed(&mut paper, "", &session.document(), &commit.field);
-    assert_eq!(paper, session.document());
-
-    let mut bare = commit_session();
-    bare.input_char('i');
-    for key in "tld ".chars() {
-        let before = session.document();
-        bare.input_char(key);
-        let update = session.input_char(key);
-        apply_committed(&mut paper, &before, &session.document(), &update.field);
-        assert_eq!(session.document(), bare.document());
-    }
-    assert_eq!(paper, "머지 ");
+    let held = bare.input_char('i');
+    assert_eq!(held.field, FieldEdit::None);
+    let flushed = bare.toggle();
+    let FieldEdit::Insert { text } = flushed.field else { panic!("{:?}", flushed.field) };
+    assert_eq!(text, bare.document());
+    assert!(!text.is_empty());
+    assert_eq!(flushed.preedit, "");
 }

@@ -8,10 +8,10 @@ hardware keyboard and, on the soft keyboard, insert the visible character
 directly. `TYPE_NULL` and other fields with no text class (X chat, raw and
 Compose editors) keep the Korean session and commit with `commitText` instead
 of a composing span. `IME_FLAG_FORCE_ASCII`, URI, email, web, filter,
-visible-password, and no-suggestion flags do not force English. If the editor
-rejects `setComposingText` or calls `finishComposingText`/`setText` during a
-syllable, the core folds that preedit into committed text and the next jamo
-replaces it with `deleteSurroundingText` + `commitText`.
+visible-password, and no-suggestion flags do not force English. On those fields Hangul stays in the session until space, punctuation, or a
+mode switch, then one `commitText` sends the finished word. Confirmed English
+is still inserted as it settles. `deleteSurroundingText` is not used: a raw
+editor often reports no text, so a delete-then-recommit erases the Hangul.
 Navigation, Enter, Tab and shortcuts commit the displayed composition and pass
 through, as on the desktop.
 

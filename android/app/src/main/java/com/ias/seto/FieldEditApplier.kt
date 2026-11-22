@@ -161,6 +161,10 @@ internal class FieldEditApplier(
         commit(text)
     }
     fun apply(update: SessionUpdate) {
+        if (commitOnly) {
+            applyCommitOnly(update)
+            return
+        }
         spanAtEditStart = composingSpanLive
         connection.beginBatchEdit()
         try {
@@ -189,5 +193,26 @@ internal class FieldEditApplier(
             advance(update.field)
             preeditLength = update.preedit.length
         } finally { connection.endBatchEdit() }
+    }
+
+    /**
+     * Raw fields (TYPE_NULL, X chat) drop composing spans and
+     * `deleteSurroundingText`. Append finished text with `commitText` only.
+     * The open syllable stays in the session and is not sent.
+     */
+    private fun applyCommitOnly(update: SessionUpdate) {
+        preeditLength = 0
+        when (val edit = update.field) {
+            is FieldEdit.Insert -> commitPlain(edit.text)
+            is FieldEdit.Unmark -> commitPlain(edit.text)
+            else -> Unit
+        }
+        preeditLength = 0
+    }
+
+    private fun commitPlain(text: String) {
+        if (text.isEmpty()) return
+        checked(connection.commitText(text, 1))
+        advance(FieldEdit.Insert(text))
     }
 }

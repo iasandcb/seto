@@ -117,9 +117,24 @@ class FieldEditApplierTest {
         assertNull(editor.markStart)
         assertTrue(adapter.fellBackToCommit)
         adapter.noteComposingFolded()
-        adapter.apply(SessionUpdate(Language.KOREAN, false, "", FieldEdit.InsertReplacing(1u, "가")))
-        assertEquals("가", editor.text)
-        assertNull(editor.markStart)
+        adapter.apply(SessionUpdate(Language.KOREAN, false, "", FieldEdit.Insert("나")))
+        assertEquals("ㄱ나", editor.text)
+        assertFalse(editor.calls.contains("deleteSurroundingText"))
+    }
+
+    @Test fun commitOnlySendsFinishedTextAndDoesNotDelete() {
+        val editor = Editor("")
+        val adapter = FieldEditApplier(editor.connection, 0, 0)
+        adapter.commitOnly = true
+        adapter.apply(SessionUpdate(Language.KOREAN, false, "ㄱ", FieldEdit.Mark("ㄱ")))
+        assertEquals("", editor.text)
+        adapter.apply(SessionUpdate(Language.KOREAN, false, "", FieldEdit.Insert("가")))
+        adapter.apply(SessionUpdate(Language.KOREAN, false, "ㄴ", FieldEdit.InsertReplacing(1u, "간")))
+        adapter.apply(SessionUpdate(Language.KOREAN, false, "", FieldEdit.Insert(" ")))
+        assertEquals("가 ", editor.text)
+        assertFalse(editor.calls.contains("deleteSurroundingText"))
+        assertFalse(editor.calls.contains("setComposingText"))
+        assertFalse(editor.calls.contains("beginBatchEdit"))
     }
 
     @Test fun finishedComposingSpanIsReplacedInsteadOfDoubled() {

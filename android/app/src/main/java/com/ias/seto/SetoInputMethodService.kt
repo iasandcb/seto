@@ -353,11 +353,37 @@ class SetoInputMethodService : InputMethodService() {
     private fun backspace() {
         val active = session
         if (active == null) {
-            deleteDirect()
+            if (commitOnly) sendDelKey() else deleteDirect()
             return
         }
+        val hidden = hiddenSyllable()
         val update = runEdit { active.backspace() } ?: return
-        if (update.field == FieldEdit.None) deliverNativeBackspace()
+        if (update.field == FieldEdit.None && !keptInBuffer(hidden, update)) {
+            if (commitOnly) sendDelKey() else deliverNativeBackspace()
+        }
+    }
+
+    /** The open syllable was never sent, so backspace must not delete host text. */
+    private fun hiddenSyllable(): Boolean {
+        if (!commitOnly) return false
+        val active = session ?: return false
+        return try {
+            active.state().preedit.isNotEmpty()
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun keptInBuffer(hiddenBefore: Boolean, update: SessionUpdate): Boolean {
+        return commitOnly && (hiddenBefore || update.preedit.isNotEmpty())
+    }
+
+    private fun sendDelKey() {
+        val connection = currentInputConnection ?: return
+        val now = android.os.SystemClock.uptimeMillis()
+        connection.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL, 0))
+        connection.sendKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DEL, 0))
+        applier?.expectNativeBackspace()
     }
 
     private fun deliverNativeBackspace() {
@@ -378,6 +404,10 @@ class SetoInputMethodService : InputMethodService() {
     }
 
     private fun deleteWordWave() {
+        if (commitOnly) {
+            backspace()
+            return
+        }
         val active = session ?: run { deleteDirect(); return }
         val before = try {
             active.state()
@@ -513,9 +543,12 @@ class SetoInputMethodService : InputMethodService() {
                 true
             }
             keyCode == KeyEvent.KEYCODE_DEL -> {
+                val hidden = hiddenSyllable()
                 val update = runEdit { active.backspace() }
-                if (update?.field == FieldEdit.None) applier?.expectNativeBackspace()
-                update == null || update.field != FieldEdit.None
+                val kept = update != null && keptInBuffer(hidden, update)
+                if (kept) Log.i(TAG, "commitOnly backspace stayed inside the buffered syllable")
+                if (update?.field == FieldEdit.None && !kept) applier?.expectNativeBackspace()
+                kept || update == null || update.field != FieldEdit.None
             }
             else -> {
                 val character = HardwareKeys.character(keyCode, event.isShiftPressed)
