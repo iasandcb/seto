@@ -274,4 +274,42 @@ class KeyboardPolicyTest {
         multiline.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
         assertEquals("↵", returnLabel(multiline))
     }
+
+    @Test fun onlyMaskedPasswordsForceEnglish() {
+        val ascii = EditorInfo.IME_FLAG_FORCE_ASCII
+        val quiet = EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
+        fun text(variation: Int, flags: Int = 0) = InputType.TYPE_CLASS_TEXT or variation or flags
+        val ordinary = listOf(
+            InputType.TYPE_NULL,
+            text(0),
+            text(0, InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS),
+            text(InputType.TYPE_TEXT_VARIATION_URI),
+            text(InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS),
+            text(InputType.TYPE_TEXT_VARIATION_WEB_EDIT_TEXT),
+            text(InputType.TYPE_TEXT_VARIATION_FILTER),
+            text(InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD),
+            text(InputType.TYPE_TEXT_VARIATION_PHONETIC),
+        )
+        for (inputType in ordinary) {
+            assertFalse(Integer.toHexString(inputType), englishOnlyField(inputType, ascii))
+            assertFalse(englishOnlyField(inputType, quiet))
+            assertFalse(englishOnlyField(inputType, 0))
+        }
+        assertTrue(englishOnlyField(text(InputType.TYPE_TEXT_VARIATION_PASSWORD), ascii))
+        assertTrue(englishOnlyField(text(InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD), 0))
+        assertTrue(englishOnlyField(
+            InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD, ascii,
+        ))
+    }
+
+    @Test fun nullFieldsCommitWithoutDroppingKorean() {
+        assertTrue(commitFallbackField(InputType.TYPE_NULL))
+        assertTrue(commitFallbackField(0))
+        assertFalse(englishOnlyField(InputType.TYPE_NULL, EditorInfo.IME_FLAG_FORCE_ASCII))
+        assertFalse(commitFallbackField(InputType.TYPE_CLASS_TEXT))
+        assertFalse(commitFallbackField(
+            InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS,
+        ))
+        assertFalse(commitFallbackField(InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD))
+    }
 }

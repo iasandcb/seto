@@ -13,6 +13,36 @@ internal class FieldEditApplier(
     private var cursor = initialStart
     private var selectionEnd = initialEnd
     private val expectedSelections = mutableListOf(initialStart to initialEnd)
+    /** Host cannot keep a composing span. Marks are committed text. */
+    var commitOnly = false
+    /** The last edit wrote with commitText because setComposingText was rejected or the span was already gone. */
+    var fellBackToCommit = false
+    private var composingSpanLive = false
+    private var spanEpoch = 0
+    /** Liveness at the start of this edit. `finish` inside the edit must not look like the host dropped the span. */
+    private var spanAtEditStart = false
+
+    /** The host reported whether a composing span exists. Called even while an edit is in flight. */
+    fun noteComposingSpan(live: Boolean) {
+        spanEpoch += 1
+        composingSpanLive = live
+    }
+
+    /** Preedit was folded into committed text. Further edits replace that text. */
+    fun noteComposingFolded() {
+        commitOnly = true
+        preeditLength = 0
+        composingSpanLive = false
+        fellBackToCommit = false
+    }
+
+    /** A syllable is on screen but the composing span is gone, so the next mark would insert beside it. */
+    fun composingSpanStale(): Boolean = preeditLength > 0 && !composingSpanLive
+
+    fun expectsSelection(start: Int, end: Int): Boolean {
+        if (expectedSelections.any { it.first == start && it.second == end }) return true
+        return start == cursor && end == selectionEnd
+    }
 
     /** Editors may coalesce selection callbacks for multiple batches. */
     fun acknowledgesSelection(start: Int, end: Int): Boolean {
@@ -75,8 +105,39 @@ internal class FieldEditApplier(
         return value.toInt()
     }
     private fun commit(text: String) { checked(connection.commitText(text, 1)) }
-    private fun mark(text: String) { checked(connection.setComposingText(text, 1)) }
-    private fun finish() { checked(connection.finishComposingText()) }
+    /**
+     * Prefer a composing span. If the host has none, or rejects setComposingText,
+     * commit the syllable over the previous committed preedit.
+     */
+    private fun mark(text: String) {
+        if (commitOnly || (!spanAtEditStart && preeditLength > 0)) {
+            commitOnly = true
+            fellBackToCommit = true
+            finish()
+            delete(preeditLength)
+            commit(text)
+            composingSpanLive = false
+            return
+        }
+        val epoch = spanEpoch
+        if (connection.setComposingText(text, 1)) {
+            if (spanEpoch == epoch) composingSpanLive = true
+            return
+        }
+        commitOnly = true
+        fellBackToCommit = true
+        composingSpanLive = false
+        // A live span is replaced by commitText. With no span this inserts.
+        commit(text)
+    }
+    private fun finish() {
+        val ok = connection.finishComposingText()
+        composingSpanLive = false
+        // A commit-only field may not implement composing at all. Deleting and
+        // committing still has to proceed, or the session is dropped and later
+        // hardware keys fall through as English.
+        if (!commitOnly) checked(ok)
+    }
     private fun delete(count: Int) {
         if (count > 0) checked(connection.deleteSurroundingText(count, 0))
     }
@@ -84,9 +145,23 @@ internal class FieldEditApplier(
         // finish first: Android deletion otherwise excludes the composing region.
         finish()
         delete(count)
-        if (composing) mark(text) else commit(text)
+        if (!composing || commitOnly) {
+            composingSpanLive = false
+            commit(text)
+            return
+        }
+        val epoch = spanEpoch
+        if (connection.setComposingText(text, 1)) {
+            if (spanEpoch == epoch) composingSpanLive = true
+            return
+        }
+        commitOnly = true
+        fellBackToCommit = true
+        composingSpanLive = false
+        commit(text)
     }
     fun apply(update: SessionUpdate) {
+        spanAtEditStart = composingSpanLive
         connection.beginBatchEdit()
         try {
             when (val edit = update.field) {

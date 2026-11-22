@@ -271,6 +271,11 @@ pub struct Session {
     pub auto_switch: bool,
     /// When false, a finished word stays as typed. Retype logging still runs.
     pub corrects_typos: bool,
+    /// When false, the host cannot keep a composing span (Android `TYPE_NULL`,
+    /// or an editor that drops the span with `finishComposingText` / `setText`).
+    /// The Hangul reading is unchanged; edits only insert and replace committed
+    /// text, so the client can `commitText` and `deleteSurroundingText`.
+    composing: bool,
     /// Confirmed input language. Tentative readings do not change the keyboard mode.
     mode: Language,
     /// Open Hangul or an undecided shifted-punctuation reading.
@@ -314,6 +319,7 @@ impl Session {
             layout: options.layout,
             auto_switch: options.auto_switch,
             corrects_typos: true,
+            composing: true,
             mode: options.mode,
             preedit: String::new(),
             lexicon,
@@ -523,6 +529,33 @@ impl Session {
             self.context_language = None;
         }
         self.make(field, String::new(), false)
+    }
+
+    /// Turn composing spans on or off without changing the Hangul reading.
+    ///
+    /// `already_committed` means the current preedit is already in the field
+    /// (the host finished composing, or the client just wrote it with
+    /// `commitText`). It is folded into the committed prefix and no edit is
+    /// returned. Pass `false` when a `setComposingText` was rejected: the
+    /// returned edit commits that preedit.
+    pub fn set_composing(&mut self, enabled: bool, already_committed: bool) -> SessionUpdate {
+        if enabled {
+            self.composing = true;
+            return self.make(FieldEdit::None, self.preedit.clone(), false);
+        }
+        let was_composing = self.composing;
+        self.composing = false;
+        if already_committed {
+            if !self.preedit.is_empty() {
+                self.plain.push_str(&self.preedit);
+                self.preedit.clear();
+            }
+            return self.make(FieldEdit::None, String::new(), false);
+        }
+        if !was_composing || self.preedit.is_empty() {
+            return self.make(FieldEdit::None, String::new(), false);
+        }
+        self.sync_client(false)
     }
 
     pub fn force_mode(&mut self, language: Language) -> SessionUpdate {
@@ -1999,6 +2032,12 @@ impl Session {
     fn client_split(&self) -> (String, String) {
         if self.segments.is_empty() {
             return (String::new(), String::new());
+        }
+        // Same syllables as a composing client. The whole open word is committed
+        // so a host that rejects setComposingText can delete the previous
+        // syllable and commitText the new one.
+        if !self.composing {
+            return (self.render(&self.segments), String::new());
         }
         let undecided = self.auto_switch && self.locked.is_none() && self.plain.is_empty();
         let all_marked = || (String::new(), self.render(&self.segments));

@@ -7,6 +7,7 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import com.ias.seto.core.Atom
@@ -38,6 +39,10 @@ class SetoInputMethodService : InputMethodService() {
     private val heldShifts = mutableSetOf<Int>()
     private val consumedKeys = mutableSetOf<Int>()
     private var editing = false
+    private var resettingField = false
+    private var commitOnly = false
+    private var reportedStart = -1
+    private var reportedEnd = -1
     private var mode = Language.KOREAN
     private var statusMode: Language? = null
     private var directInput = false
@@ -141,16 +146,23 @@ class SetoInputMethodService : InputMethodService() {
         tracker = ShiftSpaceToggleTracker()
         heldShifts.clear()
         consumedKeys.clear()
-        directInput = isPassword(attribute.inputType) || attribute.inputType == InputType.TYPE_NULL
+        val englishOnly = englishOnlyField(attribute.inputType, attribute.imeOptions)
+        // TYPE_NULL (X chat and other raw/Compose fields) still gets Hangul.
+        // IME_FLAG_FORCE_ASCII is not a reason to skip the Korean session.
+        commitOnly = !englishOnly && commitFallbackField(attribute.inputType)
+        directInput = englishOnly
+        reportedStart = attribute.initialSelStart
+        reportedEnd = attribute.initialSelEnd
+        Log.i(
+            TAG,
+            "onStartInput package=${attribute.packageName} inputType=0x${Integer.toHexString(attribute.inputType)} " +
+                "imeOptions=0x${Integer.toHexString(attribute.imeOptions)} restarting=$restarting " +
+                "englishOnly=$englishOnly commitOnly=$commitOnly",
+        )
         bindKeyboard(attribute)
         if (directInput) return
         val connection = currentInputConnection ?: return
-        val created = createSession(attribute) ?: return
-        session = created
-        applier = FieldEditApplier(connection, attribute.initialSelStart, attribute.initialSelEnd)
-        applyOptions()
-        if (session == null) return
-        runEdit { created.forceMode(mode) }
+        openField(connection, attribute.initialSelStart, attribute.initialSelEnd, mode, attribute)
     }
 
     override fun onFinishInput() {
@@ -258,17 +270,84 @@ class SetoInputMethodService : InputMethodService() {
         restartSessionAt(cursor)
     }
 
-    private fun restartSessionAt(cursor: Int) {
-        val connection = currentInputConnection ?: return
-        val attribute = currentInputEditorInfo ?: return
-        val language = mode
-        destroySession()
-        val created = createSession(attribute) ?: return
+    private fun openField(
+        connection: InputConnection,
+        start: Int,
+        end: Int,
+        language: Language,
+        attribute: EditorInfo? = currentInputEditorInfo,
+    ) {
+        val info = attribute ?: return
+        val created = createSession(info) ?: return
         session = created
-        applier = FieldEditApplier(connection, cursor, cursor)
+        applier = FieldEditApplier(connection, start, end).also { it.commitOnly = commitOnly }
         applyOptions()
         if (session == null) return
-        runEdit { created.forceMode(language) }
+        runEdit {
+            val update = created.forceMode(language)
+            if (commitOnly) created.setComposing(false, true)
+            update
+        }
+    }
+
+    private fun restartSessionAt(cursor: Int) {
+        val connection = currentInputConnection ?: return
+        val language = mode
+        destroySession()
+        openField(connection, cursor, cursor, language)
+    }
+
+    /** Fold a syllable the host already committed, or drop the session if setText replaced it. */
+    private fun prepareComposition(): Boolean {
+        if (applier?.composingSpanStale() != true) return true
+        if (hostShowsSessionText()) {
+            adoptCommitFallback()
+            return session != null
+        }
+        restartAtReportedSelection()
+        return false
+    }
+
+    private fun adoptCommitFallback() {
+        val active = session ?: return
+        if (!commitOnly) Log.i(TAG, "commit fallback: host has no composing span")
+        commitOnly = true
+        applier?.commitOnly = true
+        try {
+            active.setComposing(false, true)
+        } catch (error: Exception) {
+            fail(error)
+            return
+        }
+        applier?.noteComposingFolded()
+    }
+
+    private fun hostShowsSessionText(): Boolean {
+        val active = session ?: return false
+        val document = try {
+            active.state().document
+        } catch (_: Exception) {
+            return true
+        }
+        if (document.isEmpty()) return true
+        val before = currentInputConnection?.getTextBeforeCursor(document.length, 0)?.toString() ?: return true
+        return before.endsWith(document)
+    }
+
+    private fun restartAtReportedSelection() {
+        if (resettingField) return
+        val connection = currentInputConnection ?: return
+        val start = if (reportedStart >= 0) reportedStart else applier?.cursorPosition ?: 0
+        val end = if (reportedEnd >= 0) reportedEnd else start
+        resettingField = true
+        try {
+            connection.finishComposingText()
+            val language = mode
+            destroySession()
+            openField(connection, start, end, language)
+        } finally {
+            resettingField = false
+        }
     }
 
     private fun backspace() {
@@ -381,11 +460,18 @@ class SetoInputMethodService : InputMethodService() {
     }
 
     private fun runEdit(action: () -> SessionUpdate): SessionUpdate? {
+        if (!prepareComposition()) return null
         return try {
             editing = true
             // Every core operation can change mode, including input's automatic
             // conversion, Shift+Space, undo/backspace, and initial forceMode.
-            action().also { updateMode(it.mode); applier?.apply(it) }
+            val update = action()
+            updateMode(update.mode)
+            applier?.apply(update)
+            if (applier?.fellBackToCommit == true || applier?.composingSpanStale() == true) {
+                if (hostShowsSessionText()) adoptCommitFallback() else restartAtReportedSelection()
+            }
+            update
         } catch (error: Exception) {
             fail(error)
             null
@@ -395,6 +481,11 @@ class SetoInputMethodService : InputMethodService() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        Log.i(
+            TAG,
+            "onKeyDown keyCode=$keyCode meta=0x${Integer.toHexString(event.metaState)} " +
+                "repeat=${event.repeatCount} unicode=${event.unicodeChar} direct=$directInput commitOnly=$commitOnly",
+        )
         if (isShift(keyCode)) {
             heldShifts.add(keyCode)
             tracker.shiftChanged(true)
@@ -456,37 +547,35 @@ class SetoInputMethodService : InputMethodService() {
         newSelEnd: Int, candidatesStart: Int, candidatesEnd: Int,
     ) {
         super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
+        Log.i(
+            TAG,
+            "onUpdateSelection old=$oldSelStart..$oldSelEnd new=$newSelStart..$newSelEnd " +
+                "candidates=$candidatesStart..$candidatesEnd",
+        )
+        reportedStart = newSelStart
+        reportedEnd = newSelEnd
+        if (resettingField) return
+        val spanLive = candidatesStart >= 0 && candidatesEnd >= 0
+        applier?.noteComposingSpan(spanLive)
         if (editing || session == null) return
+        if (applier?.composingSpanStale() == true) {
+            if (hostShowsSessionText() && applier?.expectsSelection(newSelStart, newSelEnd) == true) {
+                adoptCommitFallback()
+                applier?.acknowledgesSelection(newSelStart, newSelEnd)
+                return
+            }
+            if (!hostShowsSessionText()) {
+                restartAtReportedSelection()
+                return
+            }
+        }
         if (applier?.acknowledgesSelection(newSelStart, newSelEnd) == true) return
         // An external cursor/selection move invalidates all relative edit spans. Keep the
         // editor's displayed text, then start an empty core session at the new position.
-        currentInputConnection?.finishComposingText()
-        val language = mode
-        val attribute = currentInputEditorInfo ?: return
-        destroySession()
-        val connection = currentInputConnection ?: return
-        val created = createSession(attribute) ?: return
-        session = created
-        applier = FieldEditApplier(connection, newSelStart, newSelEnd)
-        applyOptions()
-        if (session == null) return
-        runEdit { created.forceMode(language) }
+        restartAtReportedSelection()
     }
 
     private fun isShift(code: Int) = code == KeyEvent.KEYCODE_SHIFT_LEFT || code == KeyEvent.KEYCODE_SHIFT_RIGHT
-
-    private fun isPassword(type: Int): Boolean {
-        val variation = type and InputType.TYPE_MASK_VARIATION
-        return when (type and InputType.TYPE_MASK_CLASS) {
-            InputType.TYPE_CLASS_TEXT -> variation in setOf(
-                InputType.TYPE_TEXT_VARIATION_PASSWORD,
-                InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
-                InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD,
-            )
-            InputType.TYPE_CLASS_NUMBER -> variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD
-            else -> false
-        }
-    }
 
     companion object {
         private const val TAG = "Seto"
