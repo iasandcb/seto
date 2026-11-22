@@ -1,7 +1,13 @@
 [workspace]
 resolver = "3"
-members = ["seto-core", "seto-ffi"]
+members = ["seto-core", "seto-ffi", "seto-tsf"]
 
 [workspace.package]
 edition = "2024"
 license = "MIT"
+
+# Line tables so the release DLL has a PDB. Panics must unwind into catch_unwind
+# at the COM boundary; aborting there fail-fasts the host (0xc0000409).
+[profile.release]
+debug = 1
+panic = "unwind"

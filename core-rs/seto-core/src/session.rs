@@ -351,6 +351,12 @@ impl Session {
         &self.preedit
     }
 
+    /// True while this word still has physical keys. Latin letters are already
+    /// inserted, but Backspace still belongs to the session until the word ends.
+    pub fn has_open_word(&self) -> bool {
+        !self.keys.is_empty()
+    }
+
     pub fn document(&self) -> String {
         let mut document = String::with_capacity(self.finished.len() + self.plain.len() + self.preedit.len());
         document.push_str(&self.finished);

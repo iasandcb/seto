@@ -44,12 +44,22 @@ fn load_for_keyboard_from_one_directory() {
     let directory = std::env::temp_dir().join(format!("seto-core-keyboard-{}", std::process::id()));
     std::fs::create_dir_all(&directory).unwrap();
     for name in ["keyboard-english.txt", "keyboard-korean-valid.txt"] {
-        std::os::unix::fs::symlink(keyboard_resources().join(name), directory.join(name)).unwrap();
+        link_word_list(&keyboard_resources().join(name), &directory.join(name));
     }
-    std::os::unix::fs::symlink(resources().join("korean-words.txt"), directory.join("korean-words.txt")).unwrap();
+    link_word_list(&resources().join("korean-words.txt"), &directory.join("korean-words.txt"));
     let lexicon = Lexicon::load_for_keyboard(&directory).unwrap();
     assert!(lexicon.is_english_word("hello"));
     assert!(lexicon.is_valid_korean("사람"));
     assert!(lexicon.is_korean_word("돼"));
     std::fs::remove_dir_all(&directory).unwrap();
+}
+
+/// The keyboard loader only needs the files in one directory. Unix keeps the
+/// originals via a symlink; Windows copies them because symlink creation is
+/// not available to a normal test process.
+fn link_word_list(source: &std::path::Path, destination: &std::path::Path) {
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(source, destination).unwrap();
+    #[cfg(windows)]
+    std::fs::copy(source, destination).unwrap();
 }
