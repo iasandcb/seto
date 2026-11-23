@@ -1,123 +1,134 @@
-# 세토 - 한글 입력기
+# 세토
 
-쿼티 자판으로 두벌식·세벌식 390·세벌식 최종을 치면서, 지금 치는 글이 한글로는 어색하고 영문으로는 말이 되면 그 단어를 영문으로 바꾸고, 그 반대도 하는 macOS 입력기입니다. 조합과 판정은 이 저장소에서 새로 짰고, 기본 빌드는 네트워크를 쓰지 않습니다. CloudKit 서명을 구성하면 타자 통계 횟수만 iCloud로 동기화합니다.
+쿼티 자판으로 한글과 영문을 오가는 입력기입니다. 조합과 한/영 판정은 Rust 코어 하나이고, macOS 입력기, iOS 키보드, Android IME, Windows 11 x64 TSF가 그 코어를 씁니다. 판정은 기기 안에서 합니다. macOS에서 CloudKit 서명을 넣으면 타자 횟수만 iCloud로 갑니다.
 
-자판은 한글문화원 IBM-3-90(1990)입니다. 초성은 오른쪽, 중성과 종성은 왼쪽, 숫자열은 자모, 0–9는 Shift를 누른 오른쪽 글쇠(U I O / J K L / M < > / N)에 있습니다. `! / ; < > '` 여섯 기호만 쿼티와 다른 자리에 있습니다.
+글쇠는 물리 쿼티(ANSI) 위치로 읽습니다. 코어의 한글 자판은 세벌식 390(기본), 두벌식, 세벌식 최종입니다. 화면에서 고를 수 있는 자판은 플랫폼마다 다릅니다.
 
-## 빌드와 설치
+## 코어
 
-Xcode는 필요 없습니다. Xcode Command Line Tools(Swift 6)와 Rust(stable)가 필요합니다. `./build.sh`가 Rust를 찾아 Apple XCFramework와 Swift 바인딩을 만든 뒤 테스트합니다. `rustup`이 없으면 그 스크립트가 설치합니다.
+`core-rs` 워크스페이스입니다. 툴체인은 Rust stable입니다.
+
+| 크레이트 | 역할 |
+| --- | --- |
+| `seto-core` | `Session`, 자판, 사전, 오타 교정 |
+| `seto-ffi` | UniFFI 0.30. macOS·iOS·Android가 `FieldSession`으로 호출 |
+| `seto-tsf` | Windows TSF. UniFFI 없이 `seto-core`를 직접 호출하는 x64 DLL |
+
+사전은 `Resources/`의 UTF-8 단어 목록입니다. 전환 규칙은 [docs/core.md](docs/core.md), 크레이트 안내는 [core-rs/README.md](core-rs/README.md)입니다.
+
+## 플랫폼
+
+| | macOS | iOS | Android | Windows |
+| --- | --- | --- | --- | --- |
+| 형태 | 입력기 `Seto.app` | 앱 + 키보드 확장 | IME `com.ias.seto` | TSF 텍스트 서비스 |
+| 대상 | macOS 13 이상 | iOS 16 이상 | Android 14 (API 34) 이상 | Windows 11 x64 |
+| 코어 연결 | UniFFI | UniFFI | UniFFI | `seto-core` 직접 |
+| 하드웨어 자판 | 390·두벌식·최종 | 앱 안에서 390·두벌식·최종 | 390·두벌식·최종 | 390·두벌식·최종 |
+| 화면 자판 | 하드웨어만 | 두벌식 | 두벌식 | 하드웨어만 |
+| 받는 방법 | `./build.sh` | Xcode | `android-v*` 서명 APK | `windows-v*` zip |
+
+### macOS
+
+메뉴 막대에 한글은 **한**, 영문은 **A**로 표시됩니다. 입력기 메뉴에서 자동 한/영(⌃⇧K), 오타 자동 교정, 한글 자판, 단어 사전, 타자 통계를 다룹니다. Shift+Space와 Caps Lock은 방금 자동으로 바뀐 읽기를 되돌리고, 조합 중이 아니면 한/영을 바꿉니다. Terminal은 영문으로 시작하고 자동 전환을 끌 수 있으며(⌃⇧T), Safari·Chrome 주소창도 영문으로 시작합니다. 주소창을 구분하려면 손쉬운 사용에서 세토를 허용합니다. 암호 칸은 쿼티 그대로 넘깁니다. 후보 창 없이, 치는 도중에 읽기를 바꿉니다.
+
+입력기가 사전을 처음 읽으면 `~/Library/Application Support/Sebeol390/Dictionaries/`에 `english-words.txt`, `english-extra.txt`, `korean-words.txt`, `korean-valid.txt`를 복사합니다. 한 줄에 단어 하나, UTF-8입니다. 고친 뒤 메뉴의 **수정한 사전 다시 불러오기**를 누릅니다. 다시 친 오타는 이 맥의 `~/Library/Application Support/Sebeol390/typos.jsonl`에만 남습니다.
+
+CloudKit을 쓰려면 Apple Developer에서 App ID `com.ias.inputmethod.seto`에 `iCloud.com.ias.seto`를 연결하고, `MacTypingStatistics` 레코드의 `history`(Bytes)와 `recordName` QUERYABLE 인덱스를 Production에 배포한 뒤, 그 프로파일을 `signing/`에 둡니다. `./build.sh`가 프로파일을 읽어 서명합니다. 프로파일이 없으면 임시 서명이며 통계는 이 맥에만 남습니다. [signing/README.md](signing/README.md)
+
+빌드에는 전체 Xcode가 선택된 상태여야 합니다. `./build.sh`는 `xcodebuild -create-xcframework`로 Apple 바인딩을 만듭니다.
 
 ```sh
+sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 ./build.sh
 ```
 
-테스트가 통과하면 `~/Library/Input Methods/Seto.app`에 설치하고 입력 소스를 등록합니다. `sudo`는 쓰지 않습니다.
+스크립트는 Rust를 준비하고 `scripts/build-apple-xcframework.sh`로 XCFramework와 Swift 바인딩을 만든 뒤 `swift test`, 릴리스 빌드, `~/Library/Input Methods/Seto.app` 설치와 입력 소스 등록을 합니다. `rustup`이 없으면 그 스크립트가 설치합니다. 설치를 건너뛰려면 `INSTALL=0 ./build.sh`이며, 번들은 `.build/package/Sebeol390.app`입니다.
 
-실제 IMK 입력 컨트롤러와 모의 편집기의 연동은 macOS GUI 로그인 세션에서 `./test-imk-client.sh`로 따로 검사합니다. 텍스트 삽입·조합 표시 중 편집기가 확정 콜백을 다시 보내는 경우와 명시적 확정을 검사하며, 실제 앱의 입력칸에는 키를 보내지 않습니다.
+시스템 설정 → 키보드 → 입력 소스에서 **세토**를 추가합니다. 목록에 없으면 로그아웃 후 다시 로그인합니다. Bundle ID는 `com.ias.inputmethod.seto`입니다.
 
-## 켜는 방법
+GUI 로그인 세션에서 IMK와 모의 편집기의 연동은 `./test-imk-client.sh`입니다. 실제 앱의 입력칸에는 키를 보내지 않습니다.
 
-1. 설치 직후 목록에 없으면 한 번 로그아웃했다가 다시 로그인합니다.
-2. 시스템 설정 → 키보드 → 입력 소스 → 편집 또는 `+` → 한국어에서 **세토**를 추가합니다.
-3. 메뉴 막대 입력 메뉴에서 세토를 고릅니다. 이 입력기를 추가해도 지금 선택된 입력 소스는 바뀌지 않습니다.
+### iOS
 
-## 쓰는 방법
+안내·연습 앱과 시스템 키보드 확장입니다. 터치 자판은 두벌식이고 문구, 추천, 한 손 모드가 있습니다. 앱 안의 하드웨어 키보드는 세벌식 390·두벌식·세벌식 최종을 고릅니다. 키보드 확장은 다른 앱의 하드웨어 키를 받지 않으며, 전체 접근은 필요하지 않습니다. SSH 터미널과 원격 파일 편집은 [remote/README.md](remote/README.md), 설치와 조작은 [iOS/README.md](iOS/README.md)입니다.
 
-- 기본은 한글입니다. 낱자·숫자·영단어의 앞부분만으로 한영 모드를 바꾸지 않습니다. 단어가 확인되면 입력 도중에도 자동 전환하며, 스페이스를 기다리지 않습니다. 확인된 모드는 공백·문장 부호 뒤에도 유지합니다. 영문 모드에서도 세벌식 자모 자리인 `;`·`'`가 한글 조합으로 이어지면 단어 중간을 확정하지 않습니다(`컨트롤`, `버튼`). 단어 안에서 한글과 영문을 나눠 읽습니다. `deploy했는데`, `AI로`처럼 경계에서 갈라지고, `build.sh`, `v2`, `git push`, `cd ../src`는 영문으로 남습니다.
-- 세토를 사용하는 동안 메뉴 막대의 전용 상태 표시에 현재 한글 모드는 **한**, 영문 모드는 **A**로 나타납니다. 옆의 흰 빈 원은 자동전환 켜짐, 회색 선은 꺼짐을 뜻합니다. 자동 전환, Shift+Space, Caps Lock, 메뉴의 언어 선택에 맞춰 바뀝니다. 표시를 클릭하면 세토 설정과 타자 통계 메뉴가 열립니다. 다른 입력기로 바꾸면 이 표시는 숨겨집니다.
-- 자동으로 바뀐 직후 **Shift+Space** 또는 Caps Lock을 누르면 방금 친 그대로 되돌리고, 그 단어는 그 읽기로 고정합니다. 조합 중이 아니면 한/영만 바꿉니다.
-- **Control+Shift+K**로 자동 한/영 전환을 켜고 끕니다. Terminal에서는 입력 컨텍스트에 들어갈 때 자동 전환을 끄며, 이 단축키로 Terminal 안에서도 다시 켜거나 끌 수 있습니다.
-- Safari와 Chrome의 주소창(주소·검색 칸)에서는 Terminal처럼 영문으로 시작하고, 입력 컨텍스트에 들어갈 때 자동 한/영 전환과 오타 자동 교정을 끕니다. 웹 페이지 안의 입력칸은 그대로입니다. 주소창을 알아보려면 시스템 설정 → 개인정보 보호 및 보안 → 손쉬운 사용에서 **세토**를 허용해야 하며, 허용하지 않으면 주소창에서도 평소처럼 동작합니다. Control+Shift+K와 메뉴로 그 칸에서만 다시 켤 수 있습니다.
-- 같은 줄을 이어서 칠 때, 앞 단어가 영문이면 `of` `to` `in` `the`처럼 짧고 영문으로도 음절로도 읽히는 말은 영문으로 둡니다. `one of the`, `kind of`, `out of the`는 영문입니다. 앞 단어가 한글이면 지금처럼 한글입니다. `한 차`는 차로 남습니다. 마침표, 물음표, 줄바꿈 다음에는 앞 단어의 문맥은 끊지만 한영 모드는 유지합니다. 영문 모드에서는 `one. of`도 영문입니다. 영문으로 바뀐 `of`도 Shift+Space로 `차`로 되돌립니다.
-- 띄어쓰기나 문장 부호로 단어가 끝날 때, 친 말이 한글 사전에 없고, 글쇠 수가 같으며, 자주 쓰는 말과 글쇠가 정확히 하나 다를 때만 그 말로 고칩니다. 사전에 있는 말(`바탕`, `공간`), 조사가 붙은 말, 한 음절, 글쇠를 더하거나 뺀 말(`갔어`), 글쇠가 둘 이상 다른 말, 영문 단어, 숫자, 약어는 그대로 둡니다. 후보가 둘이면 그대로 둡니다. 방금 고친 직후 Shift+Space를 누르면 친 그대로 돌아오고, 그 단어는 다시 고치지 않습니다. Caps Lock도 같습니다.
-- 한 단어 안에서 지웠다가 다시 치면, 틀린 입력과 다시 친 입력을 이 맥의 `~/Library/Application Support/Sebeol390/typos.jsonl`에만 남깁니다. 암호 칸에서는 남기지 않고, 밖으로 보내지 않습니다. 파일이 커지면 오래된 줄부터 지웁니다. 파일을 삭제하면 기록이 사라집니다.
-- **Control+,** 는 `←`, **Control+.** 는 `→`를 한 번에 입력합니다. 한글·영문 모드와 자동 전환 설정에 관계없이 동작하며, 앞에서 조합하던 글자를 확정한 뒤 화살표를 붙입니다. 기존 Option 키의 기호 입력은 그대로 앱으로 전달합니다.
-- Shift 키의 숫자·기호는 현재 모드로 읽습니다. 한글 모드에서는 Shift+M이 `1`, Shift+.가 `3`이고, 영문 모드에서는 각각 `M`, `>`입니다. `-`나 `=` 뒤에서도 한글 모드는 `-3`, `=3`, 영문 모드는 `->`, `=>`입니다. 한글 모드에서 Shift+, 는 `2`이고, `<-`는 Shift+Y 다음 `-`입니다.
-- 메뉴 막대에서 입력 소스 아이콘을 누르면 세토 메뉴가 나옵니다. **오타 자동 교정**은 기본으로 켜져 있고, 끄면 교정은 하지 않으며 오타 기록은 계속 남습니다. **자동 한/영 전환**도 같은 메뉴에 있습니다. 두 설정은 이 맥에 저장됩니다. **한글 자판**에서 **세벌식 390**(기본)·**두벌식**·**세벌식 최종**을 선택할 수 있습니다. 자판 선택은 이 맥에 저장되며, 바꿀 때 조합 중인 단어를 확정합니다. **한글 (선택한 자판)** 과 **영문 (QWERTY)** 는 지금 단어를 확정하고 다음 글의 기본 언어를 고릅니다.
-- 암호 칸(보안 입력)에서는 조합하지 않고, 누른 글쇠를 기록하지 않은 채 쿼티 그대로 넘깁니다.
+Xcode에서 `iOS/Sebeol390.xcodeproj`의 `Sebeol390` 스킴을 실행합니다. 개발자 디렉터리가 Xcode가 아니면 `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`를 붙입니다. Xcode Cloud는 `iOS/ci_scripts/ci_post_clone.sh`에서 Rust와 XCFramework를 만듭니다. App Store용 바이너리는 이 저장소의 Releases에 없습니다.
 
-입력기 메뉴의 **타자 통계**에서 오늘과 누적의 `백스페이스 횟수 ÷ 입력 타수`를 볼 수 있습니다. 입력 타수는 완성된 글자 수가 아니라 자모·문자·공백·Enter·Tab 키를 누른 횟수입니다. 백스페이스는 분자에만 포함하며, 조합 밖에서 누르거나 길게 눌러 반복된 삭제도 셉니다. 한/영 전환, 단축키, 방향키와 보안 입력은 제외합니다. 이 입력기를 사용하는 동안 받은 키만 세며, 입력 내용 없이 횟수만 이 맥에 저장합니다. 오늘 통계는 한국 시간 자정에 새로 시작합니다.
+### Android
 
-## 한계
+하드웨어 키보드는 세벌식 390(기본), 두벌식, 세벌식 최종 중에서 고릅니다. 사용자별 설정은 세토 앱의 설정 화면에 있습니다. 화면 자판은 두벌식입니다. 문구·추천·한 손 모드는 이 버전에 없고, 상태 표시는 **한** / **A**입니다. 홈 화면 아이콘은 없습니다. 암호 칸은 하드웨어 키를 그대로 넘기고, 화면 자판은 보이는 문자를 바로 넣습니다. 입력 동작은 [android/README.md](android/README.md)입니다.
 
-- 중성·종성 낱자 하나(`x`, `a`)나, 음절이 되지 않고 끝난 초성 하나(`k `)는 영문으로 둡니다. `x 만`은 `ㄱ 만`이 되지 않습니다. 한글으로 시작한 단어에서 낱자가 이어지면(`ㅎㅎ`, `ㅋㅋ`, `ㅠㅠ`, `ㄱㅅ`) 그 낱자로 둡니다. `ㄱㄱ`·`ㄷㄷ`·`ㅂㅂ`은 `ㄲ`·`ㄸ`·`ㅃ`입니다.
-- 버퍼 전체가 음절이면 조사 앞에서 자르지 않습니다. `아까`는 `jfk가`가 되지 않고, `건가`는 `kts가`가 되지 않습니다. 자르면 `ㄲ`·`ㄸ`·`ㅃ`·`ㅆ`·`ㅉ`이나 겹받침이 갈라지는 경우도 한글입니다. 예외는 목록의 약어(`ktx`, `srt`, `api`, `url`, `mvp`, `sdk`, `cpu`, `gpu`, `html`, `css`, `aws`, `llm`, `gpt`, `nlp`)와, 음절로 읽히지 않는 네 글자 이상 영단어(`github에`)뿐입니다. 한글 사전에 있는 말은 항상 한글입니다(`열은`). `쪽`의 `ll`은 `llvm`의 앞부분이지만 `ㅉ`로 둡니다.
-- 영문과 숫자는 조합으로 잡아 두지 않고 바로 확정합니다. 그 뒤에 한글이 와도 이미 친 글자는 다시 넣지 않습니다. `1개`는 `1개`입니다. 화살표, Tab, Esc, Return은 쳐 둔 글자를 바꾸지 않고 앱으로 넘깁니다. 한글 음절을 조합하는 동안에만 밑줄 조합이 남습니다.
-- 한글 모드에서 글쇠가 한글 음절로 이어지는 동안에는 영문으로 바꾸지 않습니다. `hello`, `other`처럼 조합이 깨지면 그때 영단어로 바뀝니다. 한글 모드에서 끝까지 음절로 읽히는 짧은 영단어는 한글로 남고, Shift+Space나 Caps Lock으로 되돌립니다. 영문 모드에서는 `of`, `to`, `md`처럼 한글 음절로도 읽히는 짧은 입력을 영문으로 유지합니다. 영문 단어·접두어로 읽히지 않고 한글 사전에서 확인되는 `흠`, `음`, `응`, `네`, `예` 같은 한 음절 단어는 스페이스를 기다리지 않고 한글로 전환합니다. 소문자 `yv`는 영문 이름 `Yvonne`의 접두어보다 세벌식 읽기 `로`를 우선하여 즉시 한글로 전환합니다.
-- 영문으로 읽히기 시작한 단어가 아직 영단어이거나 그 앞부분이면 중간에서 한글로 바꾸지 않습니다. `agents`는 `age선`이 되지 않습니다. `deploy했는데`처럼 영단어 앞부분이 끝나는 글쇠에서 한글로 갈라집니다.
-- `agents.md`, `README.md`, `https://…`, `foo.com`, `a.b.c`, 메일, 경로처럼 점·슬래시·콜론·골뱅이로 이어진 토큰은 끝까지 영문입니다. 한글 음절 뒤의 마침표는 문장을 확정합니다. 영문 토큰 바로 뒤의 한 음절은 확장자와 구분하지 못해 영문으로 남고, 두 음절 이상이면 한글로 넘어갑니다. 한글 모드에서 점 없이 친 `md`는 `히`, 영문 모드에서는 `md`입니다.
-- 쿼티 숫자열은 자모입니다. `2`는 종성 `ㅆ`이라 `했어.` `있어` `했다` `갔어`는 한글로 남고, 마침표는 음절 바로 뒤에 붙습니다. 숫자는 Shift를 누른 오른쪽 자리로 칩니다. 한글 모드에서 그 글쇠만 누르면 `1`, `10`, `2026`입니다. 점이나 쉼표가 숫자 사이에 있으면 `0.1`, `3.14`, `1,000`, `2026.10.23`처럼 숫자입니다. 영문 모드에서는 같은 글쇠를 쿼티로 읽으므로 `TV`, `API`, `MN`, `N.M`이 그대로 남습니다.
-- `Introduce`, `Open`, `Hello`처럼 첫 글쇠가 390에서 숫자·기호인 대문자 영단어는, 철자가 영문으로 보이면 그 첫 글쇠를 대문자로 되돌립니다. 한글 모드에서 `OK`·`IO`처럼 글쇠가 전부 숫자이면 `95`, `89`로 둡니다.
-- 물리 쿼티(ANSI) 자판을 기준으로 키 코드를 읽습니다.
-- Caps Lock 램프는 한/영으로 쓴 뒤 끄려 하지만, 시스템에서 막히면 불만 남을 수 있습니다. 글자는 대문자로 고정되지 않습니다.
-- 후보 창은 없습니다.
+서명 APK는 [Releases](https://github.com/iasandcb/seto/releases)의 `android-v*` 자산입니다. 릴리스 워크플로는 [PR #39](https://github.com/iasandcb/seto/pull/39)에서 추가 중이며 main에 아직 없을 수 있으므로, 태그 주소를 고정하지 말고 Releases 페이지의 `android-v*` APK를 받습니다. 디버그 키로 설치해 둔 `com.ias.seto`는 인증서가 달라 한 번 제거한 뒤 릴리스 APK를 설치합니다. 설정 → 시스템 → 키보드 → 화면 키보드에서 **Seto**를 켭니다.
 
-## iPhone 앱
-
-iOS용 설치 안내·연습 앱과 시스템 키보드 확장은 `iOS/`에 있습니다. Xcode에서 `iOS/Sebeol390.xcodeproj`를 열어 실행합니다. 설치와 키보드 활성화 절차는 [iOS 안내](iOS/README.md)를 참고하세요.
-
-터치 자판(연습장과 키보드 확장)에서 길게 누르는 동작:
-
-- 글쇠를 0.4초 길게 누르면 ⇧ 없이 그 글쇠의 Shift 글자(쌍자음·ㅒ·ㅖ·영문 대문자)를 입력합니다. 기호 자판에서는 일반 입력과 같습니다.
-- 간격을 길게 누르면 탭을 입력합니다.
-- 간격을 길게 누른 채 좌우로 끌면 커서가 글자 단위(약 10pt마다 한 글자)로 움직이고, 손을 떼도 탭을 입력하지 않습니다. 커서를 옮기면 조합 중인 글자는 확정됩니다. 문구 입력 중에는 커서가 움직이지 않고 탭만 입력합니다.
-
-## 단어 사전 보기와 수정 (macOS)
-
-입력기 메뉴 → **단어 사전**에서 영어·영어 추가·한국어·한국어 오타 보호 사전을 텍스트 편집기로 열 수 있습니다. 첫 사용 시 기본 사전을 `~/Library/Application Support/Sebeol390/Dictionaries/`에 복사하며, 한 줄에 단어 하나를 쓰고 UTF-8 일반 텍스트로 저장합니다. 빈 줄과 `#`으로 시작하는 주석은 무시합니다. 단어를 추가하거나 삭제한 뒤 **수정한 사전 다시 불러오기**를 누르면 현재 입력창에 반영됩니다. 이미 열려 있는 다른 입력창에는 입력기를 다시 시작하면 반영됩니다. 사용자 사전 파일은 앱 업데이트 시 덮어쓰지 않습니다.
-
-- `english-words.txt`: 기본 영어 사전.
-- `english-extra.txt`: 개발 용어, macOS 기본 명령 디렉터리(`/bin`, `/sbin`, `/usr/bin`, `/usr/sbin`)의 실행 파일 이름, 셸 내장 명령과 대표적인 Linux 명령·프로그램. 모든 Unix 배포판과 별도 설치 프로그램 전체를 뜻하지는 않습니다.
-- `korean-words.txt`: 한영 판정에 우선하는 자주 쓰는 한국어 단어.
-- `korean-valid.txt`: 정상 단어를 오타로 고치지 않도록 보호하는 대규모 한국어 사전.
-
-한국어 사전에 단어를 넣어도 모든 입력을 그 단어로 자동 교정하는 것은 아닙니다. 한글로도 읽히는 짧은 Unix 명령에는 기존 한영 판정 규칙이 계속 적용됩니다. iOS도 같은 기본 사전을 포함하지만, 사전 편집 메뉴는 macOS에서 제공합니다.
-
-영어 사전에 있는 알파벳 세 글자 이상 표제어는 일반적인 `-s`, `-es`, 자음 뒤 `y → ies` 형태도 인식합니다(`commands`, `batches`, `directories`). 생성한 형태의 접두사도 함께 인식해 입력 중 한글로 갈라지는 것을 방지합니다. 불규칙 복수형은 사전에 실린 형태를 사용합니다.
-
-숫자 글쇠 뒤 한글 단위나 두 음절 이상 한글이 확인되면 시작 모드에 관계없이 숫자와 한글로 읽습니다(`1개`, `1대의`, `10대의`). 실제 영어 단어·접두사와 약어 판정은 유지합니다.
-
-## 맥 여러 대의 일별 타자 통계
-
-맥에서는 한국 시간(Asia/Seoul) 날짜별 입력 타수와 백스페이스 횟수를 보관합니다.
-타자 통계 메뉴에는 이 맥의 오늘·누적과 맥 통합 오늘·최근 30개 기록일이 표시됩니다.
-과거 누적치는 그대로 보존하지만 날짜를 알 수 없으므로 새 일별 통계에 넣지 않습니다.
-통합 비율은 백스페이스 합계 ÷ 입력 타수 합계입니다. iPhone은 수집·동기화 대상이 아닙니다.
-
-CloudKit 서명이 구성된 빌드는 같은 Apple 계정의 개인 데이터베이스에서 60초마다
-동기화하며 메뉴의 ‘지금 동기화’로도 실행합니다. 기기별 스냅샷을 대체하므로 재전송해도
-중복 합산하지 않습니다. 입력 내용·오타 기록·개별 키 이력은 전송하지 않습니다.
-네트워크가 끊겨도 로컬 수집은 계속되며 재연결 후 다음 동기화에서 전송합니다.
-다른 맥의 마지막 수신 기록은 계정별로 캐시합니다. 메뉴의 동기화 시각을 확인하세요.
-앱 재실행 후 계정 확인 전에는 이 맥 기록만 표시합니다.
-
-기본 임시 서명 빌드는 로컬 통계만 동작하고 ‘서명 설정 필요’를 표시합니다.
-CloudKit을 활성화하려면 Apple Developer에서 다음 설정을 먼저 준비합니다.
-
-1. macOS App ID `com.ias.inputmethod.seto`에 iCloud/CloudKit을 활성화하고 `iCloud.com.ias.seto` 컨테이너를 연결합니다.
-2. 해당 App ID·컨테이너를 포함한 macOS 프로비저닝 프로파일과 유효한 서명 인증서를 준비합니다.
-3. CloudKit Console에 `MacTypingStatistics` 레코드 타입, `history`(Bytes) 필드를 만들고 `recordName`의 QUERYABLE 인덱스를 설정합니다. 스키마를 Production에 배포합니다.
-4. 프로파일(`*.provisionprofile`)을 저장소의 `signing/` 폴더에 넣고 `./build.sh`를 실행합니다. 이 폴더는 `README.md`만 커밋되고 나머지는 git에서 제외됩니다. 빌드는 프로파일에서 팀 ID를 읽어 `.build/cloudkit.entitlements`를 만들고, 프로파일에 들어 있는 인증서와 맞는 키체인 서명 ID를 골라 서명합니다. 프로파일이 없으면 임시 서명으로 빌드하고 ‘iCloud 동기화 꺼짐’ 안내를 한 줄 출력합니다. `~/Downloads`에 맞는 프로파일이 있으면 그 경로도 알려 줍니다(자동 복사는 하지 않습니다).
-
-환경 변수를 주면 자동 값 대신 씁니다.
+로컬 빌드는 JDK 17과 `ANDROID_HOME`이 필요합니다. `android/scripts/build-rust.sh`는 NDK `28.2.13676358`과 `cargo-ndk`로 `arm64-v8a`·`x86_64`를 만듭니다.
 
 ```sh
-SIGNING_IDENTITY='Apple Development: YOUR_NAME (TEAM_ID)' \
-ICLOUD_PROFILE='/absolute/path/to/profile.provisionprofile' \
-ICLOUD_ENTITLEMENTS='.build/cloudkit.entitlements' \
-TEAM_ID='TEAM_ID' \
-./build.sh
+cd android
+./gradlew assembleDebug testDebugUnitTest
 ```
 
-프로파일이 Production CloudKit 환경을 허용해야 합니다. 세 맥 모두 같은 컨테이너와
-Production 환경의 빌드를 사용하고 같은 iCloud 계정으로 로그인합니다.
-설치 없이 앱 번들만 만들려면 `INSTALL=0`을 추가합니다(`.build/package/Sebeol390.app`).
-각 맥의 설치 ID는 로컬 UserDefaults에 보관하므로 다른 맥에 설정을 복제하지 마세요.
-실제 여러 맥의 업로드·다운로드 검증에는 위 서명과 iCloud 로그인이 필요합니다.
+디버그 APK는 `android/app/build/outputs/apk/debug/app-debug.apk`입니다.
 
-맥 앱 ID 변경 후 설치 경로는 `~/Library/Input Methods/Seto.app`입니다.
-입력기 Bundle ID에는 소문자 `.inputmethod.` 구간이 필요합니다.
-앱 ID는 `com.ias.inputmethod.seto`, 공통 iCloud 컨테이너는 `iCloud.com.ias.seto`를 사용합니다.
-빌드 스크립트는 이 조건을 검사하며, 등록 명령은 새 ID의 입력 소스가 실제로 목록에
-나타나고 활성화되어야 성공으로 처리합니다.
+### Windows
+
+Windows 11 x64 TSF입니다. DLL은 서명하지 않으며, 대상은 x64뿐입니다. 하드웨어 자판은 세벌식 390(기본), 두벌식, 세벌식 최종 중에서 고릅니다. 사용자별로 저장되며, IME 언어 표시줄의 상황 메뉴에서 바꿉니다. 한/영은 한/영 키, 오른쪽 Alt 탭, Shift+Space입니다. 작업 표시줄은 한글 **가**, 영문 **A**입니다. 후보 창, 화면 자판, 오타 기록 파일, Caps Lock 전환, 터미널·주소창 전용 모드는 빠져 있습니다. 동작·한계·제거는 [docs/windows.md](docs/windows.md)입니다.
+
+다른 PC에서는 git이나 GitHub 로그인 없이 [Releases](https://github.com/iasandcb/seto/releases)의 `windows-v*` zip(`seto-windows-x64.zip`)을 받습니다. 현재 공개된 `windows-v0.1.0`은 prerelease라 `releases/latest`에 포함되지 않습니다. PowerShell에 아래 한 줄을 붙여 넣습니다. `regsvr32` 승인 창이 뜹니다.
+
+```powershell
+$dest = Join-Path $env:TEMP 'seto-windows-x64'; New-Item -ItemType Directory -Force -Path $dest | Out-Null; Invoke-WebRequest -Uri 'https://github.com/iasandcb/seto/releases/download/windows-v0.1.0/seto-windows-x64.zip' -OutFile (Join-Path $dest 'seto-windows-x64.zip') -UseBasicParsing; Expand-Archive -Path (Join-Path $dest 'seto-windows-x64.zip') -DestinationPath $dest -Force; $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'; if (-not [Environment]::Is64BitProcess) { $nativePs = Join-Path $env:SystemRoot 'Sysnative\WindowsPowerShell\v1.0\powershell.exe'; if (Test-Path -LiteralPath $nativePs) { $ps = $nativePs } }; & $ps -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dest 'install.ps1')
+```
+
+태그 정책, 저장소 안의 `scripts/windows/install-release.ps1`, 제거 방법은 [docs/windows.md](docs/windows.md)에 있습니다.
+
+이 저장소에서 직접 빌드하려면 Windows에 Rust stable과 MSVC가 필요합니다.
+
+```powershell
+rustup target add x86_64-pc-windows-msvc
+cd core-rs
+cargo test --workspace
+cargo build -p seto-tsf --release --target x86_64-pc-windows-msvc
+powershell -ExecutionPolicy Bypass -File scripts\windows\install.ps1
+```
+
+DLL은 `core-rs\target\x86_64-pc-windows-msvc\release\seto_tsf.dll`입니다. CI는 `.github/workflows/windows-tsf.yml`이 pull request와 `main`에서 워크스페이스 테스트와 x64 DLL을 만들고, `.github/workflows/windows-release.yml`이 `windows-v*` 태그의 zip을 GitHub Release에 올립니다. 버전 태그에 하이픈이 있으면(`windows-v0.1.0-rc.1`) prerelease입니다.
+
+## 테스트
+
+```sh
+cd core-rs && cargo test --workspace
+swift test
+```
+
+`swift test`는 `Apple/SetoFFI.xcframework`가 있어야 합니다. `./build.sh` 또는 `./scripts/build-apple-xcframework.sh`가 만들고, 그 산출물은 커밋하지 않습니다. `cargo test -p seto-tsf`의 키·세션 테스트는 macOS와 Linux에서도 돌고, COM 서버만 Windows 타깃에서 컴파일됩니다. Android JVM 테스트는 위의 `testDebugUnitTest`입니다. iOS UI 테스트는 [iOS/README.md](iOS/README.md)의 `xcodebuild test`입니다.
+
+## 저장소
+
+```
+core-rs/          seto-core, seto-ffi, seto-tsf
+Sources/          macOS 입력기(SetoIME)와 Swift 어댑터(SetoCore, SetoSupport)
+Tests/            Swift 패키지 테스트
+Resources/        사전, 아이콘
+iOS/              앱, 키보드 확장
+android/          IME
+scripts/          Apple XCFramework, Windows 설치 스크립트
+docs/             전환 설명, Windows 안내, 개선 제안
+signing/          macOS CloudKit 프로파일 (README만 커밋)
+remote/           iOS SSH 원격 편집 도우미
+.github/workflows Windows CI와 windows-v* 릴리스
+```
+
+`Apple/`의 XCFramework와 UniFFI 바인딩은 빌드 산출물입니다.
+
+## 문서
+
+- [전환 코어](docs/core.md)
+- [Windows](docs/windows.md)
+- [iOS](iOS/README.md)
+- [Android](android/README.md)
+- [Rust 코어](core-rs/README.md)
+- [macOS CloudKit 서명](signing/README.md)
+- [SSH 원격 편집](remote/README.md)
+- [개선 제안](docs/proposal.md)
+
+라이선스는 [MIT](LICENSE)입니다.
