@@ -8,11 +8,13 @@
 
 #![allow(non_snake_case)]
 
+mod configure;
 mod display;
 mod edit;
 mod factory;
 mod indicator;
 mod layout_store;
+mod layout_watch;
 mod registry;
 mod service;
 

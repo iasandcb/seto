@@ -6,19 +6,19 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::{Arc, OnceLock};
 
-use windows::Win32::Foundation::{LPARAM, WPARAM};
+use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetKeyState, VK_CONTROL, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_RCONTROL, VK_RMENU, VK_RSHIFT, VK_RWIN,
     VK_SHIFT,
 };
 use windows::Win32::UI::TextServices::{
     GUID_COMPARTMENT_EMPTYCONTEXT, GUID_COMPARTMENT_KEYBOARD_DISABLED, ITfCompartmentMgr, ITfContext,
-    ITfDisplayAttributeProvider, ITfDisplayAttributeProvider_Impl, ITfKeyEventSink, ITfKeyEventSink_Impl,
-    ITfKeystrokeMgr, ITfLangBarItem, ITfLangBarItemMgr, ITfLangBarItemSink, ITfSource, ITfTextInputProcessor_Impl,
-    ITfTextInputProcessorEx, ITfTextInputProcessorEx_Impl, ITfThreadFocusSink, ITfThreadFocusSink_Impl, ITfThreadMgr,
-    TF_TMAE_SECUREMODE,
+    ITfDisplayAttributeProvider, ITfDisplayAttributeProvider_Impl, ITfFnConfigure, ITfFnConfigure_Impl,
+    ITfFunction_Impl, ITfKeyEventSink, ITfKeyEventSink_Impl, ITfKeystrokeMgr, ITfLangBarItem, ITfLangBarItemMgr,
+    ITfLangBarItemSink, ITfSource, ITfTextInputProcessor_Impl, ITfTextInputProcessorEx, ITfTextInputProcessorEx_Impl,
+    ITfThreadFocusSink, ITfThreadFocusSink_Impl, ITfThreadMgr, TF_TMAE_SECUREMODE,
 };
-use windows::core::{BOOL, GUID, IUnknownImpl, Interface, Ref, Result, implement};
+use windows::core::{BOOL, BSTR, GUID, IUnknownImpl, Interface, Ref, Result, implement};
 
 use seto_core::{FieldEdit, Language, Lexicon, utf16_len};
 
@@ -51,11 +51,12 @@ pub(crate) struct TipInner {
     pub(crate) published: Option<Language>,
     pub(crate) indicator_shown: bool,
     pub(crate) theme_watch: Option<super::indicator::ThemeWatch>,
+    pub(crate) layout_watch: Option<super::layout_watch::LayoutWatch>,
 }
 
 pub(crate) type SharedTip = Rc<RefCell<TipInner>>;
 
-#[implement(ITfTextInputProcessorEx, ITfKeyEventSink, ITfDisplayAttributeProvider, ITfThreadFocusSink)]
+#[implement(ITfTextInputProcessorEx, ITfKeyEventSink, ITfDisplayAttributeProvider, ITfThreadFocusSink, ITfFnConfigure)]
 pub(crate) struct TextService {
     tip: SharedTip,
 }
@@ -84,6 +85,7 @@ impl TextService {
                 published: None,
                 indicator_shown: true,
                 theme_watch: None,
+                layout_watch: None,
             })),
         }
     }
@@ -165,6 +167,9 @@ impl TextService_Impl {
             self.tip.borrow().engine.layout().raw_value()
         ));
         super::indicator::install(&self.tip);
+        // Settings writes the layout from another process. Keep watching even
+        // when the taskbar button could not be added.
+        super::layout_watch::ensure(&self.tip);
         Ok(())
     }
 
@@ -191,6 +196,7 @@ impl TextService_Impl {
 impl ITfThreadFocusSink_Impl for TextService_Impl {
     fn OnSetThreadFocus(&self) -> Result<()> {
         super::guard("OnSetThreadFocus", || {
+            super::indicator::reload_layout(&self.tip);
             super::indicator::publish(&self.tip, true);
             Ok(())
         })
@@ -212,6 +218,7 @@ impl ITfKeyEventSink_Impl for TextService_Impl {
             if !foreground {
                 self.commit_focus();
             }
+            super::indicator::reload_layout(&self.tip);
             super::indicator::publish(&self.tip, true);
             Ok(())
         })
@@ -314,6 +321,22 @@ impl ITfKeyEventSink_Impl for TextService_Impl {
 
     fn OnPreservedKey(&self, _pic: Ref<ITfContext>, _rguid: *const GUID) -> Result<BOOL> {
         super::guard("OnPreservedKey", || Ok(false.into()))
+    }
+}
+
+impl ITfFnConfigure_Impl for TextService_Impl {
+    fn Show(&self, hwndparent: HWND, _langid: u16, _rguidprofile: *const GUID) -> Result<()> {
+        super::guard("configure Show", || {
+            super::configure::choose_and_save(hwndparent)?;
+            super::indicator::reload_layout(&self.tip);
+            Ok(())
+        })
+    }
+}
+
+impl ITfFunction_Impl for TextService_Impl {
+    fn GetDisplayName(&self) -> Result<BSTR> {
+        super::catch_com("configure GetDisplayName", || Ok(BSTR::from("세토 자판")))
     }
 }
 

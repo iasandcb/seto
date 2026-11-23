@@ -26,6 +26,18 @@ pub fn from_menu_id(id: u32) -> Option<KeyboardLayout> {
     KeyboardLayout::ALL.get(id as usize).copied()
 }
 
+/// Control ids for the keyboard-options dialog and the indicator popup.
+/// `0` stays free so a dismissed popup is not 세벌식 390.
+pub const DIALOG_ID_BASE: u32 = 100;
+
+pub fn dialog_id(layout: KeyboardLayout) -> u32 {
+    menu_id(layout) + DIALOG_ID_BASE
+}
+
+pub fn from_dialog_id(id: u32) -> Option<KeyboardLayout> {
+    id.checked_sub(DIALOG_ID_BASE).and_then(from_menu_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -51,5 +63,18 @@ mod tests {
         assert_eq!(menu_id(KeyboardLayout::SebeolFinal), 2);
         assert_eq!(from_menu_id(3), None);
         assert_eq!(from_menu_id(u32::MAX), None);
+    }
+
+    #[test]
+    fn dialog_ids_are_the_menu_ids_shifted_off_zero() {
+        for layout in KeyboardLayout::ALL {
+            assert_eq!(from_dialog_id(dialog_id(layout)), Some(layout));
+        }
+        assert_eq!(dialog_id(KeyboardLayout::Sebeol390), 100);
+        assert_eq!(dialog_id(KeyboardLayout::Dubeol), 101);
+        assert_eq!(dialog_id(KeyboardLayout::SebeolFinal), 102);
+        assert_eq!(from_dialog_id(0), None);
+        assert_eq!(from_dialog_id(99), None);
+        assert_eq!(from_dialog_id(103), None);
     }
 }

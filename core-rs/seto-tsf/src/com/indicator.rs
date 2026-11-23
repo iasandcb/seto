@@ -39,10 +39,12 @@ use windows::Win32::UI::TextServices::{
     TfLBIClick,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateIconFromResourceEx, CreateIconIndirect, CreateWindowExW, DefWindowProcW, DestroyWindow, GWLP_USERDATA,
-    GetSystemMetrics, GetWindowLongPtrW, HICON, HWND_MESSAGE, ICONINFO, IMAGE_FLAGS, LookupIconIdFromDirectoryEx,
-    PostMessageW, RegisterClassW, SM_CXSMICON, SetWindowLongPtrW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_DESTROY,
-    WNDCLASSW,
+    AppendMenuW, CreateIconFromResourceEx, CreateIconIndirect, CreatePopupMenu, CreateWindowExW, DefWindowProcW,
+    DestroyMenu, DestroyWindow, GWLP_USERDATA, GetCursorPos, GetDesktopWindow, GetSystemMetrics, GetWindowLongPtrW,
+    HICON, HWND_MESSAGE, ICONINFO, IMAGE_FLAGS, LookupIconIdFromDirectoryEx, MF_CHECKED, MF_STRING, PostMessageW,
+    RegisterClassW, SM_CXSMICON, SetForegroundWindow, SetWindowLongPtrW, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON,
+    TrackPopupMenu, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_DESTROY, WM_NULL, WNDCLASSW, WS_EX_TOOLWINDOW,
+    WS_EX_TOPMOST, WS_POPUP,
 };
 use windows::core::{BOOL, BSTR, Error, GUID, IUnknown, Interface, PCWSTR, Ref, Result, implement};
 
@@ -145,9 +147,16 @@ impl ITfLangBarItem_Impl for ModeButton_Impl {
 }
 
 impl ITfLangBarItemButton_Impl for ModeButton_Impl {
-    fn OnClick(&self, click: TfLBIClick, _pt: &POINT, _area: *const RECT) -> Result<()> {
+    fn OnClick(&self, click: TfLBIClick, pt: &POINT, area: *const RECT) -> Result<()> {
         super::guard("indicator OnClick", || {
+            // Windows 11 does not call InitMenu for GUID_LBI_INPUTMODE.
+            // TF_LBI_CLK_RIGHT is the logical secondary button, so swapped
+            // mouse buttons still arrive here when the shell forwards the click.
             if click == TF_LBI_CLK_RIGHT {
+                let Some(slot) = self.slot.upgrade() else {
+                    return Ok(());
+                };
+                show_layout_popup(&slot, click_point(*pt, area));
                 return Ok(());
             }
             let Some(slot) = self.slot.upgrade() else {
@@ -159,6 +168,8 @@ impl ITfLangBarItemButton_Impl for ModeButton_Impl {
     }
 
     fn InitMenu(&self, menu: Ref<ITfMenu>) -> Result<()> {
+        // Kept for a host that still asks. The taskbar indicator on Windows 11
+        // does not; the secondary click builds the menu in OnClick.
         super::catch_com("indicator InitMenu", || {
             let Some(menu) = menu.ok().ok().cloned() else {
                 return Ok(());
@@ -338,6 +349,10 @@ pub(crate) fn remove(slot: &SharedTip) {
     if let Some(watch) = watch {
         stop_theme_watch(watch);
     }
+    let layout = slot.borrow_mut().layout_watch.take();
+    if let Some(layout) = layout {
+        super::layout_watch::stop(layout);
+    }
     let (mgr, item, event, thread_mgr, client_id) = {
         let mut tip = slot.borrow_mut();
         tip.updating_mode = true;
@@ -414,6 +429,105 @@ pub(crate) fn publish(slot: &SharedTip, force: bool) {
         tip.updating_mode = false;
     }
     log(&format!("indicator {} native={} wrote={wrote}", indicator_label(mode), conversion_native(mode)));
+}
+
+/// Read `keyboardLayout` and apply it when Settings, or another process,
+/// changed it. The same layout does not touch the document.
+pub(crate) fn reload_layout(slot: &SharedTip) {
+    let layout = super::layout_store::load();
+    let current = slot.borrow().engine.layout();
+    if current == layout {
+        return;
+    }
+    log(&format!("layout reload {} -> {}", current.raw_value(), layout.raw_value()));
+    select_layout(slot, layout);
+}
+
+fn show_layout_popup(slot: &SharedTip, pt: POINT) {
+    let current = slot.borrow().engine.layout();
+    let menu = match unsafe { CreatePopupMenu() } {
+        Ok(menu) => menu,
+        Err(error) => {
+            log(&format!("layout menu: {error}"));
+            return;
+        }
+    };
+    for layout in KeyboardLayout::ALL {
+        let mut label: Vec<u16> = layout.title().encode_utf16().collect();
+        label.push(0);
+        let flags = if layout == current { MF_STRING | MF_CHECKED } else { MF_STRING };
+        let id = usize::try_from(layout_pref::dialog_id(layout)).unwrap_or(0);
+        if let Err(error) = unsafe { AppendMenuW(menu, flags, id, PCWSTR(label.as_ptr())) } {
+            log(&format!("layout menu item: {error}"));
+        }
+    }
+    let (owner, owned) = popup_owner(pt);
+    unsafe {
+        let _ = SetForegroundWindow(owner);
+    }
+    let selected = unsafe {
+        TrackPopupMenu(menu, TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON, pt.x, pt.y, Some(0), owner, None)
+    };
+    unsafe {
+        let _ = PostMessageW(Some(owner), WM_NULL, WPARAM(0), LPARAM(0));
+        let _ = DestroyMenu(menu);
+        if owned {
+            let _ = DestroyWindow(owner);
+        }
+    }
+    let Some(layout) = layout_pref::from_dialog_id(command_id(selected)) else {
+        return;
+    };
+    super::layout_store::save(layout);
+    select_layout(slot, layout);
+}
+
+fn click_point(pt: POINT, area: *const RECT) -> POINT {
+    if pt.x != 0 || pt.y != 0 {
+        return pt;
+    }
+    if !area.is_null() {
+        let area = unsafe { *area };
+        if area.left != 0 || area.bottom != 0 {
+            return POINT { x: area.left, y: area.bottom };
+        }
+    }
+    let mut cursor = POINT::default();
+    if unsafe { GetCursorPos(&mut cursor) }.is_ok() {
+        return cursor;
+    }
+    pt
+}
+
+fn popup_owner(pt: POINT) -> (HWND, bool) {
+    let created = unsafe {
+        CreateWindowExW(
+            WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
+            windows::core::w!("STATIC"),
+            PCWSTR::null(),
+            WS_POPUP,
+            pt.x,
+            pt.y,
+            0,
+            0,
+            None,
+            None,
+            None,
+            None,
+        )
+    };
+    match created {
+        Ok(hwnd) => (hwnd, true),
+        Err(error) => {
+            log(&format!("layout menu window: {error}"));
+            (unsafe { GetDesktopWindow() }, false)
+        }
+    }
+}
+
+/// `TPM_RETURNCMD` returns the item id, or 0 when the menu is dismissed.
+fn command_id(selected: BOOL) -> u32 {
+    u32::try_from(selected.0).unwrap_or(0)
 }
 
 fn fill_layout_menu(menu: &ITfMenu, current: KeyboardLayout) -> Result<()> {
