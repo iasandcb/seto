@@ -27,7 +27,7 @@ cargo build -p seto-tsf --release --target x86_64-pc-windows-msvc
 $dest = Join-Path $env:TEMP 'seto-windows-x64'; New-Item -ItemType Directory -Force -Path $dest | Out-Null; Invoke-WebRequest -Uri 'https://github.com/iasandcb/seto/releases/download/windows-v0.1.0/seto-windows-x64.zip' -OutFile (Join-Path $dest 'seto-windows-x64.zip') -UseBasicParsing; Expand-Archive -Path (Join-Path $dest 'seto-windows-x64.zip') -DestinationPath $dest -Force; powershell -ExecutionPolicy Bypass -File (Join-Path $dest 'install.ps1')
 ```
 
-zip을 풀면 `seto_tsf.dll`, `Resources\`, `install.ps1`, `uninstall.ps1`이 한 폴더에 있습니다. DLL과 사전은 스크립트 옆에 있습니다. 같은 폴더에서 제거하려면 `powershell -ExecutionPolicy Bypass -File .\uninstall.ps1` 입니다. 위 명령으로 받은 폴더에서는 다음입니다.
+zip을 풀면 `seto_tsf.dll`, `Resources\`, `install.ps1`, `uninstall.ps1`, `seto-register.ps1`이 한 폴더에 있습니다. DLL과 사전은 스크립트 옆에 있습니다. 등록이 끝나면 스크립트가 `regsvr32` 종료 코드와 `HKLM\SOFTWARE\Classes\CLSID\{8F3C1E90-390B-4A6E-B7D2-5E70A11E0001}\InprocServer32`, TIP 프로필 키를 출력합니다. 성공은 그 키가 방금 복사한 DLL을 가리키는 것입니다. 같은 폴더에서 제거하려면 `powershell -ExecutionPolicy Bypass -File .\uninstall.ps1` 입니다. 위 명령으로 받은 폴더에서는 다음입니다.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File (Join-Path $env:TEMP 'seto-windows-x64' 'uninstall.ps1')

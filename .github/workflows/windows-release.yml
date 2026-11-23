@@ -72,13 +72,13 @@ jobs:
           Copy-Item core-rs/target/x86_64-pc-windows-msvc/release/seto_tsf.dll artifact/
           Get-ChildItem -Recurse core-rs/target/x86_64-pc-windows-msvc/release -Filter seto_tsf.pdb | Copy-Item -Destination artifact/
           if (-not (Test-Path artifact/seto_tsf.pdb)) { throw 'seto_tsf.pdb missing' }
-          foreach ($name in 'install.ps1','uninstall.ps1','update.ps1','install-release.ps1') {
+          foreach ($name in 'install.ps1','uninstall.ps1','update.ps1','install-release.ps1','seto-register.ps1') {
             $path = Join-Path 'scripts/windows' $name
             if (Test-Path -LiteralPath $path) {
               Copy-Item -LiteralPath $path -Destination artifact/
             }
           }
-          foreach ($name in 'install.ps1','uninstall.ps1') {
+          foreach ($name in 'install.ps1','uninstall.ps1','seto-register.ps1') {
             if (-not (Test-Path -LiteralPath (Join-Path artifact $name))) { throw "$name missing" }
           }
           if (Test-Path -LiteralPath docs/windows.md) {
@@ -114,6 +114,7 @@ jobs:
             'seto_tsf.pdb',
             'install.ps1',
             'uninstall.ps1',
+            'seto-register.ps1',
             'Resources/korean-words.txt',
             'Resources/english-words.txt',
             'Resources/english-extra.txt',
@@ -131,7 +132,7 @@ jobs:
 
           $verify = Join-Path $env:TEMP ("seto-zip-verify-" + [guid]::NewGuid().ToString('N'))
           Expand-Archive -LiteralPath $zipPath -DestinationPath $verify
-          foreach ($rel in @('seto_tsf.dll','install.ps1','uninstall.ps1')) {
+          foreach ($rel in @('seto_tsf.dll','install.ps1','uninstall.ps1','seto-register.ps1')) {
             if (-not (Test-Path -LiteralPath (Join-Path $verify $rel))) { throw "unzipped layout missing $rel" }
           }
           $dict = Join-Path (Join-Path $verify 'Resources') 'korean-words.txt'

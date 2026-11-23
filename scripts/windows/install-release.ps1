@@ -21,6 +21,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+$here = Split-Path -Parent $MyInvocation.MyCommand.Path
+$registerLib = Join-Path $here 'seto-register.ps1'
+if (-not (Test-Path -LiteralPath $registerLib)) { throw "Missing $registerLib" }
+. $registerLib
 
 if ($Tag -and $Stable) { throw 'Pass only one of -Tag or -Stable.' }
 if ($Repo -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { throw "Unexpected -Repo: $Repo" }
@@ -60,22 +64,6 @@ function Resolve-InstallRoot([string]$Stage) {
         if (Test-Path -LiteralPath $nested) { return $dirs[0].FullName }
     }
     throw "install.ps1 not found in $Asset"
-}
-
-function Invoke-RegSvr([string[]]$ArgumentList) {
-    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = [Security.Principal.WindowsPrincipal]$identity
-    $admin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-    if ($admin) {
-        & regsvr32.exe @ArgumentList
-        if ($LASTEXITCODE -ne 0) { throw "regsvr32 $($ArgumentList -join ' ') failed with exit code $LASTEXITCODE" }
-        return
-    }
-    $proc = Start-Process -FilePath regsvr32.exe -ArgumentList $ArgumentList -Verb RunAs -Wait -PassThru
-    if (-not $proc -or $proc.ExitCode -ne 0) {
-        $code = if ($proc) { $proc.ExitCode } else { 'cancelled' }
-        throw "regsvr32 was not approved or failed ($code)"
-    }
 }
 
 try {
@@ -119,7 +107,7 @@ $destDir = Join-Path $env:LOCALAPPDATA 'Seto'
 if (Test-Path -LiteralPath $destDir) {
     Get-ChildItem -LiteralPath $destDir -Filter 'seto_tsf*.dll' -File -ErrorAction SilentlyContinue | ForEach-Object {
         try {
-            Invoke-RegSvr @('/s', '/u', $_.FullName)
+            Unregister-SetoDll -DllPath $_.FullName
             Write-Host "Unregistered $($_.FullName)"
         } catch {
             Write-Warning "Unregister skipped for $($_.FullName): $($_.Exception.Message)"

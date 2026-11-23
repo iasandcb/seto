@@ -34,7 +34,7 @@ jobs:
           Copy-Item core-rs/target/x86_64-pc-windows-msvc/release/seto_tsf.dll artifact/
           Get-ChildItem -Recurse core-rs/target/x86_64-pc-windows-msvc/release -Filter seto_tsf.pdb | Copy-Item -Destination artifact/
           if (-not (Test-Path artifact/seto_tsf.pdb)) { throw 'seto_tsf.pdb missing' }
-          Copy-Item scripts/windows/install.ps1, scripts/windows/uninstall.ps1, scripts/windows/update.ps1 artifact/
+          Copy-Item scripts/windows/install.ps1, scripts/windows/uninstall.ps1, scripts/windows/update.ps1, scripts/windows/install-release.ps1, scripts/windows/seto-register.ps1 artifact/
           Copy-Item docs/windows.md artifact/
           Copy-Item Resources/english-words.txt, Resources/english-extra.txt, Resources/korean-words.txt, Resources/korean-valid.txt artifact/Resources/
           if (-not (Test-Path artifact/seto_tsf.dll)) { throw 'seto_tsf.dll missing' }

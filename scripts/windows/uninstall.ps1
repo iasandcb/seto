@@ -5,23 +5,11 @@
 param()
 
 $ErrorActionPreference = 'Stop'
+$here = Split-Path -Parent $MyInvocation.MyCommand.Path
+$registerLib = Join-Path $here 'seto-register.ps1'
+if (-not (Test-Path -LiteralPath $registerLib)) { throw "Missing $registerLib" }
+. $registerLib
 $destDir = Join-Path $env:LOCALAPPDATA 'Seto'
-
-function Invoke-RegSvr([string[]]$ArgumentList) {
-    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = [Security.Principal.WindowsPrincipal]$identity
-    $admin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-    if ($admin) {
-        & regsvr32.exe @ArgumentList
-        if ($LASTEXITCODE -ne 0) { throw "regsvr32 $($ArgumentList -join ' ') failed with exit code $LASTEXITCODE" }
-        return
-    }
-    $proc = Start-Process -FilePath regsvr32.exe -ArgumentList $ArgumentList -Verb RunAs -Wait -PassThru
-    if (-not $proc -or $proc.ExitCode -ne 0) {
-        $code = if ($proc) { $proc.ExitCode } else { 'cancelled' }
-        throw "regsvr32 was not approved or failed ($code)"
-    }
-}
 
 if (-not (Test-Path -LiteralPath $destDir)) {
     Write-Host "No Seto folder at $destDir."
@@ -34,7 +22,7 @@ if ($dlls.Count -eq 0) {
 } else {
     foreach ($dll in $dlls) {
         try {
-            Invoke-RegSvr @('/s', '/u', $dll.FullName)
+            Unregister-SetoDll -DllPath $dll.FullName
             Write-Host "Unregistered $($dll.FullName)"
         } catch {
             Write-Warning "Unregister skipped for $($dll.FullName): $($_.Exception.Message)"
