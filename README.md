@@ -71,7 +71,7 @@ cd android
 
 ### Windows
 
-Windows 11 x64 TSF입니다. DLL은 서명하지 않으며, 대상은 x64뿐입니다. 하드웨어 자판은 세벌식 390(기본), 두벌식, 세벌식 최종 중에서 고릅니다. 사용자별로 저장되며, IME 언어 표시줄의 상황 메뉴에서 바꿉니다. 한/영은 한/영 키, 오른쪽 Alt 탭, Shift+Space입니다. 작업 표시줄은 한글 **가**, 영문 **A**입니다. 후보 창, 화면 자판, 오타 기록 파일, Caps Lock 전환, 터미널·주소창 전용 모드는 빠져 있습니다. 동작·한계·제거는 [docs/windows.md](docs/windows.md)입니다.
+Windows 11 x64 TSF입니다. DLL은 서명하지 않으며, 대상은 x64뿐입니다. 하드웨어 자판은 세벌식 390(기본), 두벌식, 세벌식 최종 중에서 고릅니다. 사용자별로 저장되며, 설정의 한국어 키보드 세토 옵션에서 바꿉니다. 한/영은 한/영 키, 오른쪽 Alt 탭, Shift+Space입니다. 작업 표시줄은 한글 **가**, 영문 **A**입니다. 후보 창, 화면 자판, 오타 기록 파일, Caps Lock 전환, 터미널·주소창 전용 모드는 빠져 있습니다. 동작·한계·제거는 [docs/windows.md](docs/windows.md)입니다.
 
 다른 PC에서는 git이나 GitHub 로그인 없이 [Releases](https://github.com/iasandcb/seto/releases)의 `windows-v*` zip(`seto-windows-x64.zip`)을 받습니다. 현재 공개된 `windows-v0.1.0`은 prerelease라 `releases/latest`에 포함되지 않습니다. PowerShell에 아래 한 줄을 붙여 넣습니다. `regsvr32` 승인 창이 뜹니다.
 
