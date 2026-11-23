@@ -1,5 +1,9 @@
 name: Windows TSF
 
+# Tag pushes windows-v* are packaged by windows-release.yml. Keep that zip
+# layout in sync with the artifact staged below: install.ps1 looks for
+# seto_tsf.dll and Resources\ next to the script.
+
 on:
   pull_request:
   push:

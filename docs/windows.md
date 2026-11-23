@@ -19,13 +19,53 @@ cargo build -p seto-tsf --release --target x86_64-pc-windows-msvc
 
 관리자 권한이 필요한 부분은 `regsvr32`입니다. 스크립트는 DLL을 `%LOCALAPPDATA%\Seto\seto_tsf-<시각>.dll`에 두고, 사전은 그 옆의 `seto_tsf-<시각>\Resources`에 파일마다 복사한 뒤 그 DLL만 등록합니다. 실행 중인 프로세스가 `korean-valid.txt`를 메모리에 매핑하고 있어도 새 폴더라 복사가 막히지 않습니다. 같은 내용의 파일은 건너뛰고, 잠긴 파일은 경고만 남긴 채 등록을 계속합니다.
 
-저장소를 빌드한 경우:
+### 다른 Windows 11 x64 PC
+
+저장소, git, GitHub CLI 로그인은 필요 없습니다. PowerShell에 아래 한 줄을 붙여 넣습니다. 공개 릴리스 zip을 받아 풀고, 그 폴더의 `install.ps1`을 실행합니다. `regsvr32` 승인 창이 뜹니다.
+
+```powershell
+$dest = Join-Path $env:TEMP 'seto-windows-x64'; New-Item -ItemType Directory -Force -Path $dest | Out-Null; Invoke-WebRequest -Uri 'https://github.com/iasandcb/seto/releases/download/windows-v0.1.0/seto-windows-x64.zip' -OutFile (Join-Path $dest 'seto-windows-x64.zip') -UseBasicParsing; Expand-Archive -Path (Join-Path $dest 'seto-windows-x64.zip') -DestinationPath $dest -Force; powershell -ExecutionPolicy Bypass -File (Join-Path $dest 'install.ps1')
+```
+
+zip을 풀면 `seto_tsf.dll`, `Resources\`, `install.ps1`, `uninstall.ps1`이 한 폴더에 있습니다. DLL과 사전은 스크립트 옆에 있습니다. 같은 폴더에서 제거하려면 `powershell -ExecutionPolicy Bypass -File .\uninstall.ps1` 입니다. 위 명령으로 받은 폴더에서는 다음입니다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File (Join-Path $env:TEMP 'seto-windows-x64' 'uninstall.ps1')
+```
+
+`windows-v0.1.0`은 prerelease입니다. 정식 릴리스 주소는 `https://github.com/iasandcb/seto/releases/latest/download/seto-windows-x64.zip` 입니다. 이 주소는 prerelease를 제외한 최신 릴리스만 가리키므로, 정식 태그가 생기기 전에는 위의 태그 주소를 사용합니다. 태그를 적지 않고 미리보기를 포함한 가장 최근 zip을 받으려면 저장소에서 다음을 실행합니다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\windows\install-release.ps1
+```
+
+`-Tag windows-v0.1.0` 은 그 태그로 고정합니다. `-Stable` 은 `releases/latest/download/seto-windows-x64.zip` 만 받습니다. 이 스크립트는 이미 등록된 `seto_tsf*.dll`을 먼저 해제한 뒤 새 DLL을 등록하므로, 승인 창이 두 번 뜰 수 있습니다.
+
+미리보기를 포함한 최근 zip을 저장소 없이 고르려면:
+
+```powershell
+$headers = @{ 'User-Agent' = 'seto-windows-install'; 'Accept' = 'application/vnd.github+json' }
+$releases = @(Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/iasandcb/seto/releases?per_page=20')
+$url = $null
+foreach ($rel in $releases) {
+    $asset = @($rel.assets) | Where-Object { $_ -and $_.name -eq 'seto-windows-x64.zip' } | Select-Object -First 1
+    if ($asset) { $url = $asset.browser_download_url; break }
+}
+if (-not $url) { throw 'seto-windows-x64.zip 이 있는 릴리스가 없습니다.' }
+$dest = Join-Path $env:TEMP 'seto-windows-x64'
+New-Item -ItemType Directory -Force -Path $dest | Out-Null
+Invoke-WebRequest -Uri $url -OutFile (Join-Path $dest 'seto-windows-x64.zip') -UseBasicParsing
+Expand-Archive -Path (Join-Path $dest 'seto-windows-x64.zip') -DestinationPath $dest -Force
+powershell -ExecutionPolicy Bypass -File (Join-Path $dest 'install.ps1')
+```
+
+### 이 PC에서 빌드한 경우
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\windows\install.ps1
 ```
 
-GitHub Actions 산출물(`seto-windows-x64`)을 푼 경우, `seto_tsf.dll`과 `Resources\`가 스크립트 옆에 있습니다. 그 폴더에서 `install.ps1`을 실행합니다. 다른 경로의 DLL은 `-DllPath`, 사전 폴더는 `-Resources`로 지정합니다.
+GitHub Actions 산출물(`seto-windows-x64`)을 푼 경우에도 `seto_tsf.dll`과 `Resources\`가 스크립트 옆에 있습니다. 그 폴더에서 `install.ps1`을 실행합니다. 다른 경로의 DLL은 `-DllPath`, 사전 폴더는 `-Resources`로 지정합니다.
 
 사전(`english-words.txt`, `english-extra.txt`, `korean-words.txt`, `korean-valid.txt`)이 있으면 자동 한/영 전환이 macOS와 같은 사전을 씁니다. 없어도 세벌식 조합 자체는 동작합니다.
 
@@ -37,15 +77,19 @@ GitHub Actions 산출물(`seto-windows-x64`)을 푼 경우, `seto_tsf.dll`과 `R
 
 ## 최신 빌드로 바꾸기
 
-`gh`가 로그인되어 있으면 한 번에 최신 성공 빌드를 받아 등록합니다. 새 DLL과 사전은 항상 새 `seto_tsf-<시각>` 이름에 들어가므로, 이미 켜 둔 앱이 예전 사전을 잡고 있어도 로그아웃할 필요가 없습니다. 사전 복사가 실패해도 DLL 등록은 진행됩니다. 시험하는 앱만 다시 열면 됩니다.
+공개 릴리스로 바꾸는 명령은 위의 한 줄, 또는 `install-release.ps1`과 같습니다. 새 DLL과 사전은 항상 새 `seto_tsf-<시각>` 이름에 들어가므로, 이미 켜 둔 앱이 예전 사전을 잡고 있어도 로그아웃할 필요가 없습니다. 사전 복사가 실패해도 DLL 등록은 진행됩니다. 시험하는 앱만 다시 열면 됩니다.
 
-저장소 안에서 이 브랜치의 PR을 기준으로:
+`gh`로 특정 브랜치의 Actions 산출물을 받으려면 로그인이 필요합니다.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\windows\update.ps1 -Branch cursor/windows-tsf-stage1-14ef
+powershell -ExecutionPolicy Bypass -File scripts\windows\update.ps1 -Branch main
 ```
 
-`-Branch`를 생략하면 `gh pr view`가 가리키는 PR 브랜치, 그것도 없으면 현재 git 브랜치를 씁니다. `gh`가 없으면 [GitHub CLI](https://cli.github.com/)를 설치한 뒤 `gh auth login`을 실행하세요.
+`-Branch`를 생략하면 `gh pr view`가 가리키는 PR 브랜치, 그것도 없으면 현재 git 브랜치를 씁니다.
+
+## 릴리스
+
+`windows-v*` 태그를 푸시하면 `.github/workflows/windows-release.yml`이 `windows-latest`에서 DLL을 빌드하고 `seto-windows-x64.zip`을 그 태그의 GitHub Release에 올립니다. 이 워크플로 파일이 main에 있어야 태그 푸시가 실행됩니다. 버전 뒤에 하이픈이 있으면(`windows-v0.2.0-rc.1`) prerelease입니다. 하이픈이 없으면 정식 릴리스이고, 정식 릴리스 주소가 그 zip을 가리킵니다. Actions에서 수동으로 실행할 때는 태그, 빌드할 커밋, prerelease 여부를 지정할 수 있습니다.
 
 ## 제거
 

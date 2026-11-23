@@ -2,6 +2,9 @@
 # and runs regsvr32. Registration writes HKCR, so an elevated regsvr32 is started
 # when the current session is not already elevated. The DLL path stays in the
 # invoking user's profile.
+#
+# A release zip places seto_tsf.dll and Resources\ next to this script.
+# install-release.ps1 downloads that public zip. No git or gh login.
 
 [CmdletBinding()]
 param(

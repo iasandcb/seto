@@ -18,17 +18,17 @@ $ErrorActionPreference = 'Stop'
 function Require-Gh {
     if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
         throw @"
-GitHub CLI (gh) is not on PATH.
-Install it from https://cli.github.com/ and then run:
-  gh auth login
+GitHub CLI (gh) is not on PATH, so this script cannot download an Actions artifact.
+A public release does not need gh. From a checkout run:
+  powershell -ExecutionPolicy Bypass -File scripts\windows\install-release.ps1
 "@
     }
     & gh auth status 1>$null 2>$null
     if ($LASTEXITCODE -ne 0) {
         throw @"
-gh is installed but not logged in. Run:
-  gh auth login
-Then rerun this script.
+gh is installed but not logged in, so this script cannot download an Actions artifact.
+A public release does not need gh. From a checkout run:
+  powershell -ExecutionPolicy Bypass -File scripts\windows\install-release.ps1
 "@
     }
 }
