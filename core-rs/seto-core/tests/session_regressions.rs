@@ -301,3 +301,79 @@ fn ansible_stays_english() {
         }
     }
 }
+
+/// `lean` is 졍ㅅ on 390: 졍 is a real syllable, so the buffer used to stay
+/// Hangul. The same shape covers leak/leap (other choseong after 졍), neal,
+/// heal, helen, and llvm. A trailing choseong that still continues a real
+/// word stays Hangul (`mean` is 형ㅅ inside 형식, `ivy` is 모ㄹ inside 모르다),
+/// and a doubled choseong stays Hangul until the word can no longer be one
+/// syllable (`hell` is 녀ㅉ inside `hello`).
+#[test]
+fn lean_and_similar_trailing_choseong_words_switch_to_english() {
+    let lexicons = [
+        Arc::new(Lexicon::load(&common::resources()).unwrap()),
+        Arc::new(
+            Lexicon::load_for_keyboard_files(
+                &common::keyboard_resources().join("keyboard-english.txt"),
+                &common::keyboard_resources().join("keyboard-korean-valid.txt"),
+                &common::resources().join("korean-words.txt"),
+            )
+            .unwrap(),
+        ),
+    ];
+    for lexicon in &lexicons {
+        for word in ["lean", "leak", "leap", "neal", "heal", "helen", "llvm"] {
+            assert!(lexicon.is_english_word(word), "{word}");
+        }
+        for layout in [KeyboardLayout::Sebeol390, KeyboardLayout::SebeolFinal] {
+            for word in ["lean", "leak", "leap", "neal", "heal", "helen", "llvm"] {
+                let (document, mode_after) = type_on(lexicon, layout, Language::Korean, word);
+                assert_eq!(document, word, "{layout:?} {word}");
+                assert_eq!(mode_after, Language::English, "{layout:?} {word}");
+                let (committed, mode_after) = type_on(lexicon, layout, Language::Korean, &format!("{word} "));
+                assert_eq!(committed, format!("{word} "), "{layout:?}");
+                assert_eq!(mode_after, Language::English, "{layout:?} {word}");
+            }
+
+            let lean_steps = step_documents(lexicon, layout, "lean");
+            assert_eq!(lean_steps, ["ㅈ", "져", "졍", "lean"], "{layout:?}");
+
+            // 녀ㅉ is still one choseong. The next letter is what makes hello.
+            let hello_steps = step_documents(lexicon, layout, "hello");
+            assert_eq!(hello_steps, ["ㄴ", "녀", "녀ㅈ", "녀ㅉ", "hello"], "{layout:?}");
+            let (hell, mode_after) = type_on(lexicon, layout, Language::Korean, "hell ");
+            assert_eq!(hell, "hell ", "{layout:?}");
+            // The conversion happens at the boundary, after the doubled choseong
+            // had already kept the buffer in Korean, so the mode stays Korean.
+            assert_eq!(mode_after, Language::Korean, "{layout:?}");
+
+            // 형식 is meandx. `mean` must not become English in the middle.
+            let mean_steps = step_documents(lexicon, layout, "meandx");
+            assert_eq!(mean_steps.last().map(String::as_str), Some("형식"), "{layout:?} {mean_steps:?}");
+            assert_eq!(mean_steps.get(3).map(String::as_str), Some("형ㅅ"), "{layout:?}");
+            let (mean, _) = type_on(lexicon, layout, Language::Korean, "mean ");
+            assert_eq!(mean, "mean ", "{layout:?}");
+
+            let ivy_steps = step_documents(lexicon, layout, "ivyguf");
+            assert_eq!(ivy_steps.get(2).map(String::as_str), Some("모ㄹ"), "{layout:?}");
+            assert_eq!(ivy_steps.last().map(String::as_str), Some("모르다"), "{layout:?}");
+            let (ivy, mode_after) = type_on(lexicon, layout, Language::Korean, "ivy ");
+            assert_eq!(ivy, "모ㄹ ", "{layout:?}");
+            assert_eq!(mode_after, Language::Korean, "{layout:?}");
+
+            let (input, _) = type_on(lexicon, layout, Language::Korean, "jd3yex ");
+            assert_eq!(input, "입력 ", "{layout:?}");
+        }
+    }
+}
+
+fn step_documents(lexicon: &Arc<Lexicon>, layout: KeyboardLayout, keys: &str) -> Vec<String> {
+    let mut session =
+        Session::with_options(Arc::clone(lexicon), SessionOptions { layout, ..SessionOptions::default() });
+    let mut steps = Vec::new();
+    for key in keys.chars() {
+        session.input_char(key);
+        steps.push(session.document());
+    }
+    steps
+}
