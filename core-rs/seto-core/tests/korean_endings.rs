@@ -180,6 +180,48 @@ fn keyboard_lexicon_keeps_myeot_compounds() {
     myeot_compounds_stay_typed(keyboard_lexicon());
 }
 
+/// `샷에` is `n6qjc` on 390 (and `titdp` on 두벌식). `셋에` differs by ㅑ/ㅔ,
+/// and those keys do not touch, so the word boundary must not "correct" it.
+/// Windows and macOS feed the same QWERTY characters; the rewrite was the
+/// shared one-key corrector, which used to accept any single key change.
+#[test]
+fn syas_e_is_not_rewritten_as_ses_e() {
+    let lexicon = lexicon();
+    for layout in [KeyboardLayout::Sebeol390, KeyboardLayout::Dubeol, KeyboardLayout::SebeolFinal] {
+        let keys = TypoCorrector::keystrokes("샷에", layout).unwrap_or_else(|| panic!("keys for 샷에 {layout:?}"));
+        let atoms: Vec<_> = keys.chars().map(|key| layout.atom(key)).collect();
+        assert_eq!(
+            TypoCorrector::correction("샷에", &atoms, Language::Korean, &lexicon, None),
+            None,
+            "{layout:?} keys {keys}"
+        );
+        // 두벌식 `tit` is an English word, so that layout keeps a Latin prefix.
+        // 390 and 최종 compose the syllables directly.
+        if layout != KeyboardLayout::Dubeol {
+            let open = type_with(lexicon.clone(), layout, &keys);
+            assert_eq!(open, "샷에", "{layout:?}");
+            for boundary in [" ", ".", "\n"] {
+                let typed = type_with(lexicon.clone(), layout, &format!("{keys}{boundary}"));
+                assert_eq!(typed, format!("샷에{boundary}"), "{layout:?} {boundary:?}");
+            }
+        }
+    }
+}
+
+/// ㄲ and ㄺ sit on neighboring shifted keys (`!`/`@` on 최종, `F`/`D` on 390).
+#[test]
+fn adjacent_shifted_batchim_still_corrects() {
+    let lexicon = Arc::new(Lexicon::new(&[], &["맑다"]));
+    for (layout, keys) in [(KeyboardLayout::SebeolFinal, "if!uf"), (KeyboardLayout::Sebeol390, "ifFuf")] {
+        let atoms: Vec<_> = keys.chars().map(|key| layout.atom(key)).collect();
+        assert_eq!(
+            TypoCorrector::correction("맊다", &atoms, Language::Korean, &lexicon, None),
+            Some("맑다".to_owned()),
+            "{layout:?}"
+        );
+    }
+}
+
 #[test]
 fn unknown_one_key_korean_typos_still_correct() {
     let lexicon = lexicon();

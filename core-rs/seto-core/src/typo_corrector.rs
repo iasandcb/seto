@@ -168,8 +168,9 @@ impl TypoCorrector {
 
 /// A valid or plausible Hangul word is left alone. Otherwise replace it
 /// only when one frequent word (or that word plus the typed ending) uses
-/// the same keys with exactly one of them different. An extra or missing
-/// jamo stays, so 갔어 is not rewritten as 갔었.
+/// the same keys with exactly one adjacent key different. An extra or
+/// missing jamo stays, so 갔어 is not rewritten as 갔었. A distant pair
+/// such as 6/c (`샷에` / `셋에`) is not a slip.
 fn korean(composed: &str, keys: &[KeyAtom], lexicon: &Lexicon, memory: Option<&dyn TypoMemory>) -> Option<String> {
     if is_already_korean(composed, lexicon) {
         return None;
@@ -470,8 +471,10 @@ fn frequent_candidates(lexicon: &Lexicon, layout: KeyboardLayout) -> &FrequentCa
     })
 }
 
-/// Same number of keys, one position different. Inserting or deleting a key
-/// is not a correction: 갔어 and 갔었 differ by the final ㅆ.
+/// Same number of keys, one adjacent position different. Inserting or
+/// deleting a key is not a correction: 갔어 and 갔었 differ by the final ㅆ.
+/// The replacement key has to share an edge with the typed key, so 샷에
+/// (`6`, ㅑ) is not rewritten as 셋에 (`c`, ㅔ).
 fn is_one_key_substitution(typed: &[char], canonical: &str) -> bool {
     // Canonical keys are ASCII, so bytes are keys.
     if typed.len() != canonical.len() {
@@ -480,6 +483,9 @@ fn is_one_key_substitution(typed: &[char], canonical: &str) -> bool {
     let mut mismatches = 0;
     for (left, right) in typed.iter().zip(canonical.bytes()) {
         if *left != right as char {
+            if !orthogonal(*left, right as char) {
+                return false;
+            }
             mismatches += 1;
             if mismatches > 1 {
                 return false;
@@ -576,7 +582,8 @@ fn canonical_key(layout: KeyboardLayout) -> CanonicalKeys {
     CanonicalKeys { by_jamo: map, ordered }
 }
 
-/// Shares an edge. A diagonal pair is not a one-key slip.
+/// Shares an edge. A diagonal pair is not a one-key slip. Shifted glyphs
+/// use the physical key (`!` is `1`, `D` is `d`) so ㄲ/ㄺ still counts.
 fn orthogonal(left: char, right: char) -> bool {
     match (key_position(left), key_position(right)) {
         (Some(a), Some(b)) => a.0.abs_diff(b.0) + a.1.abs_diff(b.1) == 1,
@@ -585,10 +592,41 @@ fn orthogonal(left: char, right: char) -> bool {
 }
 
 fn key_position(key: char) -> Option<(usize, usize)> {
+    let key = unshifted_key(key);
     const ROWS: [&str; 4] = ["`1234567890-=", "qwertyuiop[]\\", "asdfghjkl;'", "zxcvbnm,./"];
     ROWS.iter()
         .enumerate()
         .find_map(|(row, keys)| keys.chars().position(|other| other == key).map(|column| (row, column)))
+}
+
+/// ANSI glyph back to the key that types it. Digits and letters keep their
+/// own row; `!` sits on `1`.
+fn unshifted_key(key: char) -> char {
+    match key {
+        '!' => '1',
+        '@' => '2',
+        '#' => '3',
+        '$' => '4',
+        '%' => '5',
+        '^' => '6',
+        '&' => '7',
+        '*' => '8',
+        '(' => '9',
+        ')' => '0',
+        '_' => '-',
+        '+' => '=',
+        '{' => '[',
+        '}' => ']',
+        '|' => '\\',
+        ':' => ';',
+        '"' => '\'',
+        '<' => ',',
+        '>' => '.',
+        '?' => '/',
+        '~' => '`',
+        other if other.is_ascii_uppercase() => other.to_ascii_lowercase(),
+        other => other,
+    }
 }
 
 #[cfg(test)]
@@ -681,6 +719,10 @@ mod tests {
         assert!(!orthogonal('o', 'k'));
         assert!(!orthogonal('o', 'o'));
         assert!(!orthogonal('o', 'O'));
+        // ㅑ is 6 and ㅔ is c. They do not share an edge. Shift+1 and Shift+2 do.
+        assert!(!orthogonal('6', 'c'));
+        assert!(orthogonal('!', '@'));
+        assert!(orthogonal('D', 'F'));
     }
 
     #[test]

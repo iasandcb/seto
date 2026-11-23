@@ -948,6 +948,12 @@ impl Session {
             return self.install_reading(korean, previous);
         }
 
+        // ㄹㄴㅈ has no vowel, so it is not a Korean word. If those keys spell
+        // a dictionary English word (`wsl`, `jsx`, `ssl`), both modes read Latin.
+        if self.bare_jamo_spells_english_word() {
+            return self.install_reading(english, previous);
+        }
+
         // ㅎㅎ, ㅋㅋ, ㅠㅠ, ㄱㅅ. A lone ㅠ may display as "5", but
         // that tentative reading does not change the Korean mode.
         if self.prefers_bare_jamo_run(previous) {
@@ -1959,10 +1965,21 @@ impl Session {
         true
     }
 
+    /// True when every piece is a bare jamo and the QWERTY spelling is an
+    /// English word. That reading is not Hangul (`wsl` → ㄹㄴㅈ).
+    fn bare_jamo_spells_english_word(&self) -> bool {
+        let composition = compose(&self.keys);
+        if composition.pieces.len() < 2 || !composition.pieces.iter().all(|piece| is_bare_piece(*piece)) {
+            return false;
+        }
+        let lower = self.english_text(0, self.keys.len()).to_lowercase();
+        lower.chars().count() >= 2 && lower.chars().all(char::is_alphabetic) && self.lexicon.is_english_word(&lower)
+    }
+
     /// Repeated bare jamo in a word that was started in Korean: ㅎㅎ, ㅋㅋ,
-    /// ㅠㅠ, ㅜㅜ, ㄱㅅ. An English word ("to", "know") and a prefix that was
-    /// already Latin ("th") are left alone. ㄲ·ㄸ·ㅃ are one choseong, not
-    /// this case.
+    /// ㅠㅠ, ㅜㅜ, ㄱㅅ. An English word ("to", "know", "wsl") and a prefix that
+    /// was already Latin ("th", "ws" inside `wsl`) are left alone. ㄲ·ㄸ·ㅃ are
+    /// one choseong, not this case.
     fn prefers_bare_jamo_run(&self, previous: Option<&[Segment]>) -> bool {
         // Repeated m is laughter even when the token starts in English.
         // Check the active layout so two-set m (ㅡ) keeps its usual reading.
