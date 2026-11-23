@@ -1,0 +1,199 @@
+name: Windows release
+
+# Pushing a tag windows-v* builds seto_tsf.dll on windows-latest and uploads
+# seto-windows-x64.zip to that tag's GitHub Release. The zip root is the layout
+# install.ps1 expects: seto_tsf.dll and Resources\ sit next to the script.
+# A hyphen in the version (windows-v0.1.0-rc.1) publishes a prerelease.
+# windows-v1.0.0 publishes a full release, which
+# releases/latest/download/seto-windows-x64.zip can download.
+# GitHub only runs this file after it is on the default branch.
+
+on:
+  push:
+    tags:
+      - "windows-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (windows-v*)."
+        required: true
+        type: string
+      commit:
+        description: "Commit or branch to build. Empty builds the ref that triggered this run."
+        required: false
+        type: string
+      prerelease:
+        description: "auto follows the tag (a hyphen, as in windows-v0.1.0-rc.1, is a prerelease)."
+        required: false
+        default: auto
+        type: choice
+        options:
+          - auto
+          - "true"
+          - "false"
+      publish:
+        description: "Create or update the GitHub Release and upload the zip."
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.commit || github.sha }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Test workspace
+        working-directory: core-rs
+        run: cargo test --workspace
+
+      - name: Build x64 release DLL
+        working-directory: core-rs
+        run: cargo build -p seto-tsf --release --target x86_64-pc-windows-msvc
+
+      - name: Reject VC++ redistributable imports
+        shell: pwsh
+        run: ./scripts/windows/assert-static-crt.ps1 -Dll core-rs/target/x86_64-pc-windows-msvc/release/seto_tsf.dll
+
+      - name: Package seto-windows-x64.zip
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path artifact, artifact/Resources | Out-Null
+          Copy-Item core-rs/target/x86_64-pc-windows-msvc/release/seto_tsf.dll artifact/
+          Get-ChildItem -Recurse core-rs/target/x86_64-pc-windows-msvc/release -Filter seto_tsf.pdb | Copy-Item -Destination artifact/
+          if (-not (Test-Path artifact/seto_tsf.pdb)) { throw 'seto_tsf.pdb missing' }
+          foreach ($name in 'install.ps1','uninstall.ps1','update.ps1','install-release.ps1','seto-register.ps1') {
+            $path = Join-Path 'scripts/windows' $name
+            if (Test-Path -LiteralPath $path) {
+              Copy-Item -LiteralPath $path -Destination artifact/
+            }
+          }
+          foreach ($name in 'install.ps1','uninstall.ps1','seto-register.ps1') {
+            if (-not (Test-Path -LiteralPath (Join-Path artifact $name))) { throw "$name missing" }
+          }
+          if (Test-Path -LiteralPath docs/windows.md) {
+            Copy-Item -LiteralPath docs/windows.md -Destination artifact/
+          }
+          foreach ($dict in 'english-words.txt','english-extra.txt','korean-words.txt','korean-valid.txt') {
+            Copy-Item -LiteralPath (Join-Path 'Resources' $dict) -Destination artifact/Resources/
+          }
+          if (-not (Test-Path -LiteralPath artifact/seto_tsf.dll)) { throw 'seto_tsf.dll missing' }
+          if (-not (Test-Path -LiteralPath artifact/Resources/korean-words.txt)) { throw 'Resources/korean-words.txt missing' }
+
+          # PowerShell 7 loads ZipFile on demand. Windows PowerShell needs the FileSystem assembly.
+          try { Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop } catch { }
+          try { Add-Type -AssemblyName System.IO.Compression -ErrorAction Stop } catch { }
+          $zipPath = Join-Path (Get-Location).Path 'seto-windows-x64.zip'
+          if (Test-Path -LiteralPath $zipPath) { Remove-Item -LiteralPath $zipPath -Force }
+          $artifactPath = (Resolve-Path -LiteralPath artifact).Path
+          [System.IO.Compression.ZipFile]::CreateFromDirectory(
+            $artifactPath,
+            $zipPath,
+            [System.IO.Compression.CompressionLevel]::Optimal,
+            $false)
+
+          $archive = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+          try {
+            $names = @($archive.Entries | ForEach-Object { $_.FullName })
+          } finally {
+            $archive.Dispose()
+          }
+          $names | ForEach-Object { Write-Host $_ }
+          $required = @(
+            'seto_tsf.dll',
+            'seto_tsf.pdb',
+            'install.ps1',
+            'uninstall.ps1',
+            'seto-register.ps1',
+            'Resources/korean-words.txt',
+            'Resources/english-words.txt',
+            'Resources/english-extra.txt',
+            'Resources/korean-valid.txt'
+          )
+          if (Test-Path -LiteralPath scripts/windows/install-release.ps1) {
+            $required += 'install-release.ps1'
+          }
+          foreach ($rel in $required) {
+            $alt = $rel.Replace('/', '\')
+            if ($names -notcontains $rel -and $names -notcontains $alt) {
+              throw "zip missing $rel"
+            }
+          }
+
+          $verify = Join-Path $env:TEMP ("seto-zip-verify-" + [guid]::NewGuid().ToString('N'))
+          Expand-Archive -LiteralPath $zipPath -DestinationPath $verify
+          foreach ($rel in @('seto_tsf.dll','install.ps1','uninstall.ps1','seto-register.ps1')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $verify $rel))) { throw "unzipped layout missing $rel" }
+          }
+          $dict = Join-Path (Join-Path $verify 'Resources') 'korean-words.txt'
+          if (-not (Test-Path -LiteralPath $dict)) { throw 'unzipped layout missing Resources\korean-words.txt' }
+          Remove-Item -LiteralPath $verify -Recurse -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: seto-windows-x64-zip
+          path: seto-windows-x64.zip
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: ${{ github.event_name == 'push' || inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          RELEASE_PRERELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || 'auto' }}
+          RELEASE_REPO: ${{ github.repository }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $tag = $env:RELEASE_TAG
+          if ([string]::IsNullOrWhiteSpace($tag) -or $tag -notmatch '^windows-v[0-9A-Za-z._+-]+$') {
+            throw "Release tag must match windows-v*: '$tag'"
+          }
+          $sha = (git rev-parse HEAD).Trim()
+          $auto = $tag -match '^windows-v[0-9][0-9A-Za-z.]*-.+'
+          $prerelease = $auto
+          if ($env:RELEASE_PRERELEASE -eq 'true') { $prerelease = $true }
+          elseif ($env:RELEASE_PRERELEASE -eq 'false') { $prerelease = $false }
+          $repo = $env:RELEASE_REPO
+          $tagUrl = "https://github.com/$repo/releases/download/$tag/seto-windows-x64.zip"
+          $latestUrl = "https://github.com/$repo/releases/latest/download/seto-windows-x64.zip"
+          $kind = 'release'
+          if ($prerelease) { $kind = 'prerelease' }
+          $text = "Windows 11 x64 TSF ($sha). Unsigned seto_tsf.dll. This is a $kind.`n`nUnzip and run install.ps1 in that folder. seto_tsf.dll and Resources sit next to the script.`n`n$tagUrl`n`nStable channel, which skips prereleases:`n`n$latestUrl`n"
+          $notesPath = Join-Path $env:TEMP 'seto-release-notes.md'
+          $utf8 = New-Object System.Text.UTF8Encoding $false
+          [System.IO.File]::WriteAllText($notesPath, $text, $utf8)
+
+          & gh release view $tag --repo $repo
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $tag already exists; uploading seto-windows-x64.zip"
+            & gh release upload $tag seto-windows-x64.zip --repo $repo --clobber
+            if ($LASTEXITCODE -ne 0) { throw "gh release upload failed with exit code $LASTEXITCODE" }
+            exit 0
+          }
+
+          $ghArgs = @(
+            'release','create',$tag,'seto-windows-x64.zip',
+            '--repo',$repo,
+            '--title',"Windows x64 $tag",
+            '--target',$sha,
+            '--notes-file',$notesPath
+          )
+          if ($prerelease) { $ghArgs += @('--prerelease','--latest=false') }
+          & gh @ghArgs
+          if ($LASTEXITCODE -ne 0) { throw "gh release create failed with exit code $LASTEXITCODE" }
