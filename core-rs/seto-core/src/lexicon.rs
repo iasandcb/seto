@@ -233,35 +233,6 @@ impl WordList {
     }
 }
 
-/// `stem` is the finished syllables. The next character of a matching word
-/// must be a syllable whose choseong index is `choseong_index` (ㄱ is 0).
-fn continues_with_choseong(list: &WordList, stem: &str, choseong_index: u32) -> bool {
-    if stem.is_empty() {
-        return false;
-    }
-    let stem_bytes = stem.as_bytes();
-    let mut index = list.lower_bound(stem_bytes);
-    while index < list.len() {
-        let word = list.word_bytes(index);
-        if !word.starts_with(stem_bytes) {
-            return false;
-        }
-        if let Ok(rest) = std::str::from_utf8(&word[stem_bytes.len()..])
-            && let Some(next) = rest.chars().next()
-            && syllable_choseong_index(next) == Some(choseong_index)
-        {
-            return true;
-        }
-        index += 1;
-    }
-    false
-}
-
-fn syllable_choseong_index(character: char) -> Option<u32> {
-    let value = character as u32;
-    (0xAC00..=0xD7A3).contains(&value).then_some((value - 0xAC00) / 588)
-}
-
 fn offset(position: usize) -> u32 {
     u32::try_from(position).expect("in-memory word list is larger than 4 GiB")
 }
@@ -386,14 +357,6 @@ impl Lexicon {
 
     pub fn is_korean_word(&self, word: &str) -> bool {
         self.korean.contains(&nfc(word))
-    }
-
-    /// A dictionary word starts with `stem` and its next syllable uses this
-    /// choseong index (ㄱ is 0). Both the frequent list and the large validity
-    /// list count, so an in-progress word is not read as English.
-    pub(crate) fn continues_with_choseong(&self, stem: &str, choseong_index: u32) -> bool {
-        continues_with_choseong(&self.korean, stem, choseong_index)
-            || continues_with_choseong(&self.valid_korean, stem, choseong_index)
     }
 
     /// True when `word` is in the large validity list. Frequent words live in
