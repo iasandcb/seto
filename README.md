@@ -23,7 +23,7 @@
 | 형태 | 입력기 `Seto.app` | 앱 + 키보드 확장 | IME `com.ias.seto` | TSF 텍스트 서비스 |
 | 대상 | macOS 13 이상 | iOS 16 이상 | Android 14 (API 34) 이상 | Windows 11 x64 |
 | 코어 연결 | UniFFI | UniFFI | UniFFI | `seto-core` 직접 |
-| 하드웨어 자판 | 390·두벌식·최종 | 앱 안에서 390·두벌식·최종 | 세벌식 390 | 세벌식 390 |
+| 하드웨어 자판 | 390·두벌식·최종 | 앱 안에서 390·두벌식·최종 | 390·두벌식·최종 (예정) | 390·두벌식·최종 (예정) |
 | 화면 자판 | 하드웨어만 | 두벌식 | 두벌식 | 하드웨어만 |
 | 받는 방법 | `./build.sh` | Xcode | `android-v*` 서명 APK | `windows-v*` zip |
 
@@ -56,7 +56,7 @@ Xcode에서 `iOS/Sebeol390.xcodeproj`의 `Sebeol390` 스킴을 실행합니다. 
 
 ### Android
 
-하드웨어 키는 세벌식 390, 화면 자판은 iOS와 같은 두벌식입니다. 문구·추천·한 손 모드는 이 버전에 없고, 상태 표시는 **한** / **A**입니다. 홈 화면 아이콘은 없습니다. 암호 칸은 하드웨어 키를 그대로 넘기고, 화면 자판은 보이는 문자를 바로 넣습니다. 입력 동작은 [android/README.md](android/README.md)입니다.
+하드웨어 키보드는 세벌식 390(기본), 두벌식, 세벌식 최종 중에서 고를 수 있게 됩니다. 사용자별 설정은 세토 앱의 설정 화면에 있습니다. 화면 자판은 두벌식입니다. 문구·추천·한 손 모드는 이 버전에 없고, 상태 표시는 **한** / **A**입니다. 홈 화면 아이콘은 없습니다. 암호 칸은 하드웨어 키를 그대로 넘기고, 화면 자판은 보이는 문자를 바로 넣습니다. 입력 동작은 [android/README.md](android/README.md)입니다.
 
 서명 APK는 [Releases](https://github.com/iasandcb/seto/releases)의 `android-v*` 자산입니다. 릴리스 워크플로는 [PR #39](https://github.com/iasandcb/seto/pull/39)에서 추가 중이며 main에 아직 없을 수 있으므로, 태그 주소를 고정하지 말고 Releases 페이지의 `android-v*` APK를 받습니다. 디버그 키로 설치해 둔 `com.ias.seto`는 인증서가 달라 한 번 제거한 뒤 릴리스 APK를 설치합니다. 설정 → 시스템 → 키보드 → 화면 키보드에서 **Seto**를 켭니다.
 
@@ -71,7 +71,7 @@ cd android
 
 ### Windows
 
-Windows 11 x64용 세벌식 390 TSF입니다. DLL은 서명하지 않으며, 대상은 x64뿐입니다. 한/영은 한/영 키, 오른쪽 Alt 탭, Shift+Space입니다. 작업 표시줄은 한글 **가**, 영문 **A**입니다. 이 단계의 범위는 하드웨어 세벌식 390과 자동 한/영입니다. 후보 창, 화면 자판, 자판 전환, 오타 기록 파일, Caps Lock 전환, 터미널·주소창 전용 모드는 빠져 있습니다. 동작·한계·제거는 [docs/windows.md](docs/windows.md)입니다.
+Windows 11 x64 TSF입니다. DLL은 서명하지 않으며, 대상은 x64뿐입니다. 하드웨어 자판은 세벌식 390(기본), 두벌식, 세벌식 최종 중에서 고를 수 있게 됩니다. 사용자별로 저장되며, IME 언어 표시줄의 상황 메뉴에서 바꿉니다. 한/영은 한/영 키, 오른쪽 Alt 탭, Shift+Space입니다. 작업 표시줄은 한글 **가**, 영문 **A**입니다. 후보 창, 화면 자판, 오타 기록 파일, Caps Lock 전환, 터미널·주소창 전용 모드는 빠져 있습니다. 동작·한계·제거는 [docs/windows.md](docs/windows.md)입니다.
 
 다른 PC에서는 git이나 GitHub 로그인 없이 [Releases](https://github.com/iasandcb/seto/releases)의 `windows-v*` zip(`seto-windows-x64.zip`)을 받습니다. 현재 공개된 `windows-v0.1.0`은 prerelease라 `releases/latest`에 포함되지 않습니다. PowerShell에 아래 한 줄을 붙여 넣습니다. `regsvr32` 승인 창이 뜹니다.
 
