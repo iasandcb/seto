@@ -24,13 +24,13 @@ cargo build -p seto-tsf --release --target x86_64-pc-windows-msvc
 저장소, git, GitHub CLI 로그인은 필요 없습니다. PowerShell에 아래 한 줄을 붙여 넣습니다. 공개 릴리스 zip을 받아 풀고, 그 폴더의 `install.ps1`을 실행합니다. `regsvr32` 승인 창이 뜹니다.
 
 ```powershell
-$dest = Join-Path $env:TEMP 'seto-windows-x64'; New-Item -ItemType Directory -Force -Path $dest | Out-Null; Invoke-WebRequest -Uri 'https://github.com/iasandcb/seto/releases/download/windows-v0.1.0/seto-windows-x64.zip' -OutFile (Join-Path $dest 'seto-windows-x64.zip') -UseBasicParsing; Expand-Archive -Path (Join-Path $dest 'seto-windows-x64.zip') -DestinationPath $dest -Force; powershell -ExecutionPolicy Bypass -File (Join-Path $dest 'install.ps1')
+$dest = Join-Path $env:TEMP 'seto-windows-x64'; New-Item -ItemType Directory -Force -Path $dest | Out-Null; Invoke-WebRequest -Uri 'https://github.com/iasandcb/seto/releases/download/windows-v0.1.0/seto-windows-x64.zip' -OutFile (Join-Path $dest 'seto-windows-x64.zip') -UseBasicParsing; Expand-Archive -Path (Join-Path $dest 'seto-windows-x64.zip') -DestinationPath $dest -Force; $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'; if (-not [Environment]::Is64BitProcess) { $nativePs = Join-Path $env:SystemRoot 'Sysnative\WindowsPowerShell\v1.0\powershell.exe'; if (Test-Path -LiteralPath $nativePs) { $ps = $nativePs } }; & $ps -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dest 'install.ps1')
 ```
 
-zip을 풀면 `seto_tsf.dll`, `Resources\`, `install.ps1`, `uninstall.ps1`, `seto-register.ps1`이 한 폴더에 있습니다. DLL과 사전은 스크립트 옆에 있습니다. 등록이 끝나면 스크립트가 `regsvr32` 종료 코드와 `HKLM\SOFTWARE\Classes\CLSID\{8F3C1E90-390B-4A6E-B7D2-5E70A11E0001}\InprocServer32`, TIP 프로필 키를 출력합니다. 성공은 그 키가 방금 복사한 DLL을 가리키는 것입니다. 같은 폴더에서 제거하려면 `powershell -ExecutionPolicy Bypass -File .\uninstall.ps1` 입니다. 위 명령으로 받은 폴더에서는 다음입니다.
+zip을 풀면 `seto_tsf.dll`, `Resources\`, `install.ps1`, `uninstall.ps1`, `seto-register.ps1`이 한 폴더에 있습니다. DLL과 사전은 스크립트 옆에 있습니다. DLL은 VC++ 런타임을 정적으로 포함하므로 `VCRUNTIME140.dll` 재배포 패키지가 필요 없습니다. 32비트 PowerShell에서 실행하면 스크립트가 64비트 PowerShell로 다시 실행합니다. 등록이 끝나면 `regsvr32` 종료 코드와 `HKLM\SOFTWARE\Classes\CLSID\{8F3C1E90-390B-4A6E-B7D2-5E70A11E0001}\InprocServer32`, TIP 프로필 키를 출력합니다. 성공은 그 키가 방금 복사한 DLL을 가리키고 종료 코드가 0인 것입니다. 종료 코드 3은 DLL을 읽지 못한 경우입니다. 같은 폴더에서 제거하려면 64비트 PowerShell로 `.\uninstall.ps1`을 실행합니다. 위 명령으로 받은 폴더에서는 다음입니다.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File (Join-Path $env:TEMP 'seto-windows-x64' 'uninstall.ps1')
+$ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'; if (-not [Environment]::Is64BitProcess) { $nativePs = Join-Path $env:SystemRoot 'Sysnative\WindowsPowerShell\v1.0\powershell.exe'; if (Test-Path -LiteralPath $nativePs) { $ps = $nativePs } }; & $ps -NoProfile -ExecutionPolicy Bypass -File (Join-Path $env:TEMP 'seto-windows-x64' 'uninstall.ps1')
 ```
 
 `windows-v0.1.0`은 prerelease입니다. 정식 릴리스 주소는 `https://github.com/iasandcb/seto/releases/latest/download/seto-windows-x64.zip` 입니다. 이 주소는 prerelease를 제외한 최신 릴리스만 가리키므로, 정식 태그가 생기기 전에는 위의 태그 주소를 사용합니다. 태그를 적지 않고 미리보기를 포함한 가장 최근 zip을 받으려면 저장소에서 다음을 실행합니다.
@@ -56,7 +56,12 @@ $dest = Join-Path $env:TEMP 'seto-windows-x64'
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
 Invoke-WebRequest -Uri $url -OutFile (Join-Path $dest 'seto-windows-x64.zip') -UseBasicParsing
 Expand-Archive -Path (Join-Path $dest 'seto-windows-x64.zip') -DestinationPath $dest -Force
-powershell -ExecutionPolicy Bypass -File (Join-Path $dest 'install.ps1')
+$ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+if (-not [Environment]::Is64BitProcess) {
+    $nativePs = Join-Path $env:SystemRoot 'Sysnative\WindowsPowerShell\v1.0\powershell.exe'
+    if (Test-Path -LiteralPath $nativePs) { $ps = $nativePs }
+}
+& $ps -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dest 'install.ps1')
 ```
 
 ### 이 PC에서 빌드한 경우

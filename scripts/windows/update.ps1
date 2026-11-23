@@ -18,6 +18,7 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $registerLib = Join-Path $here 'seto-register.ps1'
 if (-not (Test-Path -LiteralPath $registerLib)) { throw "Missing $registerLib" }
 . $registerLib
+if (Invoke-SetoAs64Bit -ScriptPath $PSCommandPath -Bound $PSBoundParameters) { exit $script:Seto64BitExit }
 
 function Require-Gh {
     if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {

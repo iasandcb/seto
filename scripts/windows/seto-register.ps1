@@ -39,6 +39,45 @@ function Get-SetoRegSvr64 {
     return Join-Path $env:SystemRoot 'System32\regsvr32.exe'
 }
 
+function Get-Seto64BitPowerShell {
+    if ([Environment]::Is64BitOperatingSystem -and -not [Environment]::Is64BitProcess) {
+        return (Get-SetoNativeExe 'WindowsPowerShell\v1.0\powershell.exe')
+    }
+    return (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe')
+}
+
+function Invoke-SetoAs64Bit {
+    param(
+        [Parameter(Mandatory = $true)][string]$ScriptPath,
+        [hashtable]$Bound
+    )
+    if (-not [Environment]::Is64BitOperatingSystem) {
+        throw 'Seto requires 64-bit Windows.'
+    }
+    if ([Environment]::Is64BitProcess) { return $false }
+    $ps = Get-Seto64BitPowerShell
+    if (-not (Test-Path -LiteralPath $ps)) {
+        throw "64-bit PowerShell not found at $ps. Run this script from 64-bit PowerShell."
+    }
+    Write-Host "This PowerShell is 32-bit. Relaunching $ps"
+    $arg = "-NoProfile -ExecutionPolicy Bypass -File `"$ScriptPath`""
+    if ($Bound) {
+        foreach ($key in @($Bound.Keys)) {
+            $val = $Bound[$key]
+            $isSwitch = ($val -is [switch]) -or ($val -is [bool])
+            if ($isSwitch) {
+                if ($val) { $arg += " -$key" }
+            } elseif ($null -ne $val -and "$val" -ne '') {
+                $arg += " -$key `"$val`""
+            }
+        }
+    }
+    $proc = Start-Process -FilePath $ps -ArgumentList $arg -Wait -PassThru
+    $script:Seto64BitExit = 1
+    if ($proc -and $null -ne $proc.ExitCode) { $script:Seto64BitExit = [int]$proc.ExitCode }
+    return $true
+}
+
 function Test-SetoPeX64([string]$Path) {
     $bytes = [System.IO.File]::ReadAllBytes($Path)
     if ($bytes.Length -lt 0x40 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { return $false }
@@ -48,6 +87,57 @@ function Test-SetoPeX64([string]$Path) {
         return $false
     }
     return ([BitConverter]::ToUInt16($bytes, $pe + 4) -eq 0x8664)
+}
+
+function Get-SetoPeImportNames([string]$Path) {
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    $names = @()
+    if ($bytes.Length -lt 0x40 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { return $names }
+    $pe = [BitConverter]::ToInt32($bytes, 0x3C)
+    if ($pe -lt 0 -or ($pe + 24) -gt $bytes.Length) { return $names }
+    $magic = [BitConverter]::ToUInt16($bytes, $pe + 24)
+    $nsec = [BitConverter]::ToUInt16($bytes, $pe + 6)
+    $optsz = [BitConverter]::ToUInt16($bytes, $pe + 20)
+    if ($magic -eq 0x20b) {
+        $importDir = $pe + 24 + 112
+    } else {
+        $importDir = $pe + 24 + 96
+    }
+    if (($importDir + 12) -gt $bytes.Length) { return $names }
+    $importRva = [BitConverter]::ToUInt32($bytes, $importDir + 8)
+    $section = $pe + 24 + $optsz
+    $rvaToOff = {
+        param([uint32]$Rva)
+        for ($i = 0; $i -lt $nsec; $i++) {
+            $off = $section + ($i * 40)
+            if (($off + 24) -gt $bytes.Length) { return -1 }
+            $va = [BitConverter]::ToUInt32($bytes, $off + 12)
+            $vsz = [BitConverter]::ToUInt32($bytes, $off + 8)
+            $raw = [BitConverter]::ToUInt32($bytes, $off + 20)
+            $rsz = [BitConverter]::ToUInt32($bytes, $off + 16)
+            $span = $vsz
+            if ($rsz -gt $span) { $span = $rsz }
+            if ($Rva -ge $va -and $Rva -lt ($va + $span)) {
+                return [int]($raw + ($Rva - $va))
+            }
+        }
+        return -1
+    }
+    $cursor = & $rvaToOff $importRva
+    if ($cursor -lt 0) { return $names }
+    while (($cursor + 20) -le $bytes.Length) {
+        $nameRva = [BitConverter]::ToUInt32($bytes, $cursor + 12)
+        if ($nameRva -eq 0) { break }
+        $nameOff = & $rvaToOff $nameRva
+        if ($nameOff -lt 0) { break }
+        $end = $nameOff
+        while ($end -lt $bytes.Length -and $bytes[$end] -ne 0) { $end++ }
+        if ($end -gt $nameOff) {
+            $names += [System.Text.Encoding]::ASCII.GetString($bytes, $nameOff, $end - $nameOff)
+        }
+        $cursor += 20
+    }
+    return $names
 }
 
 function ConvertTo-SetoWinPath([string]$Path) {
@@ -148,21 +238,35 @@ function Format-SetoRegSvrError {
         "TIP profile ${profileKey}: $profileText"
     )
     if ($Code -eq 3) {
-        $runtimeText = 'not checked'
-        if ($env:SystemRoot) {
-            $runtime = Get-SetoNativeExe 'vcruntime140.dll'
-            $found = Test-Path -LiteralPath $runtime
-            $runtimeText = if ($found) { "found at $runtime" } else { "MISSING at $runtime" }
-            if (-not $found) {
-                $lines += 'Install the x64 Visual C++ 2015-2022 redistributable: https://aka.ms/vs/17/release/vc_redist.x64.exe'
+        $lines += 'LoadLibrary failed (exit 3). regsvr32 could not load this DLL or one of its dependencies.'
+        if ([Environment]::Is64BitProcess) {
+            $regsvr = if ($env:SystemRoot) { Get-SetoRegSvr64 } else { 'C:\Windows\System32\regsvr32.exe' }
+            $lines += "PowerShell process: 64-bit. regsvr32: $regsvr"
+        } else {
+            $lines += 'PowerShell process: 32-bit. A 32-bit regsvr32 under SysWOW64 cannot load this x64 DLL. This script relaunches 64-bit PowerShell via Sysnative and runs C:\Windows\System32\regsvr32.exe from 64-bit cmd.'
+        }
+        $importsRuntime = $false
+        if ($DllPath -and (Test-Path -LiteralPath $DllPath)) {
+            foreach ($imported in @(Get-SetoPeImportNames $DllPath)) {
+                if ($imported -match '^(?i)VCRUNTIME140(_1)?\.dll$') { $importsRuntime = $true }
             }
         }
-        $lines += "LoadLibrary failed. 64-bit VCRUNTIME140.dll is $runtimeText."
-        $regsvr = if ($env:SystemRoot) { Get-SetoRegSvr64 } else { 'C:\Windows\System32\regsvr32.exe' }
-        $lines += "This DLL is x64. A 32-bit regsvr32 under SysWOW64 cannot load it. The script runs $regsvr."
+        if ($importsRuntime -and $env:SystemRoot) {
+            $runtime = Get-SetoNativeExe 'vcruntime140.dll'
+            if (Test-Path -LiteralPath $runtime) {
+                $lines += "This DLL imports VCRUNTIME140.dll. The file is present at $runtime."
+            } else {
+                $lines += "This DLL imports VCRUNTIME140.dll, and that file is MISSING at $runtime."
+                $lines += 'Next step: install the x64 Visual C++ 2015-2022 redistributable (https://aka.ms/vs/17/release/vc_redist.x64.exe), then run this script again and approve UAC.'
+            }
+        } elseif (-not $importsRuntime) {
+            $lines += 'This DLL does not import VCRUNTIME140.dll, so the VC++ redistributable is not the missing piece. See the log below.'
+        }
+        $lines += 'Next step: approve the UAC prompt. If it was already approved, the exit code above is the regsvr32 result.'
     }
     if ($Code -eq 5) {
-        $lines += 'DllRegisterServer returned a failure HRESULT. See the log below.'
+        $lines += 'DllRegisterServer returned a failure HRESULT.'
+        $lines += 'Next step: approve UAC, then read the log below.'
     }
     if ($env:LOCALAPPDATA) {
         $log = Join-Path (Join-Path $env:LOCALAPPDATA 'Seto') 'seto-tsf.log'
@@ -199,9 +303,15 @@ function Invoke-SetoRegSvr {
         throw "seto_tsf.dll is not an x64 image. Refusing to register it: $DllPath"
     }
     if (-not $Unregister) {
-        $runtime = Get-SetoNativeExe 'vcruntime140.dll'
-        if (-not (Test-Path -LiteralPath $runtime)) {
-            Write-Warning "64-bit VCRUNTIME140.dll is not at $runtime. regsvr32 may fail to load the DLL (exit 3). Install https://aka.ms/vs/17/release/vc_redist.x64.exe"
+        $importsRuntime = $false
+        foreach ($imported in @(Get-SetoPeImportNames $DllPath)) {
+            if ($imported -match '^(?i)VCRUNTIME140(_1)?\.dll$') { $importsRuntime = $true }
+        }
+        if ($importsRuntime) {
+            $runtime = Get-SetoNativeExe 'vcruntime140.dll'
+            if (-not (Test-Path -LiteralPath $runtime)) {
+                Write-Warning "This DLL imports VCRUNTIME140.dll, which is missing at $runtime. regsvr32 will fail with exit 3 until you install https://aka.ms/vs/17/release/vc_redist.x64.exe"
+            }
         }
     }
 

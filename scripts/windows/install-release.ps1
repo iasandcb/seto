@@ -25,6 +25,7 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $registerLib = Join-Path $here 'seto-register.ps1'
 if (-not (Test-Path -LiteralPath $registerLib)) { throw "Missing $registerLib" }
 . $registerLib
+if (Invoke-SetoAs64Bit -ScriptPath $PSCommandPath -Bound $PSBoundParameters) { exit $script:Seto64BitExit }
 
 if ($Tag -and $Stable) { throw 'Pass only one of -Tag or -Stable.' }
 if ($Repo -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { throw "Unexpected -Repo: $Repo" }
