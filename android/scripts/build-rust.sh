@@ -7,6 +7,8 @@ export PATH="$HOME/.cargo/bin:$PATH"
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 export ANDROID_HOME="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"
 export ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-$ANDROID_HOME/ndk/28.2.13676358}"
+# Release passwords belong to Gradle. Do not pass them through to cargo.
+unset ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_PASSWORD || true
 cd "$repo_dir/core-rs"
 # Host library is used only to extract UniFFI metadata, never packaged.
 cargo build --locked -p seto-ffi --lib

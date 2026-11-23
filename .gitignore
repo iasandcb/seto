@@ -11,5 +11,12 @@ signing/*
 
 # Rust core
 core-rs/target/
+
+# Android release keystores stay in CI secrets.
+*.jks
+*.keystore
+*.p12
+*.pkcs12
+keystore.properties
 # Apple FFI is built on the Mac (scripts/build-apple-xcframework.sh), not committed.
 Apple/

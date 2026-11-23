@@ -1,13 +1,28 @@
 #!/usr/bin/env python3
-"""Verify actual packaged libraries, including UniFFI's JNA dependency."""
+"""Verify packaged native libraries, including UniFFI's JNA dependency.
+
+Usage: verify-apk.py [apk]
+
+The default APK is app/build/outputs/apk/debug/app-debug.apk.
+"""
 import os
+import sys
 from pathlib import Path
 import subprocess
 import tempfile
 import zipfile
 
 android = Path(__file__).resolve().parents[1]
-apk = android / "app/build/outputs/apk/debug/app-debug.apk"
+if len(sys.argv) > 2:
+    raise SystemExit("usage: verify-apk.py [apk]")
+if len(sys.argv) == 2:
+    apk = Path(sys.argv[1])
+    if not apk.is_absolute():
+        apk = Path.cwd() / apk
+else:
+    apk = android / "app/build/outputs/apk/debug/app-debug.apk"
+if not apk.is_file():
+    raise SystemExit(f"APK not found: {apk}")
 sdk = Path(os.environ.get("ANDROID_HOME", Path.home() / "Library/Android/sdk"))
 ndk = Path(os.environ.get("ANDROID_NDK_HOME", sdk / "ndk/28.2.13676358"))
 readelf = next(ndk.glob("toolchains/llvm/prebuilt/*/bin/llvm-readelf"))
