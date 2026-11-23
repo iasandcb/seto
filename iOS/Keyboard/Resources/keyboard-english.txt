@@ -199718,6 +199718,8 @@ jstat
 jstatd
 jstatds
 jstats
+jsx
+jsxes
 ju
 juan
 juang
@@ -319276,6 +319278,8 @@ pwd_mkdb
 pwds
 pwpolicies
 pwpolicy
+pwsh
+pwshes
 pya
 pyal
 pyals
@@ -320482,6 +320486,8 @@ qintar
 qintars
 qlmanage
 qlmanages
+qml
+qmls
 qoheleth
 qoheleths
 qoph
@@ -374244,6 +374250,8 @@ sshds
 sshes
 ssi
 ssis
+ssl
+ssls
 sso_util
 ssu
 ssus
@@ -464995,6 +465003,8 @@ wryness
 wrynesses
 wrytail
 wrytails
+wsl
+wsls
 wu
 wuchereria
 wuchererias

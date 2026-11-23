@@ -471,6 +471,8 @@ mod tests {
         assert_eq!(qwerty_char(&WinKey::qwerty('a', true)), Some('A'));
         assert_eq!(qwerty_char(&WinKey::qwerty('1', false)), Some('1'));
         assert_eq!(qwerty_char(&WinKey::qwerty('1', true)), Some('!'));
+        assert_eq!(qwerty_char(&WinKey::qwerty('6', false)), Some('6'));
+        assert_eq!(qwerty_char(&WinKey::qwerty('6', true)), Some('^'));
         assert_eq!(qwerty_char(&WinKey::qwerty('/', false)), Some('/'));
         assert_eq!(qwerty_char(&WinKey::qwerty('/', true)), Some('?'));
         let mut vk_only = WinKey::bare(b'K' as u16);

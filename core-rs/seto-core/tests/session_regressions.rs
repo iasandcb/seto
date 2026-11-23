@@ -379,6 +379,109 @@ fn lean_and_similar_trailing_choseong_words_switch_to_english() {
     }
 }
 
+/// `wsl` is ㄹㄴㅈ on 390: jongseong, jongseong, choseong, with no vowel.
+/// That is not a Korean syllable. English mode already kept the QWERTY
+/// letters (only chat reactions such as `jj` and `mm` → ㅎㅎ leave English).
+/// Korean mode was keeping the consonant run because the word was missing
+/// from the dictionary, so `ws` — now a prefix — flipped the leading `w`
+/// back to ㄹㄴ. The same shape covers other consonant-only tech words.
+#[test]
+fn consonant_tech_words_stay_english() {
+    let words = ["wsl", "jsx", "qml", "pwsh", "ssl"];
+    let lexicons = [
+        Arc::new(Lexicon::load(&common::resources()).unwrap()),
+        Arc::new(
+            Lexicon::load_for_keyboard_files(
+                &common::keyboard_resources().join("keyboard-english.txt"),
+                &common::keyboard_resources().join("keyboard-korean-valid.txt"),
+                &common::resources().join("korean-words.txt"),
+            )
+            .unwrap(),
+        ),
+    ];
+    for lexicon in &lexicons {
+        for word in words {
+            assert!(lexicon.is_english_word(word), "{word}");
+            assert!(lexicon.is_english_prefix(&word[..word.len() - 1]), "{word} prefix");
+        }
+        for layout in [KeyboardLayout::Sebeol390, KeyboardLayout::SebeolFinal] {
+            for mode in [Language::Korean, Language::English] {
+                for word in words {
+                    let open = step_documents(lexicon, layout, word);
+                    assert_eq!(open.last().map(String::as_str), Some(word), "{layout:?} {mode:?} {open:?}");
+                    assert!(
+                        !mid_word_latin_flipped(lexicon, layout, mode, word),
+                        "{layout:?} {mode:?} {word} flipped mid-word: {open:?}"
+                    );
+                    let (committed, mode_after) = type_on(lexicon, layout, mode, &format!("{word} "));
+                    assert_eq!(committed, format!("{word} "), "{layout:?} {mode:?}");
+                    assert_eq!(mode_after, Language::English, "{layout:?} {mode:?} {word}");
+                }
+                // English mode must not adopt ㄹㄴㅈ even before the word is known.
+                let mut session = Session::with_options(
+                    Arc::clone(lexicon),
+                    SessionOptions { layout, mode: Language::English, ..SessionOptions::default() },
+                );
+                for key in "wsl".chars() {
+                    session.input_char(key);
+                    assert_eq!(session.mode(), Language::English, "{layout:?}");
+                }
+                assert_eq!(session.document(), "wsl", "{layout:?}");
+            }
+            // Korean mode shows each letter of `wsl` as Latin, including the
+            // prefix `ws`, instead of rewriting it to ㄹㄴㅈ.
+            let steps = step_documents(lexicon, layout, "wsl");
+            assert_eq!(steps, ["w", "ws", "wsl"], "{layout:?}");
+            let (bare, mode_after) = type_on(lexicon, layout, Language::Korean, "wsl");
+            assert_eq!(bare, "wsl", "{layout:?}");
+            assert_eq!(mode_after, Language::English, "{layout:?}");
+        }
+    }
+
+    // The rule is the dictionary, not a special case for these letters.
+    let custom = Arc::new(Lexicon::new(&["qzp"], &["한글"]));
+    for mode in [Language::Korean, Language::English] {
+        let (known, mode_after) = type_on(&custom, KeyboardLayout::Sebeol390, mode, "qzp ");
+        assert_eq!(known, "qzp ", "{mode:?}");
+        assert_eq!(mode_after, Language::English, "{mode:?}");
+    }
+    let (unknown, mode_after) = type_on(&custom, KeyboardLayout::Sebeol390, Language::Korean, "qzq ");
+    assert_ne!(unknown, "qzq ", "{unknown}");
+    assert_eq!(mode_after, Language::Korean);
+    let (english_unknown, mode_after) = type_on(&custom, KeyboardLayout::Sebeol390, Language::English, "qzq ");
+    assert_eq!(english_unknown, "qzq ");
+    assert_eq!(mode_after, Language::English);
+
+    // Chat reactions still leave English. `jj` is ㅇㅇ, `mm` is ㅎㅎ.
+    let desktop = Arc::new(Lexicon::load(&common::resources()).unwrap());
+    let (jj, _) = type_on(&desktop, KeyboardLayout::Sebeol390, Language::English, "jj");
+    assert_eq!(jj, "ㅇㅇ");
+    let (mm, _) = type_on(&desktop, KeyboardLayout::Sebeol390, Language::English, "mm");
+    assert_eq!(mm, "ㅎㅎ");
+}
+
+/// Mirrors `commonEnglishWordsDoNotFlipMidWord`: once a prefix is on screen as
+/// Latin, a still-plausible English continuation must not turn back into Hangul.
+fn mid_word_latin_flipped(lexicon: &Arc<Lexicon>, layout: KeyboardLayout, mode: Language, word: &str) -> bool {
+    let mut session =
+        Session::with_options(Arc::clone(lexicon), SessionOptions { layout, mode, ..SessionOptions::default() });
+    let mut typed = String::new();
+    let mut latin = false;
+    for character in word.chars() {
+        typed.push(character);
+        session.input_char(character);
+        if session.document() == typed {
+            latin = true;
+            continue;
+        }
+        let lower = typed.to_lowercase();
+        if latin && (lexicon.is_english_word(&lower) || lexicon.is_english_prefix(&lower)) {
+            return true;
+        }
+    }
+    false
+}
+
 fn step_documents(lexicon: &Arc<Lexicon>, layout: KeyboardLayout, keys: &str) -> Vec<String> {
     let mut session =
         Session::with_options(Arc::clone(lexicon), SessionOptions { layout, ..SessionOptions::default() });

@@ -404,6 +404,25 @@ mod tests {
         assert_eq!(doc.composition(), "");
     }
 
+    /// Physical 6 is scan 0x07 / QWERTY `6` (ㅑ), not `c` (ㅔ). `n6qjc` stays
+    /// 샷에 through the space that used to rewrite it as 셋에.
+    #[test]
+    fn syas_e_stays_through_the_windows_key_path() {
+        let resources = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../Resources");
+        let mut engine = Engine::new(Arc::new(Lexicon::load(&resources).unwrap()));
+        let mut doc = Document::new();
+        assert_eq!(engine.mode(), Language::Korean);
+        for ch in ['n', '6', 'q', 'j', 'c'] {
+            let key = WinKey::qwerty(ch, false);
+            assert_eq!(crate::keys::qwerty_char(&key), Some(ch), "{ch}");
+            press_char(&mut engine, &mut doc, ch, false);
+        }
+        assert_eq!(doc.text(), "샷에");
+        press_char(&mut engine, &mut doc, ' ', false);
+        assert_eq!(doc.text(), "샷에 ");
+        assert_eq!(engine.mode(), Language::Korean);
+    }
+
     #[test]
     fn focus_loss_commits_the_open_syllable() {
         let mut engine = engine();
