@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::composer::{CompositionPiece, compose, jamo_sequence, preserves_boundary};
+use crate::composer::{CompositionPiece, compose, preserves_boundary};
 use crate::hangul::{self, JamoKind};
 use crate::layout::{KeyAtom, KeyOutput, KeyboardLayout};
 use crate::lexicon::Lexicon;
@@ -1543,12 +1543,11 @@ impl Session {
     /// A reading that is not a syllable anymore ("hello", "other", "deploy")
     /// falls through and can switch.
     ///
-    /// A finished English word can still beat a trailing choseong. `lean` is
-    /// 졍ㅅ: 졍 is a real syllable, so the Hangul looks plausible, but no
-    /// dictionary word continues with ㅅ. `hell` stays 녀ㅉ while it can still
-    /// grow into `hello` (the last jamo is one doubled choseong). `mean` stays
-    /// 형ㅅ while it can still grow into 형식. At a word boundary the choseong
-    /// is unfinished Hangul, so the English word wins.
+    /// A finished English word beats a trailing choseong only at a word
+    /// boundary. `lean` is 졍ㅅ while the keys are still open, including as the
+    /// start of `leaning` or `leaky`, and becomes `lean` once the word ends.
+    /// Switching at the fourth letter is what made `health` leave Hangul at
+    /// `heal`.
     fn prefers_whole_korean(&self, word_final: bool) -> bool {
         match self.buffer_shape() {
             Shape::Clean(syllables) => syllables >= 1,
@@ -1557,54 +1556,17 @@ impl Session {
         }
     }
 
-    /// `true` when the whole key spelling is one English word and the Hangul
-    /// is only a syllable plus a choseong that is not still a Korean word.
+    /// `true` when a word boundary should replace an unfinished trailing
+    /// choseong with the English word those keys spell. Open words stay
+    /// Hangul: `lean` inside `leaning` is still 졍ㅅ.
     fn english_word_beats_trailing_choseong(&self, word_final: bool) -> bool {
+        if !word_final {
+            return false;
+        }
         let lower = self.english_text(0, self.keys.len()).to_lowercase();
         // Three keys is 모ㄹ (`ivy`) and 메ㄴ (`ich` inside 메뉴). A syllable
         // with a batchim, or two syllables, plus the next choseong is four.
-        if lower.chars().count() < 4 || !lower.chars().all(char::is_alphabetic) {
-            return false;
-        }
-        if !self.lexicon.is_english_word(&lower) {
-            return false;
-        }
-        // The user stopped. 형ㅅ is not a finished Korean word, so `mean `
-        // is the English word even though 형식 could have continued.
-        if word_final {
-            return true;
-        }
-        // ㅉ in 녀ㅉ is one choseong typed with two keys, same as a leading ㅉ.
-        // Replacing it here would turn the fourth letter of `hello` into Latin.
-        if self.trailing_choseong_is_doubled() {
-            return false;
-        }
-        !self.trailing_choseong_continues_korean()
-    }
-
-    fn trailing_choseong_is_doubled(&self) -> bool {
-        let Some(jamos) = jamo_sequence(&self.keys) else { return false };
-        jamos.last().is_some_and(|jamo| jamo.kind == JamoKind::Choseong && hangul::merge_parts(*jamo).is_some())
-    }
-
-    /// The syllables so far plus this choseong are how a real Korean word
-    /// looks before its next vowel (`mean` is 형ㅅ inside 형식, `ivy` is 모ㄹ
-    /// inside 모르다). The large validity list counts: it is what keeps a
-    /// rare but real word from being read as English on the way through.
-    fn trailing_choseong_continues_korean(&self) -> bool {
-        let Some(jamos) = jamo_sequence(&self.keys) else { return false };
-        let Some(tail) = jamos.last().copied() else { return false };
-        if tail.kind != JamoKind::Choseong {
-            return false;
-        }
-        let composition = compose(&self.keys);
-        let mut chars = composition.text.chars();
-        if chars.next_back() != Some(tail.compat()) {
-            return false;
-        }
-        let stem: String = chars.collect();
-        let Some(index) = tail.scalar.checked_sub(0x1100) else { return false };
-        self.lexicon.continues_with_choseong(&stem, index)
+        lower.chars().count() >= 4 && lower.chars().all(char::is_alphabetic) && self.lexicon.is_english_word(&lower)
     }
 
     /// Filenames, URLs, domains, paths, and emails are one English token.

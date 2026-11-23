@@ -302,12 +302,10 @@ fn ansible_stays_english() {
     }
 }
 
-/// `lean` is 졍ㅅ on 390: 졍 is a real syllable, so the buffer used to stay
-/// Hangul. The same shape covers leak/leap (other choseong after 졍), neal,
-/// heal, helen, and llvm. A trailing choseong that still continues a real
-/// word stays Hangul (`mean` is 형ㅅ inside 형식, `ivy` is 모ㄹ inside 모르다),
-/// and a doubled choseong stays Hangul until the word can no longer be one
-/// syllable (`hell` is 녀ㅉ inside `hello`).
+/// `lean` is 졍ㅅ on 390. The syllable is still open, so the buffer stays
+/// Hangul through the last letter (`health` must not leave Hangul at `heal`).
+/// A word boundary replaces that unfinished choseong with the English word.
+/// The same shape covers leak/leap, neal, heal, helen, and llvm.
 #[test]
 fn lean_and_similar_trailing_choseong_words_switch_to_english() {
     let lexicons = [
@@ -326,17 +324,31 @@ fn lean_and_similar_trailing_choseong_words_switch_to_english() {
             assert!(lexicon.is_english_word(word), "{word}");
         }
         for layout in [KeyboardLayout::Sebeol390, KeyboardLayout::SebeolFinal] {
-            for word in ["lean", "leak", "leap", "neal", "heal", "helen", "llvm"] {
-                let (document, mode_after) = type_on(lexicon, layout, Language::Korean, word);
-                assert_eq!(document, word, "{layout:?} {word}");
-                assert_eq!(mode_after, Language::English, "{layout:?} {word}");
-                let (committed, mode_after) = type_on(lexicon, layout, Language::Korean, &format!("{word} "));
+            // These stay a trailing choseong through the last letter.
+            for word in ["lean", "leak", "leap", "neal", "heal", "helen", "llvm", "health"] {
+                let open = step_documents(lexicon, layout, word);
+                assert!(
+                    open.last().is_some_and(|text| text != word),
+                    "{layout:?} {word} flipped before a boundary: {open:?}"
+                );
+                let (committed, _) = type_on(lexicon, layout, Language::Korean, &format!("{word} "));
                 assert_eq!(committed, format!("{word} "), "{layout:?}");
-                assert_eq!(mode_after, Language::English, "{layout:?} {word}");
+            }
+            // Longer words failed the Swift sweep at the shorter English word.
+            for (word, at, hangul) in [
+                ("leaning", 4, "졍ㅅ"),
+                ("leaky", 4, "졍ㄱ"),
+                ("leaks", 4, "졍ㄱ"),
+                ("healer", 4, "녕ㅈ"),
+                ("health", 4, "녕ㅈ"),
+                ("height", 5, "녀므ㄴ"),
+            ] {
+                let open = step_documents(lexicon, layout, word);
+                assert_eq!(open.get(at - 1).map(String::as_str), Some(hangul), "{layout:?} {word}");
             }
 
             let lean_steps = step_documents(lexicon, layout, "lean");
-            assert_eq!(lean_steps, ["ㅈ", "져", "졍", "lean"], "{layout:?}");
+            assert_eq!(lean_steps, ["ㅈ", "져", "졍", "졍ㅅ"], "{layout:?}");
 
             // 녀ㅉ is still one choseong. The next letter is what makes hello.
             let hello_steps = step_documents(lexicon, layout, "hello");
