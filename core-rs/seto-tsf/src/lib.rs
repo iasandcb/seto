@@ -7,6 +7,7 @@
 mod apply;
 mod engine;
 mod keys;
+mod layout_pref;
 mod lexicon_path;
 mod tray;
 

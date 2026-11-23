@@ -4,8 +4,10 @@
 
 mod common;
 
+use std::sync::Arc;
+
 use common::{atoms, compose_final};
-use seto_core::{KeyOutput, KeyboardLayout, compose, final_layout};
+use seto_core::{FieldEdit, KeyOutput, KeyboardLayout, Lexicon, Session, SessionOptions, compose, final_layout};
 
 #[test]
 fn layout_metadata() {
@@ -122,4 +124,39 @@ fn inflected_dubeol_verbs_compose() {
     ] {
         assert_eq!(compose(&atoms(KeyboardLayout::Dubeol, keys)).text, word, "{keys}");
     }
+}
+
+#[test]
+fn set_layout_commits_the_open_word_and_keeps_explicit_atoms() {
+    let lexicon = Arc::new(Lexicon::new(&[] as &[&str], &[]));
+    let mut session = Session::with_options(
+        lexicon,
+        SessionOptions { auto_switch: false, layout: KeyboardLayout::Sebeol390, ..SessionOptions::default() },
+    );
+    session.input_char('k');
+    session.input_char('f');
+    assert_eq!(session.preedit(), "가");
+    assert_eq!(session.layout(), KeyboardLayout::Sebeol390);
+
+    let unchanged = session.set_layout(KeyboardLayout::Sebeol390);
+    assert_eq!(unchanged.field, FieldEdit::None);
+    assert_eq!(session.preedit(), "가");
+
+    let switched = session.set_layout(KeyboardLayout::Dubeol);
+    assert!(matches!(switched.field, FieldEdit::Unmark { .. }));
+    assert_eq!(session.preedit(), "");
+    assert_eq!(session.document(), "가");
+    assert_eq!(session.layout(), KeyboardLayout::Dubeol);
+
+    // Hardware keys follow the session layout. 'r' is ㄱ on 두벌식 and ㅐ on 390.
+    session.input_char('r');
+    assert_eq!(session.preedit(), "ㄱ");
+
+    // A touch-keyboard atom keeps its own layout on a 390 session.
+    let mut touch = Session::new(Arc::new(Lexicon::new(&[] as &[&str], &[])));
+    touch.auto_switch = false;
+    touch.input(KeyboardLayout::Dubeol.atom('r'));
+    assert_eq!(touch.preedit(), "ㄱ");
+    touch.input_char('f');
+    assert_eq!(touch.document(), "가");
 }
