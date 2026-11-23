@@ -1,0 +1,4 @@
+# The TSF DLL is loaded into other apps. Statically link the CRT for the
+# Windows x64 target so a fresh PC does not need VCRUNTIME140.dll.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

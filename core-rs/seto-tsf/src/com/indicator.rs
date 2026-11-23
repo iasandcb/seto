@@ -33,9 +33,10 @@ use windows::Win32::UI::TextServices::{
     GUID_COMPARTMENT_KEYBOARD_INPUTMODE_CONVERSION, GUID_COMPARTMENT_KEYBOARD_OPENCLOSE, GUID_LBI_INPUTMODE,
     ITfCompartmentEventSink, ITfCompartmentEventSink_Impl, ITfCompartmentMgr, ITfContext, ITfLangBarItem,
     ITfLangBarItem_Impl, ITfLangBarItemButton, ITfLangBarItemButton_Impl, ITfLangBarItemMgr, ITfLangBarItemSink,
-    ITfSource, ITfSource_Impl, ITfThreadMgr, TF_CONVERSIONMODE_ALPHANUMERIC, TF_CONVERSIONMODE_NATIVE,
+    ITfMenu, ITfSource, ITfSource_Impl, ITfThreadMgr, TF_CONVERSIONMODE_ALPHANUMERIC, TF_CONVERSIONMODE_NATIVE,
     TF_LANGBARITEMINFO, TF_LBI_CLK_RIGHT, TF_LBI_ICON, TF_LBI_STATUS, TF_LBI_STATUS_BTN_TOGGLED, TF_LBI_STATUS_HIDDEN,
-    TF_LBI_STYLE_BTN_BUTTON, TF_LBI_STYLE_SHOWNINTRAY, TF_LBI_TEXT, TF_LBI_TOOLTIP, TfLBIClick,
+    TF_LBI_STYLE_BTN_BUTTON, TF_LBI_STYLE_SHOWNINTRAY, TF_LBI_TEXT, TF_LBI_TOOLTIP, TF_LBMENUF_RADIOCHECKED,
+    TfLBIClick,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateIconFromResourceEx, CreateIconIndirect, CreateWindowExW, DefWindowProcW, DestroyWindow, GWLP_USERDATA,
@@ -45,7 +46,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::{BOOL, BSTR, Error, GUID, IUnknown, Interface, PCWSTR, Ref, Result, implement};
 
-use seto_core::Language;
+use seto_core::{KeyboardLayout, Language};
+
+use crate::layout_pref;
 
 use crate::engine::{KeyEffect, conversion_native, indicator_label};
 
@@ -73,6 +76,15 @@ impl ModeButton {
         };
         let mode = slot.borrow().engine.mode();
         indicator_label(mode)
+    }
+
+    fn tooltip(&self) -> String {
+        let Some(slot) = self.slot.upgrade() else {
+            return "세토".to_owned();
+        };
+        let tip = slot.borrow();
+        let language = if tip.engine.mode() == Language::Korean { "한글" } else { "영문" };
+        format!("세토 {language} ({})", tip.engine.layout().title())
     }
 }
 
@@ -128,10 +140,7 @@ impl ITfLangBarItem_Impl for ModeButton_Impl {
     }
 
     fn GetTooltipString(&self) -> Result<BSTR> {
-        super::catch_com("indicator GetTooltipString", || {
-            let text = if self.label() == "가" { "세토 한글" } else { "세토 영문" };
-            Ok(BSTR::from(text))
-        })
+        super::catch_com("indicator GetTooltipString", || Ok(BSTR::from(self.tooltip())))
     }
 }
 
@@ -149,12 +158,31 @@ impl ITfLangBarItemButton_Impl for ModeButton_Impl {
         })
     }
 
-    fn InitMenu(&self, _menu: Ref<windows::Win32::UI::TextServices::ITfMenu>) -> Result<()> {
-        Ok(())
+    fn InitMenu(&self, menu: Ref<ITfMenu>) -> Result<()> {
+        super::catch_com("indicator InitMenu", || {
+            let Some(menu) = menu.ok().ok().cloned() else {
+                return Ok(());
+            };
+            let Some(slot) = self.slot.upgrade() else {
+                return Ok(());
+            };
+            let current = slot.borrow().engine.layout();
+            fill_layout_menu(&menu, current)
+        })
     }
 
-    fn OnMenuSelect(&self, _id: u32) -> Result<()> {
-        Ok(())
+    fn OnMenuSelect(&self, id: u32) -> Result<()> {
+        super::guard("indicator OnMenuSelect", || {
+            let Some(layout) = layout_pref::from_menu_id(id) else {
+                return Ok(());
+            };
+            let Some(slot) = self.slot.upgrade() else {
+                return Ok(());
+            };
+            super::layout_store::save(layout);
+            select_layout(&slot, layout);
+            Ok(())
+        })
     }
 
     fn GetIcon(&self) -> Result<HICON> {
@@ -386,6 +414,40 @@ pub(crate) fn publish(slot: &SharedTip, force: bool) {
         tip.updating_mode = false;
     }
     log(&format!("indicator {} native={} wrote={wrote}", indicator_label(mode), conversion_native(mode)));
+}
+
+fn fill_layout_menu(menu: &ITfMenu, current: KeyboardLayout) -> Result<()> {
+    for layout in KeyboardLayout::ALL {
+        let label: Vec<u16> = layout.title().encode_utf16().collect();
+        let flags = if layout == current { TF_LBMENUF_RADIOCHECKED } else { 0 };
+        unsafe {
+            menu.AddMenuItem(
+                layout_pref::menu_id(layout),
+                flags,
+                HBITMAP(std::ptr::null_mut()),
+                HBITMAP(std::ptr::null_mut()),
+                &label,
+                std::ptr::null_mut(),
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn select_layout(slot: &SharedTip, layout: KeyboardLayout) {
+    let (update, context, client_id) = {
+        let mut tip = slot.borrow_mut();
+        let update = tip.engine.set_layout(layout);
+        let context = tip.context.clone();
+        let client_id = tip.client_id;
+        (update, context, client_id)
+    };
+    log(&format!("layout -> {}", layout.raw_value()));
+    if let Some(update) = update {
+        apply_update(slot, &context, client_id, update);
+    }
+    let sink = slot.borrow().langbar_sink.clone();
+    notify(sink);
 }
 
 fn toggle_from_indicator(slot: &SharedTip) {

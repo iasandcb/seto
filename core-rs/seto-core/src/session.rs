@@ -343,6 +343,19 @@ impl Session {
         self.layout
     }
 
+    /// Commit the open word, then read later `input_char` keys with `layout`.
+    /// The committed document stays. The same layout does not commit.
+    /// Explicit [`KeyAtom`](crate::KeyAtom)s (the touch keyboard) keep the
+    /// layout stored on the atom.
+    pub fn set_layout(&mut self, layout: KeyboardLayout) -> SessionUpdate {
+        if self.layout == layout {
+            return self.make(FieldEdit::None, self.preedit.clone(), false);
+        }
+        let update = self.commit_displayed(true);
+        self.layout = layout;
+        update
+    }
+
     pub fn mode(&self) -> Language {
         self.mode
     }

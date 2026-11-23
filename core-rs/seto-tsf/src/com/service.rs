@@ -66,7 +66,7 @@ impl TextService {
         super::lock_module();
         Self {
             tip: Rc::new(RefCell::new(TipInner {
-                engine: Engine::new(lexicon()),
+                engine: Engine::with_layout(lexicon(), super::layout_store::load()),
                 composition: None,
                 composition_utf16: 0,
                 ending: false,
@@ -154,8 +154,16 @@ impl TextService_Impl {
             tip.thread_mgr = Some(thread_mgr);
             tip.focus = Some((source, cookie));
             tip.engine.sync_modifiers(key_down(VK_SHIFT.0), key_down(VK_RMENU.0));
+            // The object can outlive a profile switch. Pick up a layout written
+            // while this TIP was deactivated. The first activation already
+            // loaded the same value in `new`, so this is a no-op then.
+            let _ = tip.engine.set_layout(super::layout_store::load());
         }
-        log(&format!("activated tid={tid} secure={}", flags & TF_TMAE_SECUREMODE != 0));
+        log(&format!(
+            "activated tid={tid} secure={} layout={}",
+            flags & TF_TMAE_SECUREMODE != 0,
+            self.tip.borrow().engine.layout().raw_value()
+        ));
         super::indicator::install(&self.tip);
         Ok(())
     }

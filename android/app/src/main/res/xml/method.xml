@@ -1,4 +1,5 @@
 <input-method xmlns:android="http://schemas.android.com/apk/res/android"
+    android:settingsActivity="com.ias.seto.SettingsActivity"
     android:supportsSwitchingToNextInputMethod="true">
     <subtype android:label="@string/subtype_name" android:imeSubtypeLocale="ko_KR"
         android:languageTag="ko-KR" android:imeSubtypeMode="keyboard" />

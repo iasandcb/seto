@@ -2,6 +2,9 @@
 # and runs regsvr32. Registration writes HKCR, so an elevated regsvr32 is started
 # when the current session is not already elevated. The DLL path stays in the
 # invoking user's profile.
+#
+# A release zip places seto_tsf.dll and Resources\ next to this script.
+# install-release.ps1 downloads that public zip. No git or gh login.
 
 [CmdletBinding()]
 param(
@@ -11,6 +14,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
+$registerLib = Join-Path $here 'seto-register.ps1'
+if (-not (Test-Path -LiteralPath $registerLib)) { throw "Missing $registerLib" }
+. $registerLib
+if (Invoke-SetoAs64Bit -ScriptPath $PSCommandPath -Bound $PSBoundParameters) { exit $script:Seto64BitExit }
 
 function Resolve-Existing([string]$Path) {
     if (Test-Path -LiteralPath $Path) {
@@ -108,21 +115,6 @@ try {
     Write-Warning "Dictionary copy failed ($($_.Exception.Message)). Registering the DLL anyway."
 }
 $dest = $layout.Dll
-
-$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-$principal = [Security.Principal.WindowsPrincipal]$identity
-$admin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-
-if ($admin) {
-    & regsvr32.exe /s $dest
-    if ($LASTEXITCODE -ne 0) { throw "regsvr32 failed with exit code $LASTEXITCODE" }
-} else {
-    $proc = Start-Process -FilePath regsvr32.exe -ArgumentList @('/s', $dest) -Verb RunAs -Wait -PassThru
-    if (-not $proc -or $proc.ExitCode -ne 0) {
-        $code = if ($proc) { $proc.ExitCode } else { 'cancelled' }
-        throw "regsvr32 was not approved or failed ($code)"
-    }
-}
-
+Register-SetoDll -DllPath $dest
 Write-Host "Registered 세토: $dest"
 Write-Host "Sign out once if the keyboard does not appear, then add 세토 under Settings > Time & language > Language & region > Korean > Options > Keyboards."

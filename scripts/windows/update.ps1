@@ -14,21 +14,26 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$here = Split-Path -Parent $MyInvocation.MyCommand.Path
+$registerLib = Join-Path $here 'seto-register.ps1'
+if (-not (Test-Path -LiteralPath $registerLib)) { throw "Missing $registerLib" }
+. $registerLib
+if (Invoke-SetoAs64Bit -ScriptPath $PSCommandPath -Bound $PSBoundParameters) { exit $script:Seto64BitExit }
 
 function Require-Gh {
     if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
         throw @"
-GitHub CLI (gh) is not on PATH.
-Install it from https://cli.github.com/ and then run:
-  gh auth login
+GitHub CLI (gh) is not on PATH, so this script cannot download an Actions artifact.
+A public release does not need gh. From a checkout run:
+  powershell -ExecutionPolicy Bypass -File scripts\windows\install-release.ps1
 "@
     }
     & gh auth status 1>$null 2>$null
     if ($LASTEXITCODE -ne 0) {
         throw @"
-gh is installed but not logged in. Run:
-  gh auth login
-Then rerun this script.
+gh is installed but not logged in, so this script cannot download an Actions artifact.
+A public release does not need gh. From a checkout run:
+  powershell -ExecutionPolicy Bypass -File scripts\windows\install-release.ps1
 "@
     }
 }
@@ -84,22 +89,6 @@ function Copy-SetoResources([string]$SourceDir, [string]$Destination) {
     }
 }
 
-function Invoke-RegSvr([string[]]$ArgumentList) {
-    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = [Security.Principal.WindowsPrincipal]$identity
-    $admin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-    if ($admin) {
-        & regsvr32.exe @ArgumentList
-        if ($LASTEXITCODE -ne 0) { throw "regsvr32 $($ArgumentList -join ' ') failed with exit code $LASTEXITCODE" }
-        return
-    }
-    $proc = Start-Process -FilePath regsvr32.exe -ArgumentList $ArgumentList -Verb RunAs -Wait -PassThru
-    if (-not $proc -or $proc.ExitCode -ne 0) {
-        $code = if ($proc) { $proc.ExitCode } else { 'cancelled' }
-        throw "regsvr32 was not approved or failed ($code)"
-    }
-}
-
 Require-Gh
 
 if (-not $Branch) {
@@ -129,7 +118,7 @@ New-Item -ItemType Directory -Force -Path $destDir | Out-Null
 
 Get-ChildItem -LiteralPath $destDir -Filter 'seto_tsf*.dll' -File -ErrorAction SilentlyContinue | ForEach-Object {
     try {
-        Invoke-RegSvr @('/s', '/u', $_.FullName)
+        Unregister-SetoDll -DllPath $_.FullName
         Write-Host "Unregistered $($_.FullName)"
     } catch {
         Write-Warning "Unregister skipped for $($_.FullName): $($_.Exception.Message)"
@@ -144,7 +133,7 @@ try {
     Write-Warning "Dictionary copy failed ($($_.Exception.Message)). Registering the DLL anyway."
 }
 
-Invoke-RegSvr @('/s', $layout.Dll)
+Register-SetoDll -DllPath $layout.Dll
 Write-Host "Registered $($layout.Dll) from $($run.headSha)"
 Write-Host "Restart the app you are testing. A Windows logout is not required."
 Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
