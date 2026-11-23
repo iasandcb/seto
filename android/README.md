@@ -75,7 +75,52 @@ for arm64-v8a and x86_64 at API 34. Both links explicitly pass
 `-Wl,-z,max-page-size=16384`. Generated Kotlin/native/assets are build outputs,
 not checked-in copies. The APK is `app/build/outputs/apk/debug/app-debug.apk`.
 `verify-apk.py` extracts the APK and checks every LOAD segment of every `.so`,
-including JNA's `libjnidispatch.so`, plus 16 KB APK ZIP alignment.
+including JNA's `libjnidispatch.so`, plus 16 KB APK ZIP alignment. Pass an APK
+path to check a release output instead of the debug APK.
+
+## Release
+
+Install the signed APK from GitHub Releases. The asset name is `seto-android.apk`.
+
+https://github.com/iasandcb/seto/releases/latest
+
+Tags `android-v0.x.y` are prereleases and are listed on the Releases page. The
+`latest` URL tracks the newest stable release (`android-v1.0.0` and later).
+After installing, enable **Seto** under Settings → System → Keyboard → On-screen
+keyboard. There is no launcher icon.
+
+A build signed with the debug key cannot be updated in place. Uninstall the
+existing `com.ias.seto` once, then install the release APK. The release
+certificate SHA-256 begins with `0C:76:D4:31:15:84:0C:A0`.
+
+`.github/workflows/android-release.yml` runs on tags `android-vX.Y.Z` and on
+`workflow_dispatch`. It builds the Rust core with `scripts/build-rust.sh`, runs
+`assembleRelease` and `testReleaseUnitTest`, checks 16 KB alignment, checks the
+signer certificate, and uploads `seto-android.apk` plus
+`seto-android-X.Y.Z.apk`. `versionName` is `X.Y.Z`. `versionCode` is
+`X * 10000 + Y * 100 + Z` (`android-v0.1.0` → `0.1.0` / `100`). A dispatch can
+mark a 0.x tag as a stable release, or a 1.x tag as a prerelease.
+
+Release signing is applied only to the release build type, and only when
+`ANDROID_KEYSTORE_PATH` is set. Debug builds keep the debug keystore. Without
+those values, `assembleRelease` stays unsigned. R8 and resource shrinking stay
+off: UniFFI reaches `libseto_ffi` through JNA, and shrinking that glue breaks
+the IME.
+
+The values come from the environment, or from Gradle properties when the
+environment variable is unset. Stop a warm Gradle daemon (`./gradlew --stop`)
+before changing them. CI passes the secrets as environment variables and does
+not write them into `gradle.properties`.
+
+- `ANDROID_KEYSTORE_PATH`: decoded PKCS12 keystore file (`.jks`)
+- `ANDROID_KEYSTORE_PASSWORD`: keystore password
+- `ANDROID_KEY_ALIAS`: key alias
+- `ANDROID_KEY_PASSWORD`: key password
+- `ANDROID_KEYSTORE_TYPE`: optional, `PKCS12` (default) or `JKS`
+- `SETO_VERSION_NAME`: optional `versionName` (local default `0.3.0`)
+- `SETO_VERSION_CODE`: optional positive `versionCode` (local default `1`)
+
+Do not commit a keystore or a `keystore.properties` file.
 
 ## Assets, ownership and editing
 

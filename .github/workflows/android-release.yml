@@ -1,0 +1,288 @@
+name: Android release
+
+# Tags android-vX.Y.Z and workflow_dispatch. windows-v* is a different workflow.
+on:
+  push:
+    tags:
+      - "android-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (android-vX.Y.Z)"
+        required: true
+        type: string
+      prerelease:
+        description: "Mark the GitHub Release as a prerelease"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      EXPECTED_CERT_SHA256_PREFIX: "0C76D43115840CA0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve release version
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            tag="${INPUT_TAG}"
+            case "${INPUT_PRERELEASE}" in
+              true) override=1 ;;
+              false) override=0 ;;
+              *)
+                echo "workflow_dispatch prerelease input must be true or false" >&2
+                exit 1
+                ;;
+            esac
+          else
+            tag="${GITHUB_REF_NAME}"
+            override=""
+          fi
+          # shellcheck disable=SC1091
+          source android/scripts/release-version.sh "$tag"
+          if [[ -n "$override" ]]; then
+            prerelease="$override"
+          else
+            prerelease="$DEFAULT_PRERELEASE"
+          fi
+          {
+            echo "SETO_RELEASE_TAG=${TAG}"
+            echo "SETO_VERSION_NAME=${VERSION_NAME}"
+            echo "SETO_VERSION_CODE=${VERSION_CODE}"
+            echo "SETO_PRERELEASE=${prerelease}"
+          } >> "$GITHUB_ENV"
+          echo "tag=${TAG} versionName=${VERSION_NAME} versionCode=${VERSION_CODE} prerelease=${prerelease}"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v4
+
+      - name: Install Android SDK packages
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "ndk;28.2.13676358"
+
+      - name: Export Android SDK paths
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [[ -z "$sdk" ]]; then
+            echo "Android SDK root was not set" >&2
+            exit 1
+          fi
+          ndk="$sdk/ndk/28.2.13676358"
+          if [[ ! -d "$ndk" ]]; then
+            echo "NDK not found at $ndk" >&2
+            exit 1
+          fi
+          {
+            echo "ANDROID_SDK_ROOT=$sdk"
+            echo "ANDROID_HOME=$sdk"
+            echo "ANDROID_NDK_HOME=$ndk"
+            echo "ANDROID_NDK_ROOT=$ndk"
+          } >> "$GITHUB_ENV"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+
+      - name: Select the core-rs Rust toolchain
+        working-directory: core-rs
+        run: |
+          set -euo pipefail
+          rustup show
+          rustup target add aarch64-linux-android x86_64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core-rs
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --version 4.1.2 --locked
+
+      - name: Require signing secrets
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -n "${ANDROID_KEYSTORE_BASE64}" ]] || missing+=("ANDROID_KEYSTORE_BASE64")
+          [[ -n "${ANDROID_KEYSTORE_PASSWORD}" ]] || missing+=("ANDROID_KEYSTORE_PASSWORD")
+          [[ -n "${ANDROID_KEY_ALIAS}" ]] || missing+=("ANDROID_KEY_ALIAS")
+          [[ -n "${ANDROID_KEY_PASSWORD}" ]] || missing+=("ANDROID_KEY_PASSWORD")
+          if (( ${#missing[@]} )); then
+            echo "missing signing secrets: ${missing[*]}" >&2
+            exit 1
+          fi
+          echo "signing secrets are present"
+
+      - name: Decode release keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_OUT: ${{ runner.temp }}/seto-release.jks
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 - <<'PY'
+          import base64, os, pathlib, sys
+          raw = os.environ.get("ANDROID_KEYSTORE_BASE64", "")
+          compact = "".join(raw.split())
+          if not compact:
+              sys.exit("ANDROID_KEYSTORE_BASE64 is empty")
+          pad = (-len(compact)) % 4
+          try:
+              data = base64.b64decode(compact + ("=" * pad), validate=True)
+          except Exception:
+              sys.exit("ANDROID_KEYSTORE_BASE64 is not valid base64")
+          if data[:4] == b"\xfe\xed\xfe\xed":
+              store_type = "JKS"
+          elif data[:1] == b"\x30":
+              store_type = "PKCS12"
+          else:
+              sys.exit("decoded keystore is not PKCS12 or JKS")
+          path = pathlib.Path(os.environ["KEYSTORE_OUT"])
+          path.write_bytes(data)
+          path.chmod(0o600)
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
+              handle.write(f"ANDROID_KEYSTORE_TYPE={store_type}\n")
+          print(f"keystore_type={store_type} keystore_bytes={len(data)}")
+          PY
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Assemble release and unit tests
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/seto-release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          # Passwords stay in the environment. Do not echo them or pass -P.
+          ./gradlew --no-daemon assembleRelease testReleaseUnitTest
+
+      - name: Remove decoded keystore
+        if: always()
+        run: rm -f "${{ runner.temp }}/seto-release.jks"
+
+      - name: Verify release APK
+        run: |
+          set -euo pipefail
+          signed="$GITHUB_WORKSPACE/android/app/build/outputs/apk/release/app-release.apk"
+          if [[ ! -f "$signed" ]]; then
+            echo "signed release APK is missing" >&2
+            ls -la "$(dirname "$signed")" >&2 || true
+            exit 1
+          fi
+          apksigner="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          aapt="$ANDROID_HOME/build-tools/35.0.0/aapt"
+          certs="$("$apksigner" verify --print-certs "$signed")"
+          digest="$(printf '%s\n' "$certs" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1)"
+          norm="$(printf '%s' "$digest" | tr -d '[:space:]' | tr -d ':' | tr '[:lower:]' '[:upper:]')"
+          if [[ -z "$norm" ]]; then
+            echo "APK has no certificate SHA-256 digest" >&2
+            exit 1
+          fi
+          prefix="${norm:0:16}"
+          echo "verified_cert_sha256=${norm}"
+          echo "verified_cert_prefix=${prefix}"
+          if [[ "$norm" != "${EXPECTED_CERT_SHA256_PREFIX}"* ]]; then
+            echo "release certificate SHA-256 does not match ${EXPECTED_CERT_SHA256_PREFIX}" >&2
+            exit 1
+          fi
+          package_line="$("$aapt" dump badging "$signed" | awk '/^package:/{print; exit}')"
+          printf '%s\n' "$package_line"
+          printf '%s\n' "$package_line" | grep -F "name='com.ias.seto'" >/dev/null
+          printf '%s\n' "$package_line" | grep -F "versionCode='${SETO_VERSION_CODE}'" >/dev/null
+          printf '%s\n' "$package_line" | grep -F "versionName='${SETO_VERSION_NAME}'" >/dev/null
+          python3 android/scripts/verify-apk.py "$signed"
+          colon="$(printf '%s' "$norm" | sed 's/../&:/g; s/:$//')"
+          {
+            echo "SETO_CERT_SHA256=${norm}"
+            echo "SETO_CERT_SHA256_COLON=${colon}"
+          } >> "$GITHUB_ENV"
+          {
+            echo "### Android ${SETO_VERSION_NAME}"
+            echo "- tag: \`${SETO_RELEASE_TAG}\`"
+            echo "- versionCode: \`${SETO_VERSION_CODE}\`"
+            echo "- certificate SHA-256 prefix: \`${prefix}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          signed="$GITHUB_WORKSPACE/android/app/build/outputs/apk/release/app-release.apk"
+          dist="${RUNNER_TEMP}/seto-apk"
+          rm -rf "$dist"
+          mkdir -p "$dist"
+          cp "$signed" "$dist/seto-android.apk"
+          cp "$signed" "$dist/seto-android-${SETO_VERSION_NAME}.apk"
+          notes="$(mktemp)"
+          cat > "$notes" <<EOF
+          Android 14 이상용 세토 키보드입니다.
+
+          - 자산: \`seto-android.apk\`
+          - versionName \`${SETO_VERSION_NAME}\`, versionCode \`${SETO_VERSION_CODE}\`
+          - 서명 인증서 SHA-256: \`${SETO_CERT_SHA256_COLON}\`
+
+          디버그 키로 설치해 둔 \`com.ias.seto\` 는 인증서가 달라 한 번 지운 뒤 이 APK를 설치합니다. 설정 → 시스템 → 키보드 → 화면 키보드에서 Seto를 켭니다. 홈 화면에 아이콘은 없습니다.
+          EOF
+          title="Seto Android ${SETO_VERSION_NAME}"
+          assets=(
+            "$dist/seto-android.apk"
+            "$dist/seto-android-${SETO_VERSION_NAME}.apk"
+          )
+          if [[ "${SETO_PRERELEASE}" == "1" ]]; then
+            release_flags=(--prerelease --latest=false)
+          else
+            release_flags=(--latest)
+          fi
+          if gh release view "${SETO_RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload "${SETO_RELEASE_TAG}" "${assets[@]}" --clobber
+            gh release edit "${SETO_RELEASE_TAG}" \
+              --target "${GITHUB_SHA}" \
+              --title "$title" \
+              --notes-file "$notes" \
+              "${release_flags[@]}"
+          else
+            create_flags=(--target "${GITHUB_SHA}" --title "$title" --notes-file "$notes")
+            if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+              create_flags+=(--verify-tag)
+            fi
+            gh release create "${SETO_RELEASE_TAG}" \
+              "${create_flags[@]}" \
+              "${release_flags[@]}" \
+              "${assets[@]}"
+          fi
+          gh release view "${SETO_RELEASE_TAG}" \
+            --json url,isPrerelease,assets \
+            --jq '{url:.url,prerelease:.isPrerelease,assets:[.assets[].name]}'
