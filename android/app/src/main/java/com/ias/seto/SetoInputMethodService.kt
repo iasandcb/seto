@@ -1,6 +1,7 @@
 package com.ias.seto
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.inputmethodservice.InputMethodService
 import android.text.InputType
 import android.util.Log
@@ -23,10 +24,10 @@ import org.json.JSONObject
 import java.io.File
 
 /**
- * Sebeolsik 390 IME. Hardware QWERTY still feeds the 390 session. The on-screen
- * keyboard matches the iOS touch board: letter taps are two-set atoms, and the
- * view hides while a hardware keyboard is the active input unless the system
- * is set to show the on-screen keyboard too.
+ * Hardware QWERTY feeds the selected session layout (default 세벌식 390).
+ * The on-screen keyboard matches the iOS touch board: letter taps are two-set
+ * atoms, and the view hides while a hardware keyboard is the active input
+ * unless the system is set to show the on-screen keyboard too.
  */
 class SetoInputMethodService : InputMethodService() {
     private val keyboardHost = object : SoftKeyboardView.Host {
@@ -48,14 +49,20 @@ class SetoInputMethodService : InputMethodService() {
     private var directInput = false
     private var autoSwitch = true
     private var correctsTypos = true
+    private var hardwareLayout = LayoutKind.SEBEOL390
     private var keyboard: SoftKeyboardView? = null
     private var modeToast: Toast? = null
+    private val preferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == HardwareLayoutPreference.KEY) mainExecutor.execute { applyHardwareLayout() }
+    }
 
     override fun onCreate() {
         super.onCreate()
         val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         autoSwitch = prefs.getBoolean(KEY_AUTO, true)
         correctsTypos = prefs.getBoolean(KEY_TYPOS, true)
+        hardwareLayout = readHardwareLayout()
+        prefs.registerOnSharedPreferenceChangeListener(preferenceListener)
     }
 
     private fun updateMode(language: Language) {
@@ -142,6 +149,7 @@ class SetoInputMethodService : InputMethodService() {
 
     override fun onStartInput(attribute: EditorInfo, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
+        hardwareLayout = readHardwareLayout()
         release()
         tracker = ShiftSpaceToggleTracker()
         heldShifts.clear()
@@ -172,6 +180,8 @@ class SetoInputMethodService : InputMethodService() {
     }
 
     override fun onDestroy() {
+        getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .unregisterOnSharedPreferenceChangeListener(preferenceListener)
         keyboard?.cancelPointer()
         release()
         super.onDestroy()
@@ -211,7 +221,7 @@ class SetoInputMethodService : InputMethodService() {
                         } catch (error: Exception) { Log.w(TAG, "Could not save local typo record", error) }
                     }
                 }
-            FieldSession(logger)
+            FieldSession.withLayout(logger, hardwareLayout)
         } catch (error: Exception) {
             fail(error)
             null
@@ -243,7 +253,7 @@ class SetoInputMethodService : InputMethodService() {
         val active = session ?: return
         val touch = SoftLayout.dubeolAtom(character)
         if (touch == null) {
-            // Space and newline. Hardware keys keep using input(), which is 390.
+            // Space and newline. Hardware keys use input(), which follows the session layout.
             runEdit { active.input(character.toString()) }
             return
         }
@@ -610,9 +620,24 @@ class SetoInputMethodService : InputMethodService() {
 
     private fun isShift(code: Int) = code == KeyEvent.KEYCODE_SHIFT_LEFT || code == KeyEvent.KEYCODE_SHIFT_RIGHT
 
+    private fun readHardwareLayout(): LayoutKind = when (HardwareLayoutPreference.load(this)) {
+        HardwareLayoutPreference.DUBEOL -> LayoutKind.DUBEOL
+        HardwareLayoutPreference.SEBEOL_FINAL -> LayoutKind.SEBEOL_FINAL
+        else -> LayoutKind.SEBEOL390
+    }
+
+    /** Commit the open word, then read later hardware keys with the saved layout. */
+    private fun applyHardwareLayout() {
+        val next = readHardwareLayout()
+        if (next == hardwareLayout) return
+        hardwareLayout = next
+        val active = session ?: return
+        runEdit { active.setLayout(next) }
+    }
+
     companion object {
         private const val TAG = "Seto"
-        private const val PREFS = "seto"
+        private const val PREFS = HardwareLayoutPreference.PREFS
         private const val KEY_AUTO = "autoSwitch"
         private const val KEY_TYPOS = "correctsTypos"
     }

@@ -188,8 +188,16 @@ pub struct SessionState {
 }
 #[uniffi::export]
 impl FieldSession {
+    /// Android hardware keys. 세벌식 390, the same default as [`Session::new`](seto_core::Session::new).
     #[uniffi::constructor]
     pub fn new(logger: Option<Box<dyn TypoLogger>>) -> Result<Arc<Self>> {
+        Self::with_layout(logger, apple::LayoutKind::Sebeol390)
+    }
+
+    /// Android hardware layout. The touch keyboard still sends 두벌식 atoms
+    /// through [`Self::input_atom`] and does not use this value.
+    #[uniffi::constructor]
+    pub fn with_layout(logger: Option<Box<dyn TypoLogger>>, layout: apple::LayoutKind) -> Result<Arc<Self>> {
         boundary(|| {
             let lexicon = LEXICON
                 .lock()
@@ -199,10 +207,18 @@ impl FieldSession {
                 .1
                 .clone();
             let memory = Arc::new(CallbackMemory::default());
-            let session =
-                Session::with_options(lexicon, SessionOptions { typos: Some(memory.clone()), ..Default::default() });
+            let session = Session::with_options(
+                lexicon,
+                SessionOptions { typos: Some(memory.clone()), layout: layout.into(), ..Default::default() },
+            );
             Ok(Arc::new(Self { session: Mutex::new(Some(session)), memory, logger }))
         })
+    }
+
+    /// Commit the open word and read later [`Self::input`] keys with `layout`.
+    /// The same layout does not commit. [`Self::input_atom`] is unchanged.
+    pub fn set_layout(&self, layout: apple::LayoutKind) -> Result<SessionUpdate> {
+        self.access(|session| session.set_layout(layout.into()).into())
     }
     /// Explicitly release field state; Kotlin also releases the handle with destroy()/use.
     pub fn shutdown(&self) -> Result<()> {
@@ -344,6 +360,39 @@ mod tests {
         let s = session();
         assert!(s.access::<()>(|_| panic!("injected panic")).is_err());
         assert!(s.state().is_err());
+    }
+    #[test]
+    fn hardware_layout_is_390_unless_the_session_selects_another() {
+        let dubeol = session_with(seto_core::KeyboardLayout::Dubeol);
+        dubeol.set_options(false, false).unwrap();
+        dubeol.input("r".into()).unwrap();
+        assert_eq!(dubeol.state().unwrap().preedit, "ㄱ");
+        let committed = dubeol.set_layout(apple::LayoutKind::SebeolFinal).unwrap();
+        assert!(matches!(committed.field, FieldEdit::Unmark { .. }));
+        dubeol.input("r".into()).unwrap();
+        assert_eq!(dubeol.state().unwrap().preedit, "ㅐ");
+        assert!(matches!(dubeol.set_layout(apple::LayoutKind::SebeolFinal).unwrap().field, FieldEdit::None));
+
+        // Touch keys carry a 두벌식 atom even when the session layout is 390.
+        let touch = session();
+        touch.set_options(false, false).unwrap();
+        touch
+            .input_atom(apple::Atom {
+                layout: apple::LayoutKind::Dubeol,
+                english: "r".into(),
+                korean: apple::AtomReading::Jamo { scalar: 0x1100, position: apple::JamoPosition::Choseong },
+            })
+            .unwrap();
+        assert_eq!(touch.state().unwrap().preedit, "ㄱ");
+        touch.input("f".into()).unwrap();
+        assert_eq!(touch.state().unwrap().document, "가");
+    }
+    fn session_with(layout: seto_core::KeyboardLayout) -> FieldSession {
+        let session = Session::with_options(
+            Arc::new(Lexicon::new(&["hello"], &["안녕"])),
+            SessionOptions { layout, auto_switch: false, ..SessionOptions::default() },
+        );
+        FieldSession { session: Mutex::new(Some(session)), memory: Arc::new(CallbackMemory::default()), logger: None }
     }
     #[test]
     fn utf16_spans_are_preserved() {

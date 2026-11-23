@@ -12,6 +12,7 @@ mod display;
 mod edit;
 mod factory;
 mod indicator;
+mod layout_store;
 mod registry;
 mod service;
 

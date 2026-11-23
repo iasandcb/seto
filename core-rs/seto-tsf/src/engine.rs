@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use seto_core::{FieldEdit, Language, Lexicon, Session, SessionOptions, SessionUpdate};
+use seto_core::{FieldEdit, KeyboardLayout, Language, Lexicon, Session, SessionOptions, SessionUpdate};
 
 use crate::keys::{self, DecisionState, DownClass, UpClass, WinKey, eaten_down, eaten_up};
 
@@ -44,8 +44,28 @@ pub struct Engine {
 
 impl Engine {
     pub fn new(lexicon: Arc<Lexicon>) -> Self {
-        let session = Session::new(Arc::clone(&lexicon));
+        Self::with_layout(lexicon, KeyboardLayout::default())
+    }
+
+    pub fn with_layout(lexicon: Arc<Lexicon>, layout: KeyboardLayout) -> Self {
+        let session =
+            Session::with_options(Arc::clone(&lexicon), SessionOptions { layout, ..SessionOptions::default() });
         Self { lexicon, session, decision: DecisionState::default() }
+    }
+
+    pub fn layout(&self) -> KeyboardLayout {
+        self.session.layout()
+    }
+
+    /// Commit the open word and read later keys with `layout`. `None` means
+    /// the layout was already selected. The host applies the update first.
+    pub fn set_layout(&mut self, layout: KeyboardLayout) -> Option<SessionUpdate> {
+        if self.session.layout() == layout {
+            return None;
+        }
+        let update = self.session.set_layout(layout);
+        self.sync_decision();
+        Some(update)
     }
 
     pub fn document(&self) -> String {
@@ -181,10 +201,13 @@ impl Engine {
     /// without writing them again.
     pub fn note_external_composition_end(&mut self) {
         let mode = self.session.mode();
+        let layout = self.session.layout();
         let auto_switch = self.session.auto_switch;
         let corrects_typos = self.session.corrects_typos;
-        let mut session =
-            Session::with_options(Arc::clone(&self.lexicon), SessionOptions { mode, ..SessionOptions::default() });
+        let mut session = Session::with_options(
+            Arc::clone(&self.lexicon),
+            SessionOptions { mode, layout, ..SessionOptions::default() },
+        );
         session.auto_switch = auto_switch;
         session.corrects_typos = corrects_typos;
         self.session = session;
@@ -395,5 +418,48 @@ mod tests {
         assert_eq!(doc.composition(), "");
         assert_eq!(engine.preedit(), "");
         assert_eq!(engine.mode(), Language::Korean);
+    }
+
+    #[test]
+    fn layout_defaults_to_390_and_a_switch_commits_before_the_new_reading() {
+        let mut engine = engine();
+        let mut doc = Document::new();
+        assert_eq!(engine.layout(), KeyboardLayout::Sebeol390);
+        press_char(&mut engine, &mut doc, 'k', false);
+        press_char(&mut engine, &mut doc, 'f', false);
+        assert_eq!(doc.composition(), "가");
+        let update = engine.set_layout(KeyboardLayout::Dubeol).expect("layout changes");
+        if let Some(plan) = plan_edit(doc.composition_utf16(), &update.field) {
+            doc.apply_plan(&plan);
+        }
+        assert_eq!(doc.text(), "가");
+        assert_eq!(doc.composition(), "");
+        assert_eq!(engine.layout(), KeyboardLayout::Dubeol);
+        assert!(engine.set_layout(KeyboardLayout::Dubeol).is_none());
+        // 'r' is ㅐ on 390 and ㄱ on 두벌식.
+        press_char(&mut engine, &mut doc, 'r', false);
+        assert_eq!(doc.composition(), "ㄱ");
+        press_char(&mut engine, &mut doc, 'k', false);
+        assert_eq!(doc.text(), "가가");
+    }
+
+    #[test]
+    fn external_composition_end_keeps_the_selected_layout() {
+        let lexicon = Arc::new(Lexicon::new(&["hello"], &["한글"]));
+        let mut final_engine = Engine::with_layout(Arc::clone(&lexicon), KeyboardLayout::SebeolFinal);
+        final_engine.note_external_composition_end();
+        assert_eq!(final_engine.layout(), KeyboardLayout::SebeolFinal);
+        let mut doc = Document::new();
+        // Bare jungseong ㅐ is shown as the QWERTY letter, which distinguishes it from 두벌식 ㄱ.
+        press_char(&mut final_engine, &mut doc, 'r', false);
+        assert_eq!(doc.text(), "r");
+        assert_eq!(doc.composition(), "");
+
+        let mut dubeol = Engine::with_layout(lexicon, KeyboardLayout::Dubeol);
+        dubeol.note_external_composition_end();
+        assert_eq!(dubeol.layout(), KeyboardLayout::Dubeol);
+        let mut doc = Document::new();
+        press_char(&mut dubeol, &mut doc, 'r', false);
+        assert_eq!(doc.composition(), "ㄱ");
     }
 }

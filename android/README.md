@@ -1,7 +1,8 @@
 # Seto Android IME — phase 3
 
 `com.ias.seto`, minSdk 34 (Android 14), target/compile SDK 35. Hardware QWERTY
-and the on-screen keyboard both feed the existing Sebeolsik 390 Rust Session.
+feeds the selected Rust Session layout (세벌식 390 by default). The on-screen
+keyboard stays two-set.
 Shift+Space toggles only if no other key was typed during that Shift hold;
 autorepeat does not toggle again. Masked password fields pass through on a
 hardware keyboard and, on the soft keyboard, insert the visible character
@@ -22,7 +23,13 @@ globe is the iOS phrase-bar key; phrases, suggestions, and one-handed mode are
 not on Android. Korean mode shows two-set jamo with the QWERTY character
 underneath, the same caps iOS draws; English mode reverses that. Number keys
 always show `1 !` and insert the digit, or the shifted symbol after Shift or
-a long-press. Letter taps are two-set atoms. Hardware keys stay Sebeolsik 390.
+a long-press. Letter taps are two-set atoms. Hardware keys use the layout
+chosen in the IME settings screen (기본 세벌식 390). Open it from
+설정 → 시스템 → 키보드 → 화면 키보드 → **Seto** 옆 톱니.
+**하드웨어 자판** lists 세벌식 390, 두벌식, and 세벌식 최종. The value is
+`hardwareLayout` in the `seto` SharedPreferences (`sebeol390`, `dubeol`,
+`sebeolFinal`). A missing or unknown value stays 390. Changing it commits
+the open word and applies to later hardware keys.
 ※ toggles the iOS symbol layer; holding it calls `convertOpenWord`. ↔ calls
 `toggle` (undo the last automatic conversion or flip the open word); holding
 it opens the iOS "자동 한영 전환" check. Holding `-` inserts `→`. Backspace

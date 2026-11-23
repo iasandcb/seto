@@ -1,4 +1,10 @@
 <resources>
     <string name="app_name">Seto</string>
     <string name="subtype_name">Seto · 세벌식 390</string>
+    <string name="settings_title">세토 설정</string>
+    <string name="hardware_layout_title">하드웨어 자판</string>
+    <string name="hardware_layout_summary">물리 키보드에만 적용됩니다. 화면 자판은 두벌식입니다.</string>
+    <string name="layout_390">세벌식 390</string>
+    <string name="layout_dubeol">두벌식</string>
+    <string name="layout_final">세벌식 최종</string>
 </resources>

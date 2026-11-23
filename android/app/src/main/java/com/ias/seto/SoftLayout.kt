@@ -5,8 +5,8 @@ package com.ias.seto
  *
  * Rows, key set, stacked Hangul/QWERTY caps, the ※ symbol layer, and Shift
  * follow that view. Hangul caps are the standard two-set readings iOS draws,
- * not Sebeolsik 390. The service still sends hardware keys through the 390
- * session; a soft-key letter is a dubeol atom (`dubeolAtom`).
+ * not Sebeolsik 390. Hardware keys use the session layout (default 390);
+ * a soft-key letter is a dubeol atom (`dubeolAtom`).
  *
  * The phrase bar, suggestions, and one-handed mode are not on this keyboard.
  * The iOS globe stays a 32dp leading key so the IME can still be switched.
