@@ -51,6 +51,7 @@ class SetoInputMethodService : InputMethodService() {
     private var commitOnly = false
     /** StartInput was given a null editor context. Hardware keys must not be eaten. */
     private var editorMissing = false
+    private var rawFieldAnnounced = false
     private var startedLookupFailed = false
     private var reportedStart = -1
     private var reportedEnd = -1
@@ -190,9 +191,7 @@ class SetoInputMethodService : InputMethodService() {
         val englishOnly = englishOnlyField(attribute.inputType, attribute.imeOptions)
         // TYPE_NULL (X chat and other raw/Compose fields) still gets Hangul.
         // IME_FLAG_FORCE_ASCII is not a reason to skip the Korean session.
-        // An idle restart must keep commit-only: X drops the composing span and
-        // rejects deleteSurroundingText, which used to end the Korean session.
-        commitOnly = nextCommitOnly(restarting, commitOnly, englishOnly, attribute.inputType)
+        commitOnly = nextCommitOnly(englishOnly, attribute.inputType)
         directInput = englishOnly
         reportedStart = attribute.initialSelStart
         reportedEnd = attribute.initialSelEnd
@@ -204,6 +203,11 @@ class SetoInputMethodService : InputMethodService() {
         )
         bindKeyboard(attribute)
         refreshEditorLink("onStartInput")
+        if (editorMissing && !editing) {
+            destroySession()
+            announceRawField()
+            return
+        }
         if (editing) {
             // X chat restarts input when the typing pause ends. Finishing that
             // inside an open batch drops the characters on the old connection.
@@ -346,22 +350,7 @@ class SetoInputMethodService : InputMethodService() {
 
     private fun compose(character: Char) {
         if (editorMissing) {
-            val accepted = editWithoutEditor { active ->
-                val touch = SoftLayout.dubeolAtom(character)
-                if (touch == null) {
-                    active.input(character.toString())
-                } else {
-                    val position = if (touch.jungseong) JamoPosition.JUNGSEONG else JamoPosition.CHOSEONG
-                    active.inputAtom(
-                        Atom(
-                            LayoutKind.DUBEOL,
-                            touch.english.toString(),
-                            AtomReading.Jamo(touch.scalar.toUInt(), position),
-                        ),
-                    )
-                }
-            }
-            if (!accepted) Log.i(TAG, "soft key not delivered; no editor InputConnection")
+            Log.i(TAG, "soft key ignored; no editor InputConnection")
             return
         }
         val active = session ?: return
@@ -752,6 +741,7 @@ class SetoInputMethodService : InputMethodService() {
             !startedLookupFailed -> started == null
             else -> editorConnectionMissing(current, binding)
         }
+        if (!editorMissing) rawFieldAnnounced = false
         Log.i(
             TAG,
             "link $reason ic=${current?.javaClass?.name ?: "null"} startedNull=${started == null} " +
@@ -773,103 +763,17 @@ class SetoInputMethodService : InputMethodService() {
         }
     }
 
-    /**
-     * @param undo pop the session key when the view did not accept it.
-     * Backspace already is that pop; undoing it again would drop a second character.
-     * @return true when the editor accepted the change and the hardware key must be consumed.
-     */
-    private fun editWithoutEditor(undo: Boolean = true, action: (FieldSession) -> SessionUpdate): Boolean {
-        val active = session ?: return false
-        val before = try {
-            active.state().document
-        } catch (error: Exception) {
-            fail(error)
-            return false
+    private fun announceRawField() {
+        if (rawFieldAnnounced) return
+        rawFieldAnnounced = true
+        // commitText and ACTION_MULTIPLE return true and still do not appear.
+        // The chat view only inserts the hardware KeyEvent, which is Latin.
+        Log.i(TAG, "no editor InputConnection; passing hardware keys through")
+        if (statusMode != Language.ENGLISH) {
+            showStatusIcon(R.drawable.mode_english)
+            statusMode = Language.ENGLISH
+            showModeToast(false)
         }
-        val update = try {
-            action(active)
-        } catch (error: Exception) {
-            fail(error)
-            return false
-        }
-        val next = try {
-            active.state().document
-        } catch (error: Exception) {
-            fail(error)
-            return false
-        }
-        val patch = textPatch(before, next)
-        val changed = patch.delete > 0 || patch.insert.isNotEmpty()
-        Log.i(
-            TAG,
-            "raw edit field=${update.field} preedit='${update.preedit}' delete=${patch.delete} insert='${patch.insert}'",
-        )
-        val accepted = changed && pushPatch(patch)
-        if (!accepted) {
-            Log.i(TAG, "raw edit not accepted; undo=$undo changed=$changed")
-            if (undo && changed) {
-                try {
-                    updateMode(active.backspace().mode)
-                } catch (error: Exception) {
-                    Log.i(TAG, "undo after rejected delivery failed ${error.javaClass.simpleName}")
-                }
-            }
-            return false
-        }
-        updateMode(update.mode)
-        return true
-    }
-
-    private fun pushPatch(patch: TextPatch): Boolean {
-        val ic = currentInputConnection
-        if (ic == null) {
-            Log.i(TAG, "deliver ic=null commit=false keyEvent=false")
-            return false
-        }
-        val icName = ic.javaClass.name
-        if (patch.delete > 0) {
-            var deleted = true
-            repeat(patch.delete) {
-                val down = sendLoggedKey(ic, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL)
-                val up = sendLoggedKey(ic, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DEL)
-                if (!down && !up) deleted = false
-            }
-            Log.i(TAG, "sendKeyEvent DEL count=${patch.delete} accepted=$deleted ic=$icName")
-            if (!deleted) return false
-        }
-        if (patch.insert.isEmpty()) return true
-        val commit = ic.commitText(patch.insert, 1)
-        val before = try {
-            ic.getTextBeforeCursor(patch.insert.length.coerceAtLeast(1), 0)
-        } catch (error: Exception) {
-            Log.i(TAG, "getTextBeforeCursor after commit failed ${error.javaClass.simpleName}")
-            null
-        }
-        val visible = before?.endsWith(patch.insert) == true
-        Log.i(
-            TAG,
-            "commitText ok=$commit visible=$visible beforeNull=${before == null} text='${patch.insert}' ic=$icName",
-        )
-        if (deliveryAccepted(commit, visible, keyEvent = false)) return true
-        val event = KeyEvent(
-            android.os.SystemClock.uptimeMillis(),
-            patch.insert,
-            android.view.KeyCharacterMap.VIRTUAL_KEYBOARD,
-            KeyEvent.FLAG_SOFT_KEYBOARD,
-        )
-        val sent = ic.sendKeyEvent(event)
-        Log.i(
-            TAG,
-            "sendKeyEvent action=${event.action} keyCode=${event.keyCode} chars='${event.characters}' ok=$sent ic=$icName",
-        )
-        return deliveryAccepted(commit, visible, sent)
-    }
-
-    private fun sendLoggedKey(ic: InputConnection, action: Int, keyCode: Int): Boolean {
-        val now = android.os.SystemClock.uptimeMillis()
-        val ok = ic.sendKeyEvent(KeyEvent(now, now, action, keyCode, 0))
-        Log.i(TAG, "sendKeyEvent action=$action keyCode=$keyCode ok=$ok ic=${ic.javaClass.name}")
-        return ok
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
@@ -880,6 +784,17 @@ class SetoInputMethodService : InputMethodService() {
                 "repeat=${event.repeatCount} unicode=${event.unicodeChar} direct=$directInput commitOnly=$commitOnly " +
                 "session=${session != null} editorMissing=$editorMissing",
         )
+        if (editorMissing) {
+            announceRawField()
+            if (isShift(keyCode)) {
+                heldShifts.add(keyCode)
+                tracker.shiftChanged(true)
+            } else {
+                tracker.shiftChanged(event.isShiftPressed || heldShifts.isNotEmpty())
+            }
+            Log.i(TAG, "onKeyDown pass-through keyCode=$keyCode; no editor InputConnection")
+            return super.onKeyDown(keyCode, event)
+        }
         ensureSession("onKeyDown")
         if (isShift(keyCode)) {
             heldShifts.add(keyCode)
@@ -897,11 +812,7 @@ class SetoInputMethodService : InputMethodService() {
             event.isShiftPressed, event.isAltPressed, event.isMetaPressed, event.isSymPressed,
         )
         if (controlCharacter != null) {
-            val handled = if (editorMissing) {
-                editWithoutEditor { it.input(controlCharacter.toString()) }
-            } else {
-                inputText(controlCharacter.toString())
-            }
+            val handled = inputText(controlCharacter.toString())
             if (handled) consumedKeys.add(keyCode)
             else Log.i(TAG, "onKeyDown did not commit control keyCode=$keyCode")
             return handled || super.onKeyDown(keyCode, event)
@@ -916,34 +827,17 @@ class SetoInputMethodService : InputMethodService() {
                 true
             }
             keyCode == KeyEvent.KEYCODE_DEL -> {
-                if (editorMissing) {
-                    val doc = try {
-                        active.state().document
-                    } catch (_: Exception) {
-                        ""
-                    }
-                    if (doc.isEmpty() || !editWithoutEditor(undo = false) { it.backspace() }) {
-                        Log.i(TAG, "onKeyDown DEL pass-through; no editor connection")
-                        return super.onKeyDown(keyCode, event)
-                    }
-                    true
-                } else {
-                    val hidden = hiddenSyllable()
-                    val update = runEdit { active.backspace() }
-                    val kept = update != null && keptInBuffer(hidden, update)
-                    if (kept) Log.i(TAG, "commitOnly backspace stayed inside the buffered syllable")
-                    if (update?.field == FieldEdit.None && !kept) applier?.expectNativeBackspace()
-                    kept || update == null || update.field != FieldEdit.None
-                }
+                val hidden = hiddenSyllable()
+                val update = runEdit { active.backspace() }
+                val kept = update != null && keptInBuffer(hidden, update)
+                if (kept) Log.i(TAG, "commitOnly backspace stayed inside the buffered syllable")
+                if (update?.field == FieldEdit.None && !kept) applier?.expectNativeBackspace()
+                kept || update == null || update.field != FieldEdit.None
             }
             else -> {
                 val character = HardwareKeys.character(keyCode, event.isShiftPressed)
                 if (character != null) {
-                    val accepted = if (editorMissing) {
-                        editWithoutEditor { it.input(character.toString()) }
-                    } else {
-                        inputText(character.toString())
-                    }
+                    val accepted = inputText(character.toString())
                     if (!accepted) {
                         Log.i(TAG, "onKeyDown pass-through keyCode=$keyCode editorMissing=$editorMissing")
                         return super.onKeyDown(keyCode, event)
@@ -952,7 +846,7 @@ class SetoInputMethodService : InputMethodService() {
                 } else {
                     // Navigation, Enter, Tab, shortcuts and unknown keys end the open run.
                     // A view with no editor inserts those keys itself.
-                    if (!editorMissing) runEdit { active.commitDisplayed(true) }
+                    runEdit { active.commitDisplayed(true) }
                     false
                 }
             }

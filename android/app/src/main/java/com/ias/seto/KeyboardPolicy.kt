@@ -45,19 +45,13 @@ internal fun commitFallbackField(inputType: Int): Boolean {
 }
 
 /**
- * A restart of the same editor keeps a learned commit-only mode.
- * X chat drops composing after a short idle and then rejects the
- * delete-and-replace fallback; buffering must stay on across that restart.
- * A different field is classified from its input type again.
+ * Every [android.inputmethodservice.InputMethodService.onStartInput] classifies
+ * the field again, including `restarting=true`. Only [InputType.TYPE_NULL] is
+ * commit-only. A learned fallback must not stick to the next search or compose
+ * field in the same app.
  */
-internal fun nextCommitOnly(
-    restarting: Boolean,
-    wasCommitOnly: Boolean,
-    englishOnly: Boolean,
-    inputType: Int,
-): Boolean {
+internal fun nextCommitOnly(englishOnly: Boolean, inputType: Int): Boolean {
     if (englishOnly) return false
-    if (restarting && wasCommitOnly) return true
     return commitFallbackField(inputType)
 }
 
