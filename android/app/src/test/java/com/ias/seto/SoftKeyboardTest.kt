@@ -302,6 +302,21 @@ class KeyboardPolicyTest {
         ))
     }
 
+    @Test fun idleRestartKeepsCommitOnlyAndAMissingSessionReopens() {
+        val text = InputType.TYPE_CLASS_TEXT
+        assertTrue(nextCommitOnly(restarting = true, wasCommitOnly = true, englishOnly = false, inputType = text))
+        assertFalse(nextCommitOnly(restarting = false, wasCommitOnly = true, englishOnly = false, inputType = text))
+        assertTrue(nextCommitOnly(restarting = false, wasCommitOnly = false, englishOnly = false, inputType = InputType.TYPE_NULL))
+        assertFalse(nextCommitOnly(restarting = true, wasCommitOnly = true, englishOnly = true, inputType = InputType.TYPE_NULL))
+        assertFalse(nextCommitOnly(restarting = true, wasCommitOnly = false, englishOnly = false, inputType = text))
+
+        assertFalse(shouldReopenSession(inputActive = false, directInput = false, hasSession = false, hasConnection = true))
+        assertFalse(shouldReopenSession(inputActive = true, directInput = true, hasSession = false, hasConnection = true))
+        assertFalse(shouldReopenSession(inputActive = true, directInput = false, hasSession = false, hasConnection = false))
+        assertTrue(shouldReopenSession(inputActive = true, directInput = false, hasSession = false, hasConnection = true))
+        assertFalse(shouldReopenSession(inputActive = true, directInput = false, hasSession = true, hasConnection = true))
+    }
+
     @Test fun nullFieldsCommitWithoutDroppingKorean() {
         assertTrue(commitFallbackField(InputType.TYPE_NULL))
         assertTrue(commitFallbackField(0))
