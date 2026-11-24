@@ -16,6 +16,8 @@ class FieldEditApplierTest {
         var markStart: Int? = null
         var markEnd: Int? = null
         var acceptComposing = true
+        var beginBatchSucceeds = true
+        var endBatchSucceeds = true
         val calls = mutableListOf<String>()
         private fun write(value: String, composing: Boolean) {
             val start = markStart ?: cursor
@@ -34,7 +36,8 @@ class FieldEditApplierTest {
             arrayOf(InputConnection::class.java)) { _, method, args ->
             calls.add(method.name)
             when (method.name) {
-                "beginBatchEdit", "endBatchEdit" -> true
+                "beginBatchEdit" -> beginBatchSucceeds
+                "endBatchEdit" -> endBatchSucceeds
                 "finishComposingText" -> { markStart = null; markEnd = null; true }
                 "setComposingText" -> {
                     if (!acceptComposing) return@newProxyInstance false
@@ -149,5 +152,40 @@ class FieldEditApplierTest {
         assertEquals("가", editor.text)
         assertTrue(adapter.fellBackToCommit)
         assertTrue(adapter.expectsSelection(editor.cursor, editor.cursor))
+    }
+
+    @Test fun eachEditReadsTheCurrentConnection() {
+        val first = Editor("")
+        val second = Editor("")
+        var current = first
+        val adapter = FieldEditApplier({ current.connection }, 0, 0)
+        adapter.apply(SessionUpdate(Language.ENGLISH, false, "", FieldEdit.Insert("a")))
+        current = second
+        adapter.apply(SessionUpdate(Language.ENGLISH, false, "", FieldEdit.Insert("b")))
+        assertEquals("a", first.text)
+        assertEquals("b", second.text)
+        assertTrue(second.calls.contains("commitText"))
+        assertFalse(first.calls.contains("setComposingText"))
+    }
+
+    @Test fun failedBeginBatchStillDeliversTheText() {
+        val editor = Editor("")
+        editor.beginBatchSucceeds = false
+        val adapter = FieldEditApplier(editor.connection, 0, 0)
+        adapter.apply(SessionUpdate(Language.ENGLISH, false, "", FieldEdit.Insert("ab")))
+        assertEquals("ab", editor.text)
+        assertFalse(editor.calls.contains("endBatchEdit"))
+    }
+
+    @Test fun failedEndBatchIsRejectedSoTheKeyCanBeRetried() {
+        val editor = Editor("")
+        editor.endBatchSucceeds = false
+        val adapter = FieldEditApplier(editor.connection, 0, 0)
+        try {
+            adapter.apply(SessionUpdate(Language.ENGLISH, false, "", FieldEdit.Insert("ab")))
+            fail("endBatchEdit false must not count as committed")
+        } catch (_: EditorRejectedEdit) {
+            // The service retries this edit on the live connection.
+        }
     }
 }

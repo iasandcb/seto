@@ -4,12 +4,19 @@ import android.view.inputmethod.InputConnection
 import com.ias.seto.core.FieldEdit
 import com.ias.seto.core.SessionUpdate
 
+/** The editor refused this batch. The service rebinds instead of ending Korean input. */
+internal class EditorRejectedEdit : IllegalStateException("Editor rejected Seto edit")
+
 /** Kotlin String.length and deleteSurroundingText both count UTF-16 code units. */
 internal class FieldEditApplier(
-    private val connection: InputConnection,
+    private val connections: () -> InputConnection?,
     initialStart: Int,
     initialEnd: Int,
 ) {
+    constructor(connection: InputConnection, initialStart: Int, initialEnd: Int) :
+        this({ connection }, initialStart, initialEnd)
+
+    private fun connection(): InputConnection = connections() ?: throw EditorRejectedEdit()
     private var cursor = initialStart
     private var selectionEnd = initialEnd
     private val expectedSelections = mutableListOf(initialStart to initialEnd)
@@ -99,28 +106,28 @@ internal class FieldEditApplier(
     }
     var preeditLength = 0
         private set
-    private fun checked(ok: Boolean) { check(ok) { "Editor rejected Seto edit" } }
+    private fun checked(ok: Boolean) { if (!ok) throw EditorRejectedEdit() }
     private fun span(value: ULong): Int {
         require(value <= Int.MAX_VALUE.toULong()) { "Edit span exceeds Android range" }
         return value.toInt()
     }
-    private fun commit(text: String) { checked(connection.commitText(text, 1)) }
+    private fun commit(ic: InputConnection, text: String) { checked(ic.commitText(text, 1)) }
     /**
      * Prefer a composing span. If the host has none, or rejects setComposingText,
      * commit the syllable over the previous committed preedit.
      */
-    private fun mark(text: String) {
+    private fun mark(ic: InputConnection, text: String) {
         if (commitOnly || (!spanAtEditStart && preeditLength > 0)) {
             commitOnly = true
             fellBackToCommit = true
-            finish()
-            delete(preeditLength)
-            commit(text)
+            finish(ic)
+            delete(ic, preeditLength)
+            commit(ic, text)
             composingSpanLive = false
             return
         }
         val epoch = spanEpoch
-        if (connection.setComposingText(text, 1)) {
+        if (ic.setComposingText(text, 1)) {
             if (spanEpoch == epoch) composingSpanLive = true
             return
         }
@@ -128,71 +135,80 @@ internal class FieldEditApplier(
         fellBackToCommit = true
         composingSpanLive = false
         // A live span is replaced by commitText. With no span this inserts.
-        commit(text)
+        commit(ic, text)
     }
-    private fun finish() {
-        val ok = connection.finishComposingText()
+    private fun finish(ic: InputConnection) {
+        val ok = ic.finishComposingText()
         composingSpanLive = false
         // A commit-only field may not implement composing at all. Deleting and
         // committing still has to proceed, or the session is dropped and later
-        // hardware keys fall through as English.
+        // hardware keys are consumed with nothing inserted.
         if (!commitOnly) checked(ok)
     }
-    private fun delete(count: Int) {
-        if (count > 0) checked(connection.deleteSurroundingText(count, 0))
+    private fun delete(ic: InputConnection, count: Int) {
+        if (count > 0) checked(ic.deleteSurroundingText(count, 0))
     }
-    private fun replace(count: Int, text: String, composing: Boolean) {
+    private fun replace(ic: InputConnection, count: Int, text: String, composing: Boolean) {
         // finish first: Android deletion otherwise excludes the composing region.
-        finish()
-        delete(count)
+        finish(ic)
+        delete(ic, count)
         if (!composing || commitOnly) {
             composingSpanLive = false
-            commit(text)
+            commit(ic, text)
             return
         }
         val epoch = spanEpoch
-        if (connection.setComposingText(text, 1)) {
+        if (ic.setComposingText(text, 1)) {
             if (spanEpoch == epoch) composingSpanLive = true
             return
         }
         commitOnly = true
         fellBackToCommit = true
         composingSpanLive = false
-        commit(text)
+        commit(ic, text)
     }
     fun apply(update: SessionUpdate) {
+        // One object for the whole batch. Fetching again for endBatchEdit can
+        // close a batch on the connection X just installed and drop the text.
+        val ic = connection()
         if (commitOnly) {
-            applyCommitOnly(update)
+            applyCommitOnly(update, ic)
             return
         }
         spanAtEditStart = composingSpanLive
-        connection.beginBatchEdit()
+        val batched = ic.beginBatchEdit()
         try {
-            when (val edit = update.field) {
-                FieldEdit.None -> Unit
-                is FieldEdit.Unmark -> finish()
-                is FieldEdit.Insert -> commit(edit.text)
-                is FieldEdit.Mark -> mark(edit.text)
-                is FieldEdit.ReplaceBeforeCaret -> replace(span(edit.utf16), edit.text, true)
-                is FieldEdit.InsertThenMark -> { commit(edit.insert); mark(edit.mark) }
-                is FieldEdit.InsertReplacing -> replace(span(edit.utf16), edit.text, false)
-                is FieldEdit.InsertReplacingThenMark -> {
-                    replace(span(edit.utf16), edit.insert, false); mark(edit.mark)
-                }
-                is FieldEdit.ClearMarkThenInsert -> {
-                    mark(""); finish(); delete(span(edit.utf16)); commit(edit.text)
-                }
-                is FieldEdit.ClearMarkThenMark -> {
-                    mark(""); finish(); delete(span(edit.utf16)); mark(edit.text)
-                }
-                is FieldEdit.Rewrite -> {
-                    replace(span(edit.utf16), edit.text, false)
-                    if (edit.thenMark.isNotEmpty()) mark(edit.thenMark)
-                }
-            }
+            applyBody(update, ic)
             advance(update.field)
             preeditLength = update.preedit.length
-        } finally { connection.endBatchEdit() }
+        } finally {
+            if (batched && !ic.endBatchEdit()) throw EditorRejectedEdit()
+        }
+    }
+
+    private fun applyBody(update: SessionUpdate, ic: InputConnection) {
+        when (val edit = update.field) {
+            FieldEdit.None -> Unit
+            is FieldEdit.Unmark -> finish(ic)
+            is FieldEdit.Insert -> commit(ic, edit.text)
+            is FieldEdit.Mark -> mark(ic, edit.text)
+            is FieldEdit.ReplaceBeforeCaret -> replace(ic, span(edit.utf16), edit.text, true)
+            is FieldEdit.InsertThenMark -> { commit(ic, edit.insert); mark(ic, edit.mark) }
+            is FieldEdit.InsertReplacing -> replace(ic, span(edit.utf16), edit.text, false)
+            is FieldEdit.InsertReplacingThenMark -> {
+                replace(ic, span(edit.utf16), edit.insert, false); mark(ic, edit.mark)
+            }
+            is FieldEdit.ClearMarkThenInsert -> {
+                mark(ic, ""); finish(ic); delete(ic, span(edit.utf16)); commit(ic, edit.text)
+            }
+            is FieldEdit.ClearMarkThenMark -> {
+                mark(ic, ""); finish(ic); delete(ic, span(edit.utf16)); mark(ic, edit.text)
+            }
+            is FieldEdit.Rewrite -> {
+                replace(ic, span(edit.utf16), edit.text, false)
+                if (edit.thenMark.isNotEmpty()) mark(ic, edit.thenMark)
+            }
+        }
     }
 
     /**
@@ -200,19 +216,19 @@ internal class FieldEditApplier(
      * `deleteSurroundingText`. Append finished text with `commitText` only.
      * The open syllable stays in the session and is not sent.
      */
-    private fun applyCommitOnly(update: SessionUpdate) {
+    private fun applyCommitOnly(update: SessionUpdate, ic: InputConnection) {
         preeditLength = 0
         when (val edit = update.field) {
-            is FieldEdit.Insert -> commitPlain(edit.text)
-            is FieldEdit.Unmark -> commitPlain(edit.text)
+            is FieldEdit.Insert -> commitPlain(ic, edit.text)
+            is FieldEdit.Unmark -> commitPlain(ic, edit.text)
             else -> Unit
         }
         preeditLength = 0
     }
 
-    private fun commitPlain(text: String) {
+    private fun commitPlain(ic: InputConnection, text: String) {
         if (text.isEmpty()) return
-        checked(connection.commitText(text, 1))
+        checked(ic.commitText(text, 1))
         advance(FieldEdit.Insert(text))
     }
 }

@@ -8,7 +8,6 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
-import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import com.ias.seto.core.Atom
@@ -41,6 +40,13 @@ class SetoInputMethodService : InputMethodService() {
     private val consumedKeys = mutableSetOf<Int>()
     private var editing = false
     private var resettingField = false
+    private var rebinding = false
+    private var inputActive = false
+    private var inputGeneration = 0
+    private var deferRestart = false
+    private var deferredRestarting = false
+    private var deferredAttribute: EditorInfo? = null
+    private var beginningField = false
     private var commitOnly = false
     private var reportedStart = -1
     private var reportedEnd = -1
@@ -96,15 +102,35 @@ class SetoInputMethodService : InputMethodService() {
         }
     }
 
+    override fun onBindInput() {
+        super.onBindInput()
+        Log.i(TAG, "onBindInput connected=${currentInputConnection != null}")
+        ensureSession("onBindInput")
+    }
+
+    override fun onUnbindInput() {
+        Log.i(TAG, "onUnbindInput")
+        release()
+        inputActive = false
+        super.onUnbindInput()
+    }
+
     override fun onStartInputView(info: EditorInfo, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         keyboard?.cancelPointer()
         bindKeyboard(info)
+        Log.i(TAG, "onStartInputView restarting=$restarting")
+        ensureSession("onStartInputView")
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
         keyboard?.cancelPointer()
-        super.onFinishInputView(finishingInput)
+        Log.i(TAG, "onFinishInputView finishingInput=$finishingInput")
+        // The default implementation calls finishComposingText() when the soft
+        // keyboard hides. A hardware keyboard keeps this field focused after that
+        // hide (Galaxy Fold idle timeout, or the framework hiding the view).
+        // Finishing the span here makes the next Hangul edit miss, and X chat
+        // then rejects the repair. Leave the syllable in place.
     }
 
     private fun bindKeyboard(info: EditorInfo? = currentInputEditorInfo) {
@@ -115,6 +141,7 @@ class SetoInputMethodService : InputMethodService() {
     }
 
     private fun dispatch(effect: SoftLayout.Effect) {
+        ensureSession("soft-key")
         when (effect) {
             is SoftLayout.Effect.Compose -> compose(effect.character)
             is SoftLayout.Effect.Literal -> insertLiteral(effect.text)
@@ -149,15 +176,18 @@ class SetoInputMethodService : InputMethodService() {
 
     override fun onStartInput(attribute: EditorInfo, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
+        inputGeneration++
+        inputActive = true
         hardwareLayout = readHardwareLayout()
-        release()
         tracker = ShiftSpaceToggleTracker()
         heldShifts.clear()
         consumedKeys.clear()
         val englishOnly = englishOnlyField(attribute.inputType, attribute.imeOptions)
         // TYPE_NULL (X chat and other raw/Compose fields) still gets Hangul.
         // IME_FLAG_FORCE_ASCII is not a reason to skip the Korean session.
-        commitOnly = !englishOnly && commitFallbackField(attribute.inputType)
+        // An idle restart must keep commit-only: X drops the composing span and
+        // rejects deleteSurroundingText, which used to end the Korean session.
+        commitOnly = nextCommitOnly(restarting, commitOnly, englishOnly, attribute.inputType)
         directInput = englishOnly
         reportedStart = attribute.initialSelStart
         reportedEnd = attribute.initialSelEnd
@@ -165,17 +195,76 @@ class SetoInputMethodService : InputMethodService() {
             TAG,
             "onStartInput package=${attribute.packageName} inputType=0x${Integer.toHexString(attribute.inputType)} " +
                 "imeOptions=0x${Integer.toHexString(attribute.imeOptions)} restarting=$restarting " +
-                "englishOnly=$englishOnly commitOnly=$commitOnly",
+                "englishOnly=$englishOnly commitOnly=$commitOnly connected=${currentInputConnection != null}",
         )
         bindKeyboard(attribute)
-        if (directInput) return
-        val connection = currentInputConnection ?: return
-        openField(connection, attribute.initialSelStart, attribute.initialSelEnd, mode, attribute)
+        if (editing) {
+            // X chat restarts input when the typing pause ends. Finishing that
+            // inside an open batch drops the characters on the old connection.
+            Log.i(TAG, "onStartInput deferred; edit in progress restarting=$restarting")
+            deferRestart = true
+            deferredRestarting = restarting
+            deferredAttribute = attribute
+            return
+        }
+        beginField(restarting)
+    }
+
+    private fun beginField(restarting: Boolean) {
+        if (beginningField) {
+            Log.i(TAG, "onStartInput reentered; this start will rebind when the outer one finishes")
+            return
+        }
+        beginningField = true
+        try {
+            if (directInput) {
+                release()
+                return
+            }
+            if (restarting && session != null) flushBufferedText()
+            release()
+            ensureSession(if (restarting) "onStartInput restart" else "onStartInput")
+        } finally {
+            beginningField = false
+            // A restart that arrived during flush is satisfied by the rebind above.
+            deferRestart = false
+            deferredAttribute = null
+        }
+    }
+
+    /** Put buffered Hangul or an unconfirmed English prefix on screen before the session is replaced. */
+    private fun flushBufferedText() {
+        val pending = try {
+            session?.state()?.preedit?.takeIf { it.isNotEmpty() }
+        } catch (_: Exception) {
+            null
+        }
+        Log.i(TAG, "onStartInput restart; flush buffered text len=${pending?.length ?: 0}")
+        val flushed = session?.let { runEdit { it.commitDisplayed(true) } }
+        if (flushed != null || pending.isNullOrEmpty()) return
+        val wrote = currentInputConnection?.commitText(pending, 1) == true
+        Log.i(TAG, "onStartInput restart; direct commit of buffered text wrote=$wrote")
+    }
+
+    private fun runDeferredRestart() {
+        if (!deferRestart || editing || beginningField) return
+        val restarting = deferredRestarting
+        deferRestart = false
+        deferredAttribute = null
+        Log.i(TAG, "running deferred onStartInput restarting=$restarting")
+        beginField(restarting)
     }
 
     override fun onFinishInput() {
+        val generation = inputGeneration
+        Log.i(TAG, "onFinishInput")
         session?.let { runEdit { it.commitDisplayed(true) } }
+        if (generation != inputGeneration) {
+            Log.i(TAG, "onFinishInput kept the session from a newer onStartInput")
+            return
+        }
         release()
+        inputActive = false
         super.onFinishInput()
     }
 
@@ -281,16 +370,24 @@ class SetoInputMethodService : InputMethodService() {
     }
 
     private fun openField(
-        connection: InputConnection,
         start: Int,
         end: Int,
         language: Language,
         attribute: EditorInfo? = currentInputEditorInfo,
     ) {
-        val info = attribute ?: return
+        val info = attribute ?: run {
+            Log.i(TAG, "openField deferred; no editor info")
+            return
+        }
+        if (currentInputConnection == null) {
+            Log.i(TAG, "openField deferred; no connection")
+            return
+        }
         val created = createSession(info) ?: return
         session = created
-        applier = FieldEditApplier(connection, start, end).also { it.commitOnly = commitOnly }
+        // Fetch the connection on every edit. X chat replaces it on idle
+        // (invalidateInput / restartInput) and a cached one returns false.
+        applier = FieldEditApplier({ currentInputConnection }, start, end).also { it.commitOnly = commitOnly }
         applyOptions()
         if (session == null) return
         runEdit {
@@ -300,11 +397,48 @@ class SetoInputMethodService : InputMethodService() {
         }
     }
 
+    /**
+     * Input can stay started while our session is gone: an idle restart passed a
+     * connection that was not ready yet, a rejected edit called release(), or
+     * onStartInputView never ran because the hardware keyboard hid the soft view.
+     * Bind again before the key falls through as English.
+     */
+    private fun ensureSession(reason: String) {
+        val live = currentInputConnection
+        if (!shouldReopenSession(inputActive, directInput, session != null, live != null)) return
+        if (rebinding) return
+        val info = currentInputEditorInfo
+        if (live == null || info == null) {
+            Log.i(TAG, "rebind deferred ($reason); connection=${live != null} editor=${info != null}")
+            return
+        }
+        Log.i(TAG, "rebind field session ($reason) hadSession=${session != null} commitOnly=$commitOnly")
+        rebinding = true
+        try {
+            val start = if (reportedStart >= 0) reportedStart else info.initialSelStart
+            val end = if (reportedEnd >= 0) reportedEnd else info.initialSelEnd
+            release()
+            openField(start, end, mode, info)
+        } finally {
+            rebinding = false
+        }
+    }
+
     private fun restartSessionAt(cursor: Int) {
-        val connection = currentInputConnection ?: return
+        if (rebinding) return
+        if (currentInputConnection == null || currentInputEditorInfo == null) {
+            Log.i(TAG, "restartSessionAt deferred; editor not ready")
+            release()
+            return
+        }
         val language = mode
-        destroySession()
-        openField(connection, cursor, cursor, language)
+        rebinding = true
+        try {
+            release()
+            openField(cursor, cursor, language)
+        } finally {
+            rebinding = false
+        }
     }
 
     /** Fold a syllable the host already committed, or drop the session if setText replaced it. */
@@ -345,16 +479,23 @@ class SetoInputMethodService : InputMethodService() {
     }
 
     private fun restartAtReportedSelection() {
-        if (resettingField) return
-        val connection = currentInputConnection ?: return
+        if (resettingField || rebinding) return
+        val info = currentInputEditorInfo
+        val connection = currentInputConnection
+        if (info == null || connection == null) {
+            Log.i(TAG, "selection restart deferred; editor not ready")
+            release()
+            return
+        }
         val start = if (reportedStart >= 0) reportedStart else applier?.cursorPosition ?: 0
         val end = if (reportedEnd >= 0) reportedEnd else start
+        Log.i(TAG, "restart session at selection $start..$end")
         resettingField = true
         try {
             connection.finishComposingText()
             val language = mode
-            destroySession()
-            openField(connection, start, end, language)
+            release()
+            openField(start, end, language, info)
         } finally {
             resettingField = false
         }
@@ -501,31 +642,71 @@ class SetoInputMethodService : InputMethodService() {
 
     private fun runEdit(action: () -> SessionUpdate): SessionUpdate? {
         if (!prepareComposition()) return null
+        val generation = inputGeneration
         return try {
             editing = true
             // Every core operation can change mode, including input's automatic
             // conversion, Shift+Space, undo/backspace, and initial forceMode.
             val update = action()
+            if (generation != inputGeneration) {
+                Log.i(TAG, "edit dropped; input restarted during the edit")
+                return null
+            }
             updateMode(update.mode)
             applier?.apply(update)
+            if (generation != inputGeneration) return update
             if (applier?.fellBackToCommit == true || applier?.composingSpanStale() == true) {
                 if (hostShowsSessionText()) adoptCommitFallback() else restartAtReportedSelection()
             }
             update
+        } catch (error: EditorRejectedEdit) {
+            // A stale connection or a failed batch answers false. The key must
+            // be retried on the live connection; consuming it here drops the
+            // character for both Hangul and English.
+            Log.i(TAG, "editor rejected an edit; will rebind commit-only")
+            commitOnly = true
+            release()
+            null
         } catch (error: Exception) {
             fail(error)
             null
         } finally {
             editing = false
+            runDeferredRestart()
         }
+    }
+
+    /** Apply [action] once, and once more on a fresh session if the editor rejected it. */
+    private fun edit(action: (FieldSession) -> SessionUpdate): SessionUpdate? {
+        fun applyOnce(): SessionUpdate? {
+            val active = session ?: return null
+            return runEdit { action(active) }
+        }
+        val first = applyOnce()
+        if (first != null) return first
+        if (session == null) {
+            Log.i(TAG, "rebinding after a rejected edit")
+            ensureSession("rejected edit")
+        }
+        return applyOnce()
+    }
+
+    private fun inputText(text: String): Boolean {
+        if (session == null) ensureSession("input")
+        if (session == null) return false
+        // A live session with a null update did not commit this key. Consuming
+        // it anyway is how characters disappear after X restarts input.
+        return edit { it.input(text) } != null
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         Log.i(
             TAG,
             "onKeyDown keyCode=$keyCode meta=0x${Integer.toHexString(event.metaState)} " +
-                "repeat=${event.repeatCount} unicode=${event.unicodeChar} direct=$directInput commitOnly=$commitOnly",
+                "repeat=${event.repeatCount} unicode=${event.unicodeChar} direct=$directInput commitOnly=$commitOnly " +
+                "session=${session != null}",
         )
+        ensureSession("onKeyDown")
         if (isShift(keyCode)) {
             heldShifts.add(keyCode)
             tracker.shiftChanged(true)
@@ -533,15 +714,19 @@ class SetoInputMethodService : InputMethodService() {
         }
         tracker.shiftChanged(event.isShiftPressed || heldShifts.isNotEmpty())
         val toggle = tracker.keyDown(keyCode == KeyEvent.KEYCODE_SPACE, event.isShiftPressed)
-        val active = session ?: return super.onKeyDown(keyCode, event)
+        val active = session ?: run {
+            if (!directInput && inputActive) Log.i(TAG, "onKeyDown pass-through; Korean session is not bound")
+            return super.onKeyDown(keyCode, event)
+        }
         val controlCharacter = HardwareKeys.controlCharacter(
             keyCode, event.isCtrlPressed,
             event.isShiftPressed, event.isAltPressed, event.isMetaPressed, event.isSymPressed,
         )
         if (controlCharacter != null) {
-            runEdit { active.input(controlCharacter.toString()) }
-            consumedKeys.add(keyCode)
-            return true
+            val handled = inputText(controlCharacter.toString())
+            if (handled) consumedKeys.add(keyCode)
+            else Log.i(TAG, "onKeyDown did not commit control keyCode=$keyCode")
+            return handled || super.onKeyDown(keyCode, event)
         }
         if (event.isCtrlPressed || event.isAltPressed || event.isMetaPressed || event.isSymPressed) {
             runEdit { active.commitDisplayed(true) }
@@ -563,7 +748,10 @@ class SetoInputMethodService : InputMethodService() {
             else -> {
                 val character = HardwareKeys.character(keyCode, event.isShiftPressed)
                 if (character != null) {
-                    runEdit { active.input(character.toString()) }
+                    if (!inputText(character.toString())) {
+                        Log.i(TAG, "onKeyDown did not commit keyCode=$keyCode")
+                        return super.onKeyDown(keyCode, event)
+                    }
                     true
                 } else {
                     // Navigation, Enter, Tab, shortcuts and unknown keys end the open run.
@@ -597,7 +785,7 @@ class SetoInputMethodService : InputMethodService() {
         )
         reportedStart = newSelStart
         reportedEnd = newSelEnd
-        if (resettingField) return
+        if (resettingField || rebinding) return
         val spanLive = candidatesStart >= 0 && candidatesEnd >= 0
         applier?.noteComposingSpan(spanLive)
         if (editing || session == null) return
