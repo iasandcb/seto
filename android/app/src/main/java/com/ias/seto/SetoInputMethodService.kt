@@ -8,6 +8,7 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import com.ias.seto.core.Atom
@@ -48,6 +49,10 @@ class SetoInputMethodService : InputMethodService() {
     private var deferredAttribute: EditorInfo? = null
     private var beginningField = false
     private var commitOnly = false
+    /** StartInput was given a null editor context. Hardware keys must not be eaten. */
+    private var editorMissing = false
+    private var rawFieldAnnounced = false
+    private var startedLookupFailed = false
     private var reportedStart = -1
     private var reportedEnd = -1
     private var mode = Language.KOREAN
@@ -141,6 +146,7 @@ class SetoInputMethodService : InputMethodService() {
     }
 
     private fun dispatch(effect: SoftLayout.Effect) {
+        refreshEditorLink("soft-key")
         ensureSession("soft-key")
         when (effect) {
             is SoftLayout.Effect.Compose -> compose(effect.character)
@@ -185,9 +191,7 @@ class SetoInputMethodService : InputMethodService() {
         val englishOnly = englishOnlyField(attribute.inputType, attribute.imeOptions)
         // TYPE_NULL (X chat and other raw/Compose fields) still gets Hangul.
         // IME_FLAG_FORCE_ASCII is not a reason to skip the Korean session.
-        // An idle restart must keep commit-only: X drops the composing span and
-        // rejects deleteSurroundingText, which used to end the Korean session.
-        commitOnly = nextCommitOnly(restarting, commitOnly, englishOnly, attribute.inputType)
+        commitOnly = nextCommitOnly(englishOnly, attribute.inputType)
         directInput = englishOnly
         reportedStart = attribute.initialSelStart
         reportedEnd = attribute.initialSelEnd
@@ -198,6 +202,12 @@ class SetoInputMethodService : InputMethodService() {
                 "englishOnly=$englishOnly commitOnly=$commitOnly connected=${currentInputConnection != null}",
         )
         bindKeyboard(attribute)
+        refreshEditorLink("onStartInput")
+        if (editorMissing && !editing) {
+            destroySession()
+            announceRawField()
+            return
+        }
         if (editing) {
             // X chat restarts input when the typing pause ends. Finishing that
             // inside an open batch drops the characters on the old connection.
@@ -339,6 +349,10 @@ class SetoInputMethodService : InputMethodService() {
     }
 
     private fun compose(character: Char) {
+        if (editorMissing) {
+            Log.i(TAG, "soft key ignored; no editor InputConnection")
+            return
+        }
         val active = session ?: return
         val touch = SoftLayout.dubeolAtom(character)
         if (touch == null) {
@@ -696,16 +710,91 @@ class SetoInputMethodService : InputMethodService() {
         if (session == null) return false
         // A live session with a null update did not commit this key. Consuming
         // it anyway is how characters disappear after X restarts input.
-        return edit { it.input(text) } != null
+        val update = edit { it.input(text) } ?: return false
+        if (update.field == FieldEdit.None) {
+            Log.i(TAG, "buffered no commit preedit='${update.preedit}' field=${update.field}")
+        }
+        return true
+    }
+
+    /**
+     * X chat with `inputContext=null` still binds an InputConnection, but it is
+     * the process binding, not an editor. Commit-only mode then keeps the
+     * syllable in the session and consumes the hardware key, so nothing appears.
+     * The view inserts characters from the KeyEvent itself when the key is not
+     * consumed. Try `commitText` and an ACTION_MULTIPLE key event first; if
+     * neither lands, give the original key back.
+     */
+    private fun refreshEditorLink(reason: String) {
+        val current = currentInputConnection
+        val binding = currentInputBinding?.connection
+        val started = lookupStartedConnection()
+        val before = try {
+            current?.getTextBeforeCursor(8, 0)
+        } catch (error: Exception) {
+            Log.i(TAG, "getTextBeforeCursor failed ${error.javaClass.simpleName}: ${error.message}")
+            null
+        }
+        editorMissing = when {
+            directInput -> false
+            current == null -> true
+            !startedLookupFailed -> started == null
+            else -> editorConnectionMissing(current, binding)
+        }
+        if (!editorMissing) rawFieldAnnounced = false
+        Log.i(
+            TAG,
+            "link $reason ic=${current?.javaClass?.name ?: "null"} startedNull=${started == null} " +
+                "lookupFailed=$startedLookupFailed bindingSame=${current === binding} " +
+                "beforeNull=${before == null} beforeLen=${before?.length ?: -1} editorMissing=$editorMissing",
+        )
+    }
+
+    private fun lookupStartedConnection(): InputConnection? {
+        if (startedLookupFailed) return null
+        return try {
+            val field = InputMethodService::class.java.getDeclaredField("mStartedInputConnection")
+            field.isAccessible = true
+            field.get(this) as? InputConnection?
+        } catch (error: Throwable) {
+            startedLookupFailed = true
+            Log.i(TAG, "mStartedInputConnection lookup failed ${error.javaClass.simpleName}: ${error.message}")
+            null
+        }
+    }
+
+    private fun announceRawField() {
+        if (rawFieldAnnounced) return
+        rawFieldAnnounced = true
+        // commitText and ACTION_MULTIPLE return true and still do not appear.
+        // The chat view only inserts the hardware KeyEvent, which is Latin.
+        Log.i(TAG, "no editor InputConnection; passing hardware keys through")
+        if (statusMode != Language.ENGLISH) {
+            showStatusIcon(R.drawable.mode_english)
+            statusMode = Language.ENGLISH
+            showModeToast(false)
+        }
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        refreshEditorLink("onKeyDown")
         Log.i(
             TAG,
             "onKeyDown keyCode=$keyCode meta=0x${Integer.toHexString(event.metaState)} " +
                 "repeat=${event.repeatCount} unicode=${event.unicodeChar} direct=$directInput commitOnly=$commitOnly " +
-                "session=${session != null}",
+                "session=${session != null} editorMissing=$editorMissing",
         )
+        if (editorMissing) {
+            announceRawField()
+            if (isShift(keyCode)) {
+                heldShifts.add(keyCode)
+                tracker.shiftChanged(true)
+            } else {
+                tracker.shiftChanged(event.isShiftPressed || heldShifts.isNotEmpty())
+            }
+            Log.i(TAG, "onKeyDown pass-through keyCode=$keyCode; no editor InputConnection")
+            return super.onKeyDown(keyCode, event)
+        }
         ensureSession("onKeyDown")
         if (isShift(keyCode)) {
             heldShifts.add(keyCode)
@@ -748,13 +837,15 @@ class SetoInputMethodService : InputMethodService() {
             else -> {
                 val character = HardwareKeys.character(keyCode, event.isShiftPressed)
                 if (character != null) {
-                    if (!inputText(character.toString())) {
-                        Log.i(TAG, "onKeyDown did not commit keyCode=$keyCode")
+                    val accepted = inputText(character.toString())
+                    if (!accepted) {
+                        Log.i(TAG, "onKeyDown pass-through keyCode=$keyCode editorMissing=$editorMissing")
                         return super.onKeyDown(keyCode, event)
                     }
                     true
                 } else {
                     // Navigation, Enter, Tab, shortcuts and unknown keys end the open run.
+                    // A view with no editor inserts those keys itself.
                     runEdit { active.commitDisplayed(true) }
                     false
                 }

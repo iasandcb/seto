@@ -182,7 +182,12 @@ internal class FieldEditApplier(
             advance(update.field)
             preeditLength = update.preedit.length
         } finally {
-            if (batched && !ic.endBatchEdit()) throw EditorRejectedEdit()
+            if (batched && !ic.endBatchEdit()) {
+                // An empty batch on X's binding-level connection (inputContext=null)
+                // must not drop the session before the key can be passed through.
+                if (update.field != FieldEdit.None) throw EditorRejectedEdit()
+                android.util.Log.i("Seto", "endBatchEdit returned false for an empty edit")
+            }
         }
     }
 

@@ -302,13 +302,12 @@ class KeyboardPolicyTest {
         ))
     }
 
-    @Test fun idleRestartKeepsCommitOnlyAndAMissingSessionReopens() {
+    @Test fun everyStartReclassifiesCommitOnlyAndAMissingSessionReopens() {
         val text = InputType.TYPE_CLASS_TEXT
-        assertTrue(nextCommitOnly(restarting = true, wasCommitOnly = true, englishOnly = false, inputType = text))
-        assertFalse(nextCommitOnly(restarting = false, wasCommitOnly = true, englishOnly = false, inputType = text))
-        assertTrue(nextCommitOnly(restarting = false, wasCommitOnly = false, englishOnly = false, inputType = InputType.TYPE_NULL))
-        assertFalse(nextCommitOnly(restarting = true, wasCommitOnly = true, englishOnly = true, inputType = InputType.TYPE_NULL))
-        assertFalse(nextCommitOnly(restarting = true, wasCommitOnly = false, englishOnly = false, inputType = text))
+        assertFalse(nextCommitOnly(englishOnly = false, inputType = text))
+        assertFalse(nextCommitOnly(englishOnly = false, inputType = 0x2c001))
+        assertTrue(nextCommitOnly(englishOnly = false, inputType = InputType.TYPE_NULL))
+        assertFalse(nextCommitOnly(englishOnly = true, inputType = InputType.TYPE_NULL))
 
         assertFalse(shouldReopenSession(inputActive = false, directInput = false, hasSession = false, hasConnection = true))
         assertFalse(shouldReopenSession(inputActive = true, directInput = true, hasSession = false, hasConnection = true))
