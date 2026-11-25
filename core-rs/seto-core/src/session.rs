@@ -229,6 +229,20 @@ fn all_same_from(text: &str, allowed: &str) -> bool {
     text.chars().all(|character| character == first) && allowed.contains(first)
 }
 
+/// Bare jamo typed as a chat mark: ㅎㅎ, ㅋㅋ, ㅠㅠ, ㅜㅜ, ㄱㄱ, ㅇㅇ, ㄴㄴ,
+/// ㅡㅡ, and the short reactions (ㄱㅅ, ㅇㅋ, ㅇㅋㅋ). One doubled choseong
+/// (ㄲ) is a single jamo and is not a mark.
+fn is_chat_mark_text(text: &str) -> bool {
+    if text.chars().count() < 2 {
+        return false;
+    }
+    let repeated = all_same_from(text, "ㅋㅎㅠㅜㅇㄱㄴㅡ");
+    let extended_ok = text
+        .strip_prefix("ㅇㅋ")
+        .is_some_and(|rest| !rest.is_empty() && rest.chars().all(|character| character == 'ㅋ'));
+    repeated || extended_ok || CHAT_REACTIONS.contains(&text)
+}
+
 /// Shifted key whose 390 output is a digit or symbol, not a jamo.
 /// "I" is 8, "H" is "'", "P" is ">".
 fn is_shifted_letter(atom: &KeyAtom) -> bool {
@@ -398,9 +412,13 @@ impl Session {
         // Moved 390 punctuation (Shift+B → !) ends a Hangul word too.
         // Including it in language scoring invalidates the clean Hangul
         // reading and can turn 고맙습니다 into kvif3습니다!.
+        // A chat mark is the same kind of word: ㅎㅎ plus the final-layout
+        // `?` key (which inserts !) must not be rescored as the token `mm?`.
+        let ends_hangul_word =
+            self.prefers_whole_korean(false) || (self.word_mode == Language::Korean && self.is_open_korean_chat_mark());
         if self.mode == Language::Korean
             && !self.keys.is_empty()
-            && self.prefers_whole_korean(false)
+            && ends_hangul_word
             && let KeyOutput::Character(character) = atom.korean
             && !character.is_alphabetic()
             && !character.is_numeric()
@@ -2069,6 +2087,18 @@ impl Session {
         }
     }
 
+    /// Korean reading of an open chat mark (ㅎㅎ, ㄱㅅ, …). Established
+    /// Latin (`ss`, `aa`, `wsl`) is not this, even when those keys are bare jamo.
+    fn is_open_korean_chat_mark(&self) -> bool {
+        if self.segments.is_empty() || self.segments.iter().any(|segment| segment.lang != Language::Korean) {
+            return false;
+        }
+        let composition = compose(&self.keys);
+        composition.pieces.len() >= 2
+            && composition.pieces.iter().all(|piece| is_bare_piece(*piece))
+            && is_chat_mark_text(&composition.text)
+    }
+
     /// A period after a Hangul syllable commits the word. After an English
     /// token or bare jamo label, it stays available for a filename or domain.
     fn continues_as_code(&self, atom: &KeyAtom) -> bool {
@@ -2080,6 +2110,13 @@ impl Session {
         }
         if !self.segments.is_empty() && all_english(&self.segments) {
             return true;
+        }
+        // ㅎㅎ. ㅋㅋ. ㅠㅠ. ㄱㄱ. ㅇㅇ. The mark is already the word, so a
+        // joiner ends it instead of turning the buffer into a domain label.
+        // English mode still starts a label at the period (`jj.`). Mixed
+        // bare jamo (`namu`) is not a mark and falls through.
+        if self.word_mode == Language::Korean && self.is_open_korean_chat_mark() {
+            return false;
         }
         // Bare jamo such as namu → ㅅㅇㅎㄷ can be a domain label.
         // Keep the period in the buffer so code scoring can recover namu.wiki.
