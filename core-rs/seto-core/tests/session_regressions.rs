@@ -482,6 +482,130 @@ fn mid_word_latin_flipped(lexicon: &Arc<Lexicon>, layout: KeyboardLayout, mode: 
     false
 }
 
+/// `m m .` is ㅎㅎ. on 세벌식 390. A period after two or more bare jamo was
+/// kept in the buffer so a domain label like `namu.` could be recovered, and
+/// `label_stays_english` then treated every label with fewer than two
+/// syllables as Latin. ㅎㅎ has no syllable, so the buffer became `mm.` and
+/// the mode switched to English. The same shape is ㅋㅋ, ㅠㅠ, ㅜㅜ, ㄱㄱ,
+/// ㅇㅇ, ㄴㄴ, ㅡㅡ, and the short marks ㄱㅅ·ㅎㅇ. A real English word
+/// (`ss`, `aa`, `wsl`) and a mixed label (`namu`, `www`) still take the period.
+#[test]
+fn chat_jamo_keeps_trailing_punctuation() {
+    let lexicons = [
+        Arc::new(Lexicon::load(&common::resources()).unwrap()),
+        Arc::new(
+            Lexicon::load_for_keyboard_files(
+                &common::keyboard_resources().join("keyboard-english.txt"),
+                &common::keyboard_resources().join("keyboard-korean-valid.txt"),
+                &common::resources().join("korean-words.txt"),
+            )
+            .unwrap(),
+        ),
+    ];
+    let sebeol = [
+        ("mm.", "ㅎㅎ."),
+        ("mmm.", "ㅎㅎㅎ."),
+        ("mm,", "ㅎㅎ,"),
+        ("mm ", "ㅎㅎ "),
+        ("mm\n", "ㅎㅎ\n"),
+        ("00.", "ㅋㅋ."),
+        ("000.", "ㅋㅋㅋ."),
+        ("55.", "ㅠㅠ."),
+        ("99.", "ㅜㅜ."),
+        ("bb.", "ㅜㅜ."),
+        ("jj.", "ㅇㅇ."),
+        ("hh.", "ㄴㄴ."),
+        ("gg.", "ㅡㅡ."),
+        ("kn.", "ㄱㅅ."),
+        ("mj.", "ㅎㅇ."),
+        ("j0.", "ㅇㅋ."),
+        ("j00.", "ㅇㅋㅋ."),
+        ("kk.", "ㄲ."),
+    ];
+    let english = [
+        ("m.", "m."),
+        ("namu.", "namu."),
+        ("namu.wiki", "namu.wiki"),
+        ("wsl.", "wsl."),
+        ("agents.md", "agents.md"),
+        ("ss.", "ss."),
+        ("aa.", "aa."),
+        // `xx` is an English prefix, and a lone jongseong is already Latin,
+        // so ㄱㄱ is not on screen for the period to preserve.
+        ("xx.", "xx."),
+        ("www.", "www."),
+        ("www.example", "www.example"),
+        ("to.", "to."),
+        ("pp.", "pp."),
+        ("hello.", "hello."),
+        ("a.b.c", "a.b.c"),
+    ];
+    for lexicon in &lexicons {
+        for layout in [KeyboardLayout::Sebeol390, KeyboardLayout::SebeolFinal] {
+            for (keys, expected) in sebeol {
+                let (document, mode_after) = type_on(lexicon, layout, Language::Korean, keys);
+                assert_eq!(document, expected, "{layout:?} {keys}");
+                assert_eq!(mode_after, Language::Korean, "{layout:?} {keys}");
+            }
+            // The period ends the word and leaves the mode in Korean, so the
+            // next syllable is still Hangul. On 390, `?` is the same glyph in
+            // both readings. On 최종 the `?` key inserts `!`, and `B` inserts `?`.
+            let (followed, mode_after) = type_on(lexicon, layout, Language::Korean, "mm.kf");
+            assert_eq!(followed, "ㅎㅎ.가", "{layout:?}");
+            assert_eq!(mode_after, Language::Korean, "{layout:?}");
+            let (question_key, mode_after) = type_on(lexicon, layout, Language::Korean, "mm?");
+            let question = if layout == KeyboardLayout::SebeolFinal { "ㅎㅎ!" } else { "ㅎㅎ?" };
+            assert_eq!(question_key, question, "{layout:?}");
+            assert_eq!(mode_after, Language::Korean, "{layout:?}");
+            if layout == KeyboardLayout::SebeolFinal {
+                let (marked, mode_after) = type_on(lexicon, layout, Language::Korean, "mmB");
+                assert_eq!(marked, "ㅎㅎ?", "{layout:?}");
+                assert_eq!(mode_after, Language::Korean);
+            }
+            for (keys, expected) in english {
+                let (document, mode_after) = type_on(lexicon, layout, Language::Korean, keys);
+                assert_eq!(document, expected, "{layout:?} {keys}");
+                if keys.chars().any(|character| character.is_ascii_alphabetic()) {
+                    assert_eq!(mode_after, Language::English, "{layout:?} {keys}");
+                }
+            }
+        }
+        let dubeol = [
+            ("gg.", "ㅎㅎ."),
+            ("ggg.", "ㅎㅎㅎ."),
+            ("zz.", "ㅋㅋ."),
+            ("bb.", "ㅠㅠ."),
+            ("nn.", "ㅜㅜ."),
+            ("dd.", "ㅇㅇ."),
+            ("mm.", "ㅡㅡ."),
+        ];
+        for (keys, expected) in dubeol {
+            let (document, mode_after) = type_on(lexicon, KeyboardLayout::Dubeol, Language::Korean, keys);
+            assert_eq!(document, expected, "dubeol {keys}");
+            assert_eq!(mode_after, Language::Korean, "dubeol {keys}");
+        }
+        // English mode still treats the period as the start of a label.
+        for (keys, expected) in [("jj.", "jj."), ("mm.", "mm."), ("jjs ", "jjs ")] {
+            let (document, mode_after) = type_on(lexicon, KeyboardLayout::Sebeol390, Language::English, keys);
+            assert_eq!(document, expected, "english {keys}");
+            assert_eq!(mode_after, Language::English, "english {keys}");
+        }
+    }
+
+    // A dictionary spelling of the same keys is still English. `mm` is not in
+    // the bundled lists; adding it must keep `mm.` from becoming ㅎㅎ.
+    let custom = Arc::new(Lexicon::new(&["mm", "wsl"], &["한글"]));
+    let (known, mode_after) = type_on(&custom, KeyboardLayout::Sebeol390, Language::Korean, "mm.");
+    assert_eq!(known, "mm.");
+    assert_eq!(mode_after, Language::English);
+    let (wsl, mode_after) = type_on(&custom, KeyboardLayout::Sebeol390, Language::Korean, "wsl.");
+    assert_eq!(wsl, "wsl.");
+    assert_eq!(mode_after, Language::English);
+    let (unknown, mode_after) = type_on(&custom, KeyboardLayout::Sebeol390, Language::Korean, "xx.");
+    assert_eq!(unknown, "ㄱㄱ.");
+    assert_eq!(mode_after, Language::Korean);
+}
+
 fn step_documents(lexicon: &Arc<Lexicon>, layout: KeyboardLayout, keys: &str) -> Vec<String> {
     let mut session =
         Session::with_options(Arc::clone(lexicon), SessionOptions { layout, ..SessionOptions::default() });

@@ -222,6 +222,75 @@ fn adjacent_shifted_batchim_still_corrects() {
     }
 }
 
+/// `거라는` is 거 + quotative 라는. It is not in the validity list. On 390
+/// and 최종, ㄹ is `y` and ㄴ is `h`, and those keys share an edge, so the
+/// finished word was rewritten as 거나 + 는. Composition itself is 거라는
+/// the whole time; the change happens at the word boundary.
+///
+/// The Android touch keyboard sends 두벌식 atoms (`f` is ㄹ, `s` is ㄴ).
+/// Those keys do not share an edge, so the on-screen keyboard already kept
+/// 거라는. Android hardware defaults to 390, which hit the corrector.
+#[test]
+fn quotative_raneun_is_not_rewritten_as_geoneun() {
+    for lexicon in [lexicon(), keyboard_lexicon()] {
+        assert!(lexicon.is_valid_korean("거"), "거");
+        assert!(lexicon.is_korean_word("거나") || lexicon.is_valid_korean("거나"));
+        assert!(!lexicon.is_korean_word("거라는") && !lexicon.is_valid_korean("거라는"));
+        assert!(lexicon.is_korean_word("뭐") || lexicon.is_valid_korean("뭐"));
+        assert!(lexicon.is_korean_word("사람") || lexicon.is_valid_korean("사람"));
+        for layout in [KeyboardLayout::Sebeol390, KeyboardLayout::SebeolFinal, KeyboardLayout::Dubeol] {
+            for word in ["거라는", "뭐라는", "사람이라는"] {
+                let keys = TypoCorrector::keystrokes(word, layout).unwrap_or_else(|| panic!("keys for {word}"));
+                let atoms: Vec<_> = keys.chars().map(|key| layout.atom(key)).collect();
+                assert_eq!(
+                    TypoCorrector::correction(word, &atoms, Language::Korean, &lexicon, None),
+                    None,
+                    "{layout:?}: {word} keys {keys}"
+                );
+                let open = type_with(lexicon.clone(), layout, &keys);
+                assert_eq!(open, word, "{layout:?}: open {word}");
+                for boundary in [" ", ".", "\n"] {
+                    let typed = type_with(lexicon.clone(), layout, &format!("{keys}{boundary}"));
+                    assert_eq!(typed, format!("{word}{boundary}"), "{layout:?}: {word} {boundary:?}");
+                }
+            }
+            // 거나는 stays the word it is. The exemption must not rewrite it back.
+            let neighbor = TypoCorrector::keystrokes("거나는", layout).unwrap();
+            let atoms: Vec<_> = neighbor.chars().map(|key| layout.atom(key)).collect();
+            assert_eq!(
+                TypoCorrector::correction("거나는", &atoms, Language::Korean, &lexicon, None),
+                None,
+                "{layout:?}"
+            );
+        }
+    }
+}
+
+/// ㄹ/ㄴ are still an adjacent slip when the typed word is not noun + 라는.
+/// 가라 → 가나 on 390 (`y`/`h`). 두벌식 `f`/`s` are not adjacent, so that
+/// layout does not call the pair a slip.
+#[test]
+fn adjacent_rieul_nieun_still_corrects_when_not_quotative() {
+    let lexicon = Arc::new(Lexicon::new(&[], &["가나"]));
+    for layout in [KeyboardLayout::Sebeol390, KeyboardLayout::SebeolFinal] {
+        let keys = TypoCorrector::keystrokes("가라", layout).expect("keys for 가라");
+        let atoms: Vec<_> = keys.chars().map(|key| layout.atom(key)).collect();
+        assert_eq!(
+            TypoCorrector::correction("가라", &atoms, Language::Korean, &lexicon, None),
+            Some("가나".to_owned()),
+            "{layout:?} {keys}"
+        );
+        assert_eq!(type_with(lexicon.clone(), layout, &format!("{keys} ")), "가나 ");
+    }
+    let dubeol = TypoCorrector::keystrokes("가라", KeyboardLayout::Dubeol).unwrap();
+    let atoms: Vec<_> = dubeol.chars().map(|key| KeyboardLayout::Dubeol.atom(key)).collect();
+    assert_eq!(
+        TypoCorrector::correction("가라", &atoms, Language::Korean, &lexicon, None),
+        None,
+        "dubeol {dubeol} is not an adjacent slip"
+    );
+}
+
 #[test]
 fn unknown_one_key_korean_typos_still_correct() {
     let lexicon = lexicon();

@@ -294,7 +294,30 @@ fn is_already_korean(word: &str, lexicon: &Lexicon) -> bool {
     {
         return true;
     }
+    // 거라는 is 거 + quotative 라는, not the unknown stem 거라 plus 는.
+    // 라는 is longer than the particle 는, so it is not part of that split.
+    // On 390 and 최종 the choseong ㄹ sits on the key directly above ㄴ, and
+    // 거나는 is the frequent word 거나 plus 는, so the finished word was rewritten.
+    // 두벌식 ㄹ/ㄴ (`f`/`s`) do not touch, and the Android touch map uses that
+    // layout; the hardware default is 390, which does.
+    if quotative_stem_is_known(&word, &known) {
+        return true;
+    }
     korean_verb_endings::is_inflected(&word, known)
+}
+
+/// 이라는, then 라는, on a noun the lexicon already accepts (거라는, 사람이라는).
+fn quotative_stem_is_known(word: &str, known: &impl Fn(&str) -> bool) -> bool {
+    for ending in ["이라는", "라는"] {
+        if word.len() <= ending.len() || !word.ends_with(ending) {
+            continue;
+        }
+        let stem = &word[..word.len() - ending.len()];
+        if !stem.is_empty() && known(stem) {
+            return true;
+        }
+    }
+    false
 }
 
 fn is_modern_syllable(character: char) -> bool {
