@@ -279,7 +279,8 @@ fn logged_korean(composed: &str, memory: Option<&dyn TypoMemory>, lexicon: &Lexi
     (is_hangul_reading(&logged) && is_already_korean(&logged, lexicon)).then_some(logged)
 }
 
-/// Frequent words, the large validity list, a stem plus one ending, or an ending alone.
+/// Frequent words, the large validity list, a stem plus one ending, a known
+/// stem plus a compound particle, or an ending alone.
 fn is_already_korean(word: &str, lexicon: &Lexicon) -> bool {
     let word = nfc(word);
     let known = |text: &str| lexicon.is_korean_word(text) || lexicon.is_valid_korean(text);
@@ -292,6 +293,16 @@ fn is_already_korean(word: &str, lexicon: &Lexicon) -> bool {
     if let Some((stem, _)) = korean_endings::split(&word)
         && known(stem)
     {
+        return true;
+    }
+    // 이번에는 is 이번 + 에 + 는. Peeling one ending leaves 이번에, which is
+    // not a dictionary word, and 이전에는 is the frequent 이전에 plus 는.
+    // Choseong ㅂ/ㅈ sit on adjacent keys (390 `;`/`l`, 두벌식 `q`/`w`).
+    // A case particle plus a delimiter, with the allomorph that stem's
+    // batchim takes, is the phrase that was typed. 와 after ㄴ (문와는) is
+    // not that phrase, so it is still a slip for 문화는. A stem that is
+    // itself only an ending (하는에는) is not a noun phrase.
+    if compound_particle_on_known_stem(&word, &known) {
         return true;
     }
     // 거라는 is 거 + quotative 라는, not the unknown stem 거라 plus 는.
@@ -318,6 +329,40 @@ fn quotative_stem_is_known(word: &str, known: &impl Fn(&str) -> bool) -> bool {
         }
     }
     false
+}
+
+/// Case particle plus a following delimiter on a stem the lexicon already
+/// accepts. Hosts are the vowel-final particles that can take 는/도/만/의.
+fn compound_particle_on_known_stem(word: &str, known: &impl Fn(&str) -> bool) -> bool {
+    let Some((mid, outer)) = korean_endings::split(word) else { return false };
+    if !matches!(outer, "는" | "도" | "두" | "만" | "의") {
+        return false;
+    }
+    let Some((stem, host)) = korean_endings::split(mid) else { return false };
+    if korean_endings::contains(stem) || !host_fits_stem(host, stem) {
+        return false;
+    }
+    known(stem)
+}
+
+/// 와/과 and 로/으로 agree with the stem's jongseong. 에, 에서, and 하고 do not alternate.
+fn host_fits_stem(host: &str, stem: &str) -> bool {
+    let Some(last) = stem.chars().next_back() else { return false };
+    let value = last as u32;
+    if !(0xAC00..=0xD7A3).contains(&value) {
+        return false;
+    }
+    let jong = (value - 0xAC00) % 28;
+    let open = jong == 0;
+    let rieul = jong == 8;
+    match host {
+        "에" | "에서" | "하고" => true,
+        "와" => open,
+        "과" => !open,
+        "로" => open || rieul,
+        "으로" => !open && !rieul,
+        _ => false,
+    }
 }
 
 fn is_modern_syllable(character: char) -> bool {
@@ -752,5 +797,35 @@ mod tests {
     fn case_follows_the_typed_word() {
         assert_eq!(matching_case("hello", "Hellp"), "Hello");
         assert_eq!(matching_case("hello", "hellp"), "hello");
+    }
+
+    #[test]
+    fn compound_particle_keeps_a_known_noun_and_still_fixes_other_slips() {
+        use crate::lexicon::LexiconWords;
+
+        let lexicon = Lexicon::from_words(LexiconWords {
+            korean: &["이전에", "문화", "한글", "아직도", "하는데"],
+            valid_korean: &["이번", "문", "아직"],
+            ..Default::default()
+        });
+        let check = |layout: KeyboardLayout, typed: &str, expect: Option<&str>| {
+            let keys = TypoCorrector::keystrokes(typed, layout).unwrap_or_else(|| panic!("keys for {typed}"));
+            let atoms: Vec<_> = keys.chars().map(|key| layout.atom(key)).collect();
+            assert_eq!(
+                TypoCorrector::correction(typed, &atoms, Language::Korean, &lexicon, None).as_deref(),
+                expect,
+                "{layout:?} {typed} keys {keys}"
+            );
+        };
+        for layout in KeyboardLayout::ALL {
+            // 이번 + 에는. ㅂ/ㅈ is one adjacent key from 이전에 + 는.
+            check(layout, "이번에는", None);
+            // Not a known stem, so the adjacent slip still applies.
+            check(layout, "한굴", Some("한글"));
+        }
+        // 와 after ㄴ is the wrong allomorph, and 하는 is only an ending.
+        check(KeyboardLayout::Sebeol390, "문와는", Some("문화는"));
+        check(KeyboardLayout::Sebeol390, "아직로는", Some("아직도는"));
+        check(KeyboardLayout::Sebeol390, "하는에는", Some("하는데는"));
     }
 }

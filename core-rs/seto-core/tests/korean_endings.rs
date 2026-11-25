@@ -304,3 +304,71 @@ fn unknown_one_key_korean_typos_still_correct() {
         assert_eq!(type_word(layout, &format!("{keys} ")), "한글 ");
     }
 }
+
+/// `이번에는` is 이번 + 에 + 는. 이번 is a dictionary noun, but 이번에 is not,
+/// so peeling the single particle 는 left an unknown stem. On 390 and 최종,
+/// ㅂ is `;` and ㅈ is `l`; on 두벌식, ㅂ is `q` and ㅈ is `w`. Those keys
+/// share an edge, and 이전에는 is the frequent word 이전에 plus 는, so the
+/// word boundary rewrote a real noun phrase.
+///
+/// A wrong allomorph is still a slip: 문와는 (와 after ㄴ) becomes 문화는,
+/// and 아직로는 (로 after ㄱ) becomes 아직도는. 하는 is an ending, not a
+/// noun, so 하는에는 still becomes 하는데는.
+#[test]
+fn noun_plus_compound_particle_is_not_rewritten() {
+    for lexicon in [lexicon(), keyboard_lexicon()] {
+        assert!(lexicon.is_valid_korean("이번"), "이번");
+        assert!(!lexicon.is_korean_word("이번에") && !lexicon.is_valid_korean("이번에"));
+        assert!(lexicon.is_korean_word("이전에") || lexicon.is_valid_korean("이전에"));
+        assert!(lexicon.is_korean_word("마음") || lexicon.is_valid_korean("마음"));
+        assert!(lexicon.is_korean_word("사람") || lexicon.is_valid_korean("사람"));
+        assert!(lexicon.is_korean_word("나") || lexicon.is_valid_korean("나"));
+        for layout in [KeyboardLayout::Sebeol390, KeyboardLayout::SebeolFinal, KeyboardLayout::Dubeol] {
+            for word in ["이번에는", "마음에는", "사람에는", "나에는", "학교에서는", "서울로는"]
+            {
+                let keys = TypoCorrector::keystrokes(word, layout).unwrap_or_else(|| panic!("keys for {word}"));
+                let atoms: Vec<_> = keys.chars().map(|key| layout.atom(key)).collect();
+                assert_eq!(
+                    TypoCorrector::correction(word, &atoms, Language::Korean, &lexicon, None),
+                    None,
+                    "{layout:?}: {word} keys {keys}"
+                );
+                let open = type_with(lexicon.clone(), layout, &keys);
+                assert_eq!(open, word, "{layout:?}: open {word}");
+                for boundary in [" ", ".", "\n"] {
+                    let typed = type_with(lexicon.clone(), layout, &format!("{keys}{boundary}"));
+                    assert_eq!(typed, format!("{word}{boundary}"), "{layout:?}: {word} {boundary:?}");
+                }
+            }
+        }
+        // 이전에는 is 이전에 + 는, so the exemption must not rewrite it either.
+        for layout in [KeyboardLayout::Sebeol390, KeyboardLayout::SebeolFinal, KeyboardLayout::Dubeol] {
+            let neighbor = TypoCorrector::keystrokes("이전에는", layout).unwrap();
+            let atoms: Vec<_> = neighbor.chars().map(|key| layout.atom(key)).collect();
+            assert_eq!(
+                TypoCorrector::correction("이전에는", &atoms, Language::Korean, &lexicon, None),
+                None,
+                "{layout:?}"
+            );
+        }
+    }
+
+    let lexicon = lexicon();
+    for (typed, corrected) in [("문와는", "문화는"), ("아직로는", "아직도는"), ("하는에는", "하는데는")]
+    {
+        for layout in [KeyboardLayout::Sebeol390, KeyboardLayout::SebeolFinal] {
+            let keys = TypoCorrector::keystrokes(typed, layout).unwrap_or_else(|| panic!("keys for {typed}"));
+            let atoms: Vec<_> = keys.chars().map(|key| layout.atom(key)).collect();
+            assert_eq!(
+                TypoCorrector::correction(typed, &atoms, Language::Korean, &lexicon, None),
+                Some(corrected.to_owned()),
+                "{layout:?}: {typed} keys {keys}"
+            );
+            assert_eq!(
+                type_with(lexicon.clone(), layout, &format!("{keys} ")),
+                format!("{corrected} "),
+                "{layout:?}: {typed}"
+            );
+        }
+    }
+}
