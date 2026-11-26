@@ -24,7 +24,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "SetoIME",
-            dependencies: ["SetoCore"],
+            dependencies: ["SetoCore", "SetoSupport"],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("InputMethodKit"),
@@ -34,7 +34,7 @@ let package = Package(
         ),
         .testTarget(
             name: "Sebeol390CoreTests",
-            dependencies: ["SetoCore"],
+            dependencies: ["SetoCore", "SetoSupport"],
             swiftSettings: [
                 // Command Line Tools keep TestingMacros out of the default
                 // plugin path, so `swift test` cannot see @Test / #expect.

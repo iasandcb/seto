@@ -2,6 +2,7 @@ import AppKit
 import Carbon
 import InputMethodKit
 import SetoCore
+import SetoSupport
 
 @objc(SebeolInputController)
 final class SebeolInputController: IMKInputController, NSMenuDelegate {
@@ -698,12 +699,9 @@ enum SharedLexicon {
             .appendingPathComponent("Sebeol390/Dictionaries", isDirectory: true)
         try manager.createDirectory(at: directory, withIntermediateDirectories: true)
         let bundled = Bundle.main.resourceURL ?? URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent()
-        for filename in ["english-words.txt", "english-extra.txt", "korean-words.txt", "korean-valid.txt"] {
-            let destination = directory.appendingPathComponent(filename)
-            if !manager.fileExists(atPath: destination.path) {
-                try manager.copyItem(at: bundled.appendingPathComponent(filename), to: destination)
-            }
-        }
+        // The menu edits these copies in place. Refresh them when the bundled
+        // lists change, and keep lines the user has added or removed.
+        try BundledDictionaries.sync(from: bundled, to: directory)
         return directory
     }
 

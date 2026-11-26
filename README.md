@@ -31,7 +31,7 @@
 
 메뉴 막대에 한글은 **한**, 영문은 **A**로 표시됩니다. 입력기 메뉴에서 자동 한/영(⌃⇧K), 오타 자동 교정, 한글 자판, 단어 사전, 타자 통계를 다룹니다. Shift+Space와 Caps Lock은 방금 자동으로 바뀐 읽기를 되돌리고, 조합 중이 아니면 한/영을 바꿉니다. Terminal은 영문으로 시작하고 자동 전환을 끌 수 있으며(⌃⇧T), Safari·Chrome 주소창도 영문으로 시작합니다. 주소창을 구분하려면 손쉬운 사용에서 세토를 허용합니다. 암호 칸은 쿼티 그대로 넘깁니다. 후보 창 없이, 치는 도중에 읽기를 바꿉니다.
 
-입력기가 사전을 처음 읽으면 `~/Library/Application Support/Sebeol390/Dictionaries/`에 `english-words.txt`, `english-extra.txt`, `korean-words.txt`, `korean-valid.txt`를 복사합니다. 한 줄에 단어 하나, UTF-8입니다. 고친 뒤 메뉴의 **수정한 사전 다시 불러오기**를 누릅니다. 다시 친 오타는 이 맥의 `~/Library/Application Support/Sebeol390/typos.jsonl`에만 남습니다.
+입력기는 `~/Library/Application Support/Sebeol390/Dictionaries/`의 `english-words.txt`, `english-extra.txt`, `korean-words.txt`, `korean-valid.txt`를 읽습니다. 메뉴의 사전 편집이 이 파일을 바로 열기 때문에, 앱 번들의 목록을 그 폴더에 복사해 둡니다. 학습 단어는 UserDefaults의 `learnedWords.v1`이고, 다시 친 오타는 이 맥의 `~/Library/Application Support/Sebeol390/typos.jsonl`입니다. 번들 목록이 바뀌면 복사본을 새 목록으로 갈아끼우고, 사용자가 넣거나 뺀 줄은 그 위에 다시 얹습니다. 그렇게 사용자 파일을 다시 쓸 때는 직전 내용을 같은 이름의 `.bak`으로 남깁니다. 한 줄에 단어 하나, UTF-8입니다. 고친 뒤 메뉴의 **수정한 사전 다시 불러오기**를 누릅니다.
 
 CloudKit을 쓰려면 Apple Developer에서 App ID `com.ias.inputmethod.seto`에 `iCloud.com.ias.seto`를 연결하고, `MacTypingStatistics` 레코드의 `history`(Bytes)와 `recordName` QUERYABLE 인덱스를 Production에 배포한 뒤, 그 프로파일을 `signing/`에 둡니다. `./build.sh`가 프로파일을 읽어 서명합니다. 프로파일이 없으면 임시 서명이며 통계는 이 맥에만 남습니다. [signing/README.md](signing/README.md)
 
