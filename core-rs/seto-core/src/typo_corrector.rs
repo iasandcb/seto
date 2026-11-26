@@ -85,8 +85,12 @@ pub mod korean_verb_endings {
     ];
 
     /// True when `word` is stem + ending and the stem is a known word, is seen
-    /// with another verb ending, or ends in the past marker ㅆ (왔, 먹었).
+    /// with another verb ending, ends in the past marker ㅆ (왔, 먹었), or is a
+    /// regular conjugation of a known verb/adjective stem.
     pub fn is_inflected(word: &str, is_known: impl Fn(&str) -> bool) -> bool {
+        if is_regular_conjugation(word, &is_known) {
+            return true;
+        }
         let count = word.chars().count();
         let mut joined = String::new();
         for ending in LONGEST_FIRST {
@@ -120,6 +124,109 @@ pub mod korean_verb_endings {
         let Some(last) = stem.chars().next_back() else { return false };
         let value = last as u32;
         (0xAC00..=0xD7A3).contains(&value) && (value - 0xAC00) % 28 == 20
+    }
+
+    /// Batchim stem plus a verbal ending the older suffix list misses:
+    /// 찾+아도 = 찾아도, 먹+어도 = 먹어도, 찾+으면 = 찾으면. -아/어 follows the
+    /// stem vowel, and 으면 keeps 으 only after a non-ㄹ batchim. Open-stem
+    /// contractions (오+아도 = 와도) are not folded back into the stem: doing
+    /// that also matches nouns (절화 as 절호+아). Those forms are already
+    /// covered when the contracted syllable itself is a dictionary word.
+    pub fn is_regular_conjugation(word: &str, is_known: impl Fn(&str) -> bool) -> bool {
+        let chars: Vec<char> = word.chars().collect();
+        if chars.len() < 2 || chars.len() > 8 || !chars.iter().copied().all(is_syllable_char) {
+            return false;
+        }
+        // Contractions and ㄴ-allomorphs also match ordinary dictionary nouns
+        // (절화 as 절호+아, 한글언 as 한글어+ㄴ), so only a separate ending
+        // syllable is treated as conjugation here.
+        prefix_conjugation(&chars, &is_known)
+    }
+
+    /// Endings that stay a separate string of syllables. Longest first is not
+    /// required: each candidate is checked against the stem it leaves.
+    /// Endings the older list does not already accept as a raw suffix.
+    /// 아서/아요/았다/고/는 and the particles 은/을 stay on that path.
+    const PREFIXED: [&str; 11] =
+        ["았으면", "었으면", "았어요", "었어요", "아도", "어도", "았고", "었고", "았지", "었지", "으면"];
+
+    fn prefix_conjugation(chars: &[char], known: &impl Fn(&str) -> bool) -> bool {
+        for ending in PREFIXED {
+            let n = ending.chars().count();
+            if chars.len() <= n || chars.len() - n > 3 {
+                continue;
+            }
+            if !chars[chars.len() - n..].iter().copied().eq(ending.chars()) {
+                continue;
+            }
+            let stem = &chars[..chars.len() - n];
+            let Some(last) = parse_syl(*stem.last().expect("stem is non-empty")) else { continue };
+            if !prefixed_ending_ok(last, ending) {
+                continue;
+            }
+            if stem_known(stem, known) {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn prefixed_ending_ok(last: Syllable, ending: &str) -> bool {
+        let closed = last.jong != 0;
+        let rieul = last.jong == RIEUL;
+        let yang = is_yang(last.jung);
+        match ending {
+            // 으 stays only after a batchim other than ㄹ (찾으면, not 가으면 or 살으면).
+            "으면" => closed && !rieul,
+            "아도" | "았어요" | "았고" | "았지" | "았으면" => closed && yang,
+            "어도" | "었어요" | "었고" | "었지" | "었으면" => closed && !yang,
+            _ => false,
+        }
+    }
+
+    fn stem_known(chars: &[char], known: &impl Fn(&str) -> bool) -> bool {
+        if chars.is_empty() || chars.len() > 3 {
+            return false;
+        }
+        let mut stem = String::new();
+        for syllable in chars {
+            stem.push(*syllable);
+        }
+        // 한·을·를 are particles. 한아도 is not 하다.
+        if super::korean_endings::contains(&stem) {
+            return false;
+        }
+        if known(&stem) {
+            return true;
+        }
+        stem.push('다');
+        known(&stem)
+    }
+
+    const RIEUL: u32 = 8;
+
+    #[derive(Clone, Copy)]
+    struct Syllable {
+        jung: u32,
+        jong: u32,
+    }
+
+    fn is_syllable_char(character: char) -> bool {
+        (0xAC00..=0xD7A3).contains(&(character as u32))
+    }
+
+    fn parse_syl(character: char) -> Option<Syllable> {
+        let value = character as u32;
+        if !(0xAC00..=0xD7A3).contains(&value) {
+            return None;
+        }
+        let index = value - 0xAC00;
+        Some(Syllable { jung: (index % 588) / 28, jong: index % 28 })
+    }
+
+    /// ㅏ/ㅑ/ㅗ/ㅘ/ㅛ take -아. ㅐ and 하다 are not in this set.
+    fn is_yang(jung: u32) -> bool {
+        matches!(jung, 0 | 2 | 8 | 9 | 12)
     }
 }
 
@@ -749,6 +856,28 @@ mod tests {
         // Nominal 기: 먹기 is stem 먹, and 가기 is attested by 가다.
         assert!(korean_verb_endings::is_inflected("먹기", |word| word == "먹"));
         assert!(korean_verb_endings::is_inflected("가기", |word| word == "가다"));
+        let verb =
+            |word: &str| matches!(word, "찾" | "찾다" | "먹" | "먹다" | "가" | "살" | "알" | "같" | "입" | "똑같");
+        assert!(korean_verb_endings::is_regular_conjugation("찾아도", verb));
+        assert!(korean_verb_endings::is_regular_conjugation("찾으면", verb));
+        assert!(korean_verb_endings::is_regular_conjugation("찾았으면", verb));
+        assert!(korean_verb_endings::is_regular_conjugation("먹어도", verb));
+        assert!(korean_verb_endings::is_regular_conjugation("먹었어요", verb));
+        assert!(korean_verb_endings::is_regular_conjugation("살아도", verb));
+        assert!(korean_verb_endings::is_regular_conjugation("알아도", verb));
+        assert!(korean_verb_endings::is_regular_conjugation("같아도", verb));
+        assert!(korean_verb_endings::is_regular_conjugation("입어도", verb));
+        assert!(korean_verb_endings::is_regular_conjugation("똑같아도", verb));
+        // Wrong harmony or the wrong 으 allomorph is still a slip.
+        assert!(!korean_verb_endings::is_regular_conjugation("먹아도", verb));
+        assert!(!korean_verb_endings::is_regular_conjugation("찾어도", verb));
+        assert!(!korean_verb_endings::is_regular_conjugation("가으면", verb));
+        assert!(!korean_verb_endings::is_regular_conjugation("살으면", verb));
+        assert!(!korean_verb_endings::is_regular_conjugation("먹면", verb));
+        // 한 is a particle, 가라/한굴 are not verb endings.
+        assert!(!korean_verb_endings::is_regular_conjugation("한아도", |word| word == "한" || word == "한다"));
+        assert!(!korean_verb_endings::is_regular_conjugation("가라", |word| word == "가르" || word == "가"));
+        assert!(!korean_verb_endings::is_regular_conjugation("한굴", |word| word == "한구" || word == "한글"));
         let lengths: Vec<usize> =
             korean_verb_endings::LONGEST_FIRST.iter().map(|ending| ending.chars().count()).collect();
         assert!(lengths.windows(2).all(|pair| pair[0] >= pair[1]));
