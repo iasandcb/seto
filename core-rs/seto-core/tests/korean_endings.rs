@@ -372,3 +372,50 @@ fn noun_plus_compound_particle_is_not_rewritten() {
         }
     }
 }
+
+/// `찾아도` is 찾 + -아도. 찾 is a verb stem in the validity list, but 찾아 and
+/// 찾아도 are not headwords, so peeling 도 left an unknown stem. On 390 and
+/// 최종, choseong ㅊ is `o` and ㅁ is `i`; those keys share an edge, and 맞아
+/// is frequent, so the word boundary rewrote the verb as 맞아 + 도. 두벌식
+/// ㅊ/ㅁ (`c`/`a`) do not touch, so that layout was not this slip.
+#[test]
+fn verb_stem_plus_ado_is_not_rewritten() {
+    for lexicon in [lexicon(), keyboard_lexicon()] {
+        assert!(lexicon.is_valid_korean("찾") || lexicon.is_korean_word("찾"), "찾");
+        assert!(!lexicon.is_korean_word("찾아도") && !lexicon.is_valid_korean("찾아도"));
+        assert!(!lexicon.is_korean_word("찾아") && !lexicon.is_valid_korean("찾아"));
+        assert!(lexicon.is_korean_word("맞아"), "맞아");
+        assert!(lexicon.is_valid_korean("먹") || lexicon.is_korean_word("먹"));
+        assert!(lexicon.is_valid_korean("같") || lexicon.is_korean_word("같"));
+        assert!(lexicon.is_valid_korean("입") || lexicon.is_korean_word("입"));
+        for layout in [KeyboardLayout::Sebeol390, KeyboardLayout::SebeolFinal, KeyboardLayout::Dubeol] {
+            for word in ["찾아도", "먹어도", "찾으면", "같아도", "입어도", "알아도", "살아도", "맞아도"]
+            {
+                let keys = TypoCorrector::keystrokes(word, layout).unwrap_or_else(|| panic!("keys for {word}"));
+                let atoms: Vec<_> = keys.chars().map(|key| layout.atom(key)).collect();
+                assert_eq!(
+                    TypoCorrector::correction(word, &atoms, Language::Korean, &lexicon, None),
+                    None,
+                    "{layout:?}: {word} keys {keys}"
+                );
+                // 최종 spells ㅈ batchim as `#`, and the session keeps that key
+                // as code punctuation, so the typed round trip is 390 and 두벌식.
+                if layout == KeyboardLayout::SebeolFinal {
+                    continue;
+                }
+                let open = type_with(lexicon.clone(), layout, &keys);
+                assert_eq!(open, word, "{layout:?}: open {word}");
+                for boundary in [" ", ".", "\n"] {
+                    let typed = type_with(lexicon.clone(), layout, &format!("{keys}{boundary}"));
+                    assert_eq!(typed, format!("{word}{boundary}"), "{layout:?}: {word} {boundary:?}");
+                }
+            }
+        }
+    }
+
+    let lexicon = lexicon();
+    let known = |word: &str| lexicon.is_korean_word(word) || lexicon.is_valid_korean(word);
+    assert!(!korean_verb_endings::is_regular_conjugation("먹아도", known));
+    assert!(!korean_verb_endings::is_regular_conjugation("가으면", known));
+    assert!(!korean_verb_endings::is_regular_conjugation("한아도", known));
+}
