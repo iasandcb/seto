@@ -750,6 +750,60 @@ fn repeated_shifted_symbols_stay_punctuation() {
     assert_eq!(acronym, "BBC");
 }
 
+/// `y s h g s` is ys는 on 세벌식. y is choseong ㄹ and s is jongseong ㄴ,
+/// so the pair is not a syllable, and hgs is the particle 는. A bare
+/// choseong outscored the letter y and left s as the only English key,
+/// which committed ㄹs는. The same shape is ys은 and ys가. A choseong that
+/// does join (ㄹ는, 가는, 차) and a real acronym (ktx는) stay as they were.
+#[test]
+fn stranded_choseong_joins_the_english_letter_before_a_particle() {
+    let lexicons = [
+        Arc::new(Lexicon::load(&common::resources()).unwrap()),
+        Arc::new(
+            Lexicon::load_for_keyboard_files(
+                &common::keyboard_resources().join("keyboard-english.txt"),
+                &common::keyboard_resources().join("keyboard-korean-valid.txt"),
+                &common::resources().join("korean-words.txt"),
+            )
+            .unwrap(),
+        ),
+    ];
+    let joined = [
+        ("yshgs", "ys는"),
+        ("yshgs ", "ys는 "),
+        ("yshgs.", "ys는."),
+        ("ysjgs ", "ys은 "),
+        ("yskf ", "ys가 "),
+        ("ywhgs ", "yw는 "),
+    ];
+    let unchanged = [
+        ("yhgs ", "ㄹ는 "),
+        ("kfhgs ", "가는 "),
+        ("ktxhgs ", "ktx는 "),
+        ("mmhgs ", "ㅎㅎ는 "),
+        ("ofhgs ", "차는 "),
+        ("tohgs ", "to는 "),
+    ];
+    for lexicon in &lexicons {
+        for layout in [KeyboardLayout::Sebeol390, KeyboardLayout::SebeolFinal] {
+            for (keys, expected) in joined {
+                let (document, mode_after) = type_on(lexicon, layout, Language::Korean, keys);
+                assert_eq!(document, expected, "{layout:?} {keys}");
+                assert_eq!(mode_after, Language::Korean, "{layout:?} {keys}");
+            }
+            for (keys, expected) in unchanged {
+                let (document, _) = type_on(lexicon, layout, Language::Korean, keys);
+                assert_eq!(document, expected, "{layout:?} {keys}");
+            }
+            // English mode already prefers the letter y, so the same keys
+            // are ys는 and the mode stays English.
+            let (english, mode_after) = type_on(lexicon, layout, Language::English, "yshgs ");
+            assert_eq!(english, "ys는 ", "{layout:?}");
+            assert_eq!(mode_after, Language::English, "{layout:?}");
+        }
+    }
+}
+
 fn step_documents(lexicon: &Arc<Lexicon>, layout: KeyboardLayout, keys: &str) -> Vec<String> {
     let mut session =
         Session::with_options(Arc::clone(lexicon), SessionOptions { layout, ..SessionOptions::default() });

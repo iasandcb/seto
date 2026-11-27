@@ -1842,6 +1842,13 @@ impl Session {
         if english_run() {
             return None;
         }
+        // ys는. y is choseong ㄹ and s is jongseong ㄴ, so the pair is not a
+        // syllable. hgs is the particle 는. A bare choseong outscores the
+        // letter y, and s is then the only English key: ㄹs는. Read both
+        // keys as ys. A head of three or more stays on the acronym rules.
+        if let Some(head_end) = self.choseong_jongseong_particle_split() {
+            return Some(head_end);
+        }
         let limit = 6.min(count - 1);
         if limit < 3 {
             return None;
@@ -1876,6 +1883,36 @@ impl Session {
             }
         }
         None
+    }
+
+    /// Two keys before a particle, where the first is a choseong and the
+    /// second is a jongseong. They cannot be one syllable (`ys` is ㄹㄴ),
+    /// and the choseong must not stay behind as jamo once the particle
+    /// claims the rest (`yshgs` → ys는, not ㄹs는).
+    fn choseong_jongseong_particle_split(&self) -> Option<usize> {
+        const HEAD: usize = 2;
+        if self.word_mode != Language::Korean || self.keys.len() <= HEAD || self.keys.iter().any(KeyAtom::is_dubeol) {
+            return None;
+        }
+        let spelling = self.english_text(0, HEAD);
+        if spelling.chars().count() != HEAD || !spelling.chars().all(|character| character.is_ascii_alphabetic()) {
+            return None;
+        }
+        let tail = compose(&self.keys[HEAD..]);
+        if !is_particle(&tail.text) || !matches!(shape_of(&tail.pieces), Shape::Clean(_)) {
+            return None;
+        }
+        if !self.preserves_composition_at(HEAD) {
+            return None;
+        }
+        let head = compose(&self.keys[..HEAD]);
+        if head.pieces != [CompositionPiece::BareChoseong, CompositionPiece::BareJongseong] {
+            return None;
+        }
+        if self.lexicon.is_korean_word(&head.text) {
+            return None;
+        }
+        Some(HEAD)
     }
 
     /// Allowlisted acronym, or an English dictionary word of at least four
