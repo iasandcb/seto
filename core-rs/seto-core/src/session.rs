@@ -249,6 +249,22 @@ fn is_shifted_letter(atom: &KeyAtom) -> bool {
     atom.english.is_alphabetic() && atom.english.is_uppercase() && matches!(atom.korean, KeyOutput::Character(_))
 }
 
+/// Shifted letter whose Korean reading is punctuation, not a digit.
+/// 390: B !, T ;, Y <, P >, G /, H '.
+fn is_shifted_symbol(atom: &KeyAtom) -> bool {
+    is_shifted_letter(atom)
+        && matches!(atom.korean, KeyOutput::Character(character) if !character.is_alphabetic() && !character.is_numeric())
+}
+
+/// Every key is the same shifted punctuation key. Shift+B twice is `!!`,
+/// not the two-letter acronym BB.
+fn is_repeated_shifted_symbol(atoms: &[KeyAtom]) -> bool {
+    let Some(first) = atoms.first() else { return false };
+    atoms.len() >= 2
+        && is_shifted_symbol(first)
+        && atoms.iter().all(|atom| atom.english == first.english && atom.korean == first.korean)
+}
+
 fn is_pad_digit(atom: &KeyAtom) -> bool {
     matches!(atom.korean, KeyOutput::Character(character) if character.is_numeric())
 }
@@ -867,6 +883,13 @@ impl Session {
             return self.install_reading(korean, previous);
         }
 
+        // Shift+B is !. BB and BBB are !! and !!!, not the acronyms BB and
+        // BBB. The other moved symbols are the same shape (;; << >> // '').
+        // A different letter is still an acronym: HP, BBC, Hello, TV.
+        if self.prefers_repeated_symbol() {
+            return self.install_reading(korean, previous);
+        }
+
         // "Open" is 9펴 and "Int" is 8서: a shifted digit plus a syllable.
         // That shape must not outrank a capitalized English word. A pure
         // digit run (OK → 95) is excluded and stays a number.
@@ -1336,6 +1359,11 @@ impl Session {
                 // A run of nothing but 390 digit keys is not an English word.
                 // "AI" still is: only the I key is a digit, and the abbreviation stands.
                 if self.mode == Language::Korean && !atoms.is_empty() && atoms.iter().all(is_pad_digit) {
+                    return None;
+                }
+                // BB is !! even after another jamo. `tt` and `pp` must not
+                // take that slice back as an English prefix or word.
+                if self.mode == Language::Korean && is_repeated_shifted_symbol(atoms) {
                     return None;
                 }
                 self.english_quality(&self.english_text(start, end), word_final)
@@ -1931,6 +1959,13 @@ impl Session {
             }
             _ => false,
         }
+    }
+
+    /// BB is !! on 390 (Shift+B), and the same run on the other moved
+    /// symbol keys stays punctuation. On 최종, B N M read as ?, -, and a quote.
+    /// HP, BBC, and Hello add a different letter and are not this case.
+    fn prefers_repeated_symbol(&self) -> bool {
+        self.mode == Language::Korean && is_repeated_shifted_symbol(&self.keys)
     }
 
     /// "Introduce" / "Open" / "Hello". The first shifted key is a digit or
