@@ -249,6 +249,22 @@ fn is_shifted_letter(atom: &KeyAtom) -> bool {
     atom.english.is_alphabetic() && atom.english.is_uppercase() && matches!(atom.korean, KeyOutput::Character(_))
 }
 
+/// Shifted letter whose Korean reading is punctuation, not a digit.
+/// 390: B !, T ;, Y <, P >, G /, H '.
+fn is_shifted_symbol(atom: &KeyAtom) -> bool {
+    is_shifted_letter(atom)
+        && matches!(atom.korean, KeyOutput::Character(character) if !character.is_alphabetic() && !character.is_numeric())
+}
+
+/// Every key is the same shifted punctuation key. Shift+B twice is `!!`,
+/// not the two-letter acronym BB.
+fn is_repeated_shifted_symbol(atoms: &[KeyAtom]) -> bool {
+    let Some(first) = atoms.first() else { return false };
+    atoms.len() >= 2
+        && is_shifted_symbol(first)
+        && atoms.iter().all(|atom| atom.english == first.english && atom.korean == first.korean)
+}
+
 fn is_pad_digit(atom: &KeyAtom) -> bool {
     matches!(atom.korean, KeyOutput::Character(character) if character.is_numeric())
 }
@@ -867,6 +883,13 @@ impl Session {
             return self.install_reading(korean, previous);
         }
 
+        // Shift+B is !. BB and BBB are !! and !!!, not the acronyms BB and
+        // BBB. The other moved symbols are the same shape (;; << >> // '').
+        // A different letter is still an acronym: HP, BBC, Hello, TV.
+        if self.prefers_repeated_symbol() {
+            return self.install_reading(korean, previous);
+        }
+
         // "Open" is 9펴 and "Int" is 8서: a shifted digit plus a syllable.
         // That shape must not outrank a capitalized English word. A pure
         // digit run (OK → 95) is excluded and stays a number.
@@ -1336,6 +1359,11 @@ impl Session {
                 // A run of nothing but 390 digit keys is not an English word.
                 // "AI" still is: only the I key is a digit, and the abbreviation stands.
                 if self.mode == Language::Korean && !atoms.is_empty() && atoms.iter().all(is_pad_digit) {
+                    return None;
+                }
+                // BB is !! even after another jamo. `tt` and `pp` must not
+                // take that slice back as an English prefix or word.
+                if self.mode == Language::Korean && is_repeated_shifted_symbol(atoms) {
                     return None;
                 }
                 self.english_quality(&self.english_text(start, end), word_final)
@@ -1814,6 +1842,13 @@ impl Session {
         if english_run() {
             return None;
         }
+        // ys는. y is choseong ㄹ and s is jongseong ㄴ, so the pair is not a
+        // syllable. hgs is the particle 는. A bare choseong outscores the
+        // letter y, and s is then the only English key: ㄹs는. Read both
+        // keys as ys. A head of three or more stays on the acronym rules.
+        if let Some(head_end) = self.choseong_jongseong_particle_split() {
+            return Some(head_end);
+        }
         let limit = 6.min(count - 1);
         if limit < 3 {
             return None;
@@ -1848,6 +1883,36 @@ impl Session {
             }
         }
         None
+    }
+
+    /// Two keys before a particle, where the first is a choseong and the
+    /// second is a jongseong. They cannot be one syllable (`ys` is ㄹㄴ),
+    /// and the choseong must not stay behind as jamo once the particle
+    /// claims the rest (`yshgs` → ys는, not ㄹs는).
+    fn choseong_jongseong_particle_split(&self) -> Option<usize> {
+        const HEAD: usize = 2;
+        if self.word_mode != Language::Korean || self.keys.len() <= HEAD || self.keys.iter().any(KeyAtom::is_dubeol) {
+            return None;
+        }
+        let spelling = self.english_text(0, HEAD);
+        if spelling.chars().count() != HEAD || !spelling.chars().all(|character| character.is_ascii_alphabetic()) {
+            return None;
+        }
+        let tail = compose(&self.keys[HEAD..]);
+        if !is_particle(&tail.text) || !matches!(shape_of(&tail.pieces), Shape::Clean(_)) {
+            return None;
+        }
+        if !self.preserves_composition_at(HEAD) {
+            return None;
+        }
+        let head = compose(&self.keys[..HEAD]);
+        if head.pieces != [CompositionPiece::BareChoseong, CompositionPiece::BareJongseong] {
+            return None;
+        }
+        if self.lexicon.is_korean_word(&head.text) {
+            return None;
+        }
+        Some(HEAD)
     }
 
     /// Allowlisted acronym, or an English dictionary word of at least four
@@ -1931,6 +1996,13 @@ impl Session {
             }
             _ => false,
         }
+    }
+
+    /// BB is !! on 390 (Shift+B), and the same run on the other moved
+    /// symbol keys stays punctuation. On 최종, B N M read as ?, -, and a quote.
+    /// HP, BBC, and Hello add a different letter and are not this case.
+    fn prefers_repeated_symbol(&self) -> bool {
+        self.mode == Language::Korean && is_repeated_shifted_symbol(&self.keys)
     }
 
     /// "Introduce" / "Open" / "Hello". The first shifted key is a digit or

@@ -1,6 +1,6 @@
 mod common;
 
-use seto_core::{KeyboardLayout, Language, Lexicon, Session, SessionOptions};
+use seto_core::{KeyOutput, KeyboardLayout, Language, Lexicon, Session, SessionOptions};
 use std::sync::Arc;
 
 /// English-mode `0` is choseong ㅋ on 390. A code-like token must keep every
@@ -604,6 +604,204 @@ fn chat_jamo_keeps_trailing_punctuation() {
     let (unknown, mode_after) = type_on(&custom, KeyboardLayout::Sebeol390, Language::Korean, "xx.");
     assert_eq!(unknown, "ㄱㄱ.");
     assert_eq!(mode_after, Language::Korean);
+}
+
+/// Uppercase letters whose Korean reading is punctuation rather than a digit
+/// or a jamo. On 390 that is the moved symbols ! ; < > / '.
+fn shifted_symbol_keys(layout: KeyboardLayout) -> Vec<(char, char)> {
+    ('A'..='Z')
+        .filter_map(|key| {
+            let atom = layout.atom(key);
+            let KeyOutput::Character(symbol) = atom.korean else { return None };
+            if key.is_ascii_uppercase() && !symbol.is_alphabetic() && !symbol.is_numeric() {
+                Some((key, symbol))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Shift+B is `!` on 세벌식 390. An all-uppercase run is an acronym, so `BB`
+/// and `BBB` were read as Latin BB and BBB. The same reading caught every
+/// other moved symbol key (T Y P G H are ; < > / '). On 최종, B N M are
+/// ?, -, and a double quote. `.` and `?` are the same glyph in both 390
+/// readings, so a repeat commits one mark at a time and never becomes that acronym.
+#[test]
+fn repeated_shifted_symbols_stay_punctuation() {
+    let lexicons = [
+        Arc::new(Lexicon::load(&common::resources()).unwrap()),
+        Arc::new(
+            Lexicon::load_for_keyboard_files(
+                &common::keyboard_resources().join("keyboard-english.txt"),
+                &common::keyboard_resources().join("keyboard-korean-valid.txt"),
+                &common::resources().join("korean-words.txt"),
+            )
+            .unwrap(),
+        ),
+    ];
+    let layouts: [(KeyboardLayout, &[_]); 2] =
+        [(KeyboardLayout::Sebeol390, &['B', 'G', 'H', 'P', 'T', 'Y']), (KeyboardLayout::SebeolFinal, &['B', 'M', 'N'])];
+    assert!(shifted_symbol_keys(KeyboardLayout::Dubeol).is_empty());
+
+    for lexicon in &lexicons {
+        for (layout, expected_keys) in layouts {
+            let found = shifted_symbol_keys(layout);
+            assert_eq!(found.iter().map(|(key, _)| *key).collect::<Vec<_>>(), expected_keys, "{layout:?}");
+            for (key, symbol) in found {
+                for count in 1..=3 {
+                    let keys: String = std::iter::repeat(key).take(count).collect();
+                    let expected: String = std::iter::repeat(symbol).take(count).collect();
+                    let (document, mode_after) = type_on(lexicon, layout, Language::Korean, &keys);
+                    assert_eq!(document, expected, "{layout:?} {keys}");
+                    assert_eq!(mode_after, Language::Korean, "{layout:?} {keys}");
+                    let (spaced, mode_after) = type_on(lexicon, layout, Language::Korean, &format!("{keys} "));
+                    assert_eq!(spaced, format!("{expected} "), "{layout:?} {keys}");
+                    assert_eq!(mode_after, Language::Korean, "{layout:?} {keys} space");
+                }
+                let twice: String = std::iter::repeat(key).take(2).collect();
+                let twice_symbol: String = std::iter::repeat(symbol).take(2).collect();
+                let thrice: String = std::iter::repeat(key).take(3).collect();
+                let thrice_symbol: String = std::iter::repeat(symbol).take(3).collect();
+                // The mark stays in composition, so a following acronym can
+                // still replace it. A following syllable does not.
+                let (open, _) = type_on(lexicon, layout, Language::Korean, &twice);
+                assert_eq!(open, twice_symbol, "{layout:?}");
+                for (prefix, hangul) in [("jvf", "와"), ("00", "ㅋㅋ"), ("mm", "ㅎㅎ")] {
+                    let (two, mode_after) = type_on(lexicon, layout, Language::Korean, &format!("{prefix}{twice}"));
+                    assert_eq!(two, format!("{hangul}{twice_symbol}"), "{layout:?} {prefix}");
+                    assert_eq!(mode_after, Language::Korean, "{layout:?} {prefix}");
+                    let (three, mode_after) = type_on(lexicon, layout, Language::Korean, &format!("{prefix}{thrice}"));
+                    assert_eq!(three, format!("{hangul}{thrice_symbol}"), "{layout:?} {prefix}");
+                    assert_eq!(mode_after, Language::Korean, "{layout:?} {prefix}");
+                }
+                let (followed, mode_after) = type_on(lexicon, layout, Language::Korean, &format!("{twice}kf"));
+                assert_eq!(followed, format!("{twice_symbol}가"), "{layout:?} {key}");
+                assert_eq!(mode_after, Language::Korean, "{layout:?} {key}");
+                let (stopped, mode_after) = type_on(lexicon, layout, Language::Korean, &format!("{twice}."));
+                assert_eq!(stopped, format!("{twice_symbol}."), "{layout:?} {key}");
+                assert_eq!(mode_after, Language::Korean, "{layout:?} {key}.");
+                // English mode still emits the shifted letter.
+                let (english, mode_after) = type_on(lexicon, layout, Language::English, &thrice);
+                assert_eq!(english, thrice, "{layout:?}");
+                assert_eq!(mode_after, Language::English, "{layout:?}");
+            }
+        }
+
+        // 390 `!` grows one mark at a time and stays replaceable.
+        let mut session = Session::with_options(
+            Arc::clone(lexicon),
+            SessionOptions { layout: KeyboardLayout::Sebeol390, ..SessionOptions::default() },
+        );
+        for (count, key) in (1..=3).zip("BBB".chars()) {
+            session.input_char(key);
+            let expected = "!".repeat(count);
+            assert_eq!(session.document(), expected);
+            assert_eq!(session.preedit(), expected);
+            assert_eq!(session.mode(), Language::Korean);
+        }
+        let steps = step_documents(lexicon, KeyboardLayout::Sebeol390, "BBB");
+        assert_eq!(steps, ["!", "!!", "!!!"]);
+
+        // `.` and `?` match in both 390 readings, so they never form BB.
+        for keys in ["...", "???", "..", "??"] {
+            let (document, mode_after) = type_on(lexicon, KeyboardLayout::Sebeol390, Language::Korean, keys);
+            assert_eq!(document, keys, "{keys}");
+            assert_eq!(mode_after, Language::Korean, "{keys}");
+        }
+
+        // A different letter is still the acronym or the capitalized word.
+        for (keys, expected) in [("HP", "HP"), ("BBC", "BBC"), ("TTY", "TTY"), ("OK", "95"), ("DJI", "DJI")] {
+            let (document, _) = type_on(lexicon, KeyboardLayout::Sebeol390, Language::Korean, keys);
+            assert_eq!(document, expected, "{keys}");
+        }
+        for (keys, expected) in [("Hello", "Hello"), ("TV", "TV")] {
+            let (document, mode_after) = type_on(lexicon, KeyboardLayout::Sebeol390, Language::Korean, keys);
+            assert_eq!(document, expected, "{keys}");
+            assert_eq!(mode_after, Language::English, "{keys}");
+        }
+        // Unshifted p is ㅍ. The command `pp` is not the `>` key.
+        if lexicon.is_english_word("pp") {
+            let (command, mode_after) = type_on(lexicon, KeyboardLayout::Sebeol390, Language::Korean, "pp");
+            assert_eq!(command, "pp");
+            assert_eq!(mode_after, Language::English);
+        }
+    }
+
+    // The symbol run wins even when those letters are dictionary words.
+    let custom = Arc::new(Lexicon::new(&["bb", "bbb", "pp", "tt", "hh", "gg", "yy"], &["한글"]));
+    for (keys, expected) in [
+        ("B", "!"),
+        ("BB", "!!"),
+        ("BBB", "!!!"),
+        ("PP", ">>"),
+        ("TT", ";;"),
+        ("jvfBBB", "와!!!"),
+        ("00BBB", "ㅋㅋ!!!"),
+    ] {
+        let (document, mode_after) = type_on(&custom, KeyboardLayout::Sebeol390, Language::Korean, keys);
+        assert_eq!(document, expected, "{keys}");
+        assert_eq!(mode_after, Language::Korean, "{keys}");
+    }
+    let (english, mode_after) = type_on(&custom, KeyboardLayout::Sebeol390, Language::English, "BBB");
+    assert_eq!(english, "BBB");
+    assert_eq!(mode_after, Language::English);
+    let (acronym, _) = type_on(&custom, KeyboardLayout::Sebeol390, Language::Korean, "BBC");
+    assert_eq!(acronym, "BBC");
+}
+
+/// `y s h g s` is ys는 on 세벌식. y is choseong ㄹ and s is jongseong ㄴ,
+/// so the pair is not a syllable, and hgs is the particle 는. A bare
+/// choseong outscored the letter y and left s as the only English key,
+/// which committed ㄹs는. The same shape is ys은 and ys가. A choseong that
+/// does join (ㄹ는, 가는, 차) and a real acronym (ktx는) stay as they were.
+#[test]
+fn stranded_choseong_joins_the_english_letter_before_a_particle() {
+    let lexicons = [
+        Arc::new(Lexicon::load(&common::resources()).unwrap()),
+        Arc::new(
+            Lexicon::load_for_keyboard_files(
+                &common::keyboard_resources().join("keyboard-english.txt"),
+                &common::keyboard_resources().join("keyboard-korean-valid.txt"),
+                &common::resources().join("korean-words.txt"),
+            )
+            .unwrap(),
+        ),
+    ];
+    let joined = [
+        ("yshgs", "ys는"),
+        ("yshgs ", "ys는 "),
+        ("yshgs.", "ys는."),
+        ("ysjgs ", "ys은 "),
+        ("yskf ", "ys가 "),
+        ("ywhgs ", "yw는 "),
+    ];
+    let unchanged = [
+        ("yhgs ", "ㄹ는 "),
+        ("kfhgs ", "가는 "),
+        ("ktxhgs ", "ktx는 "),
+        ("mmhgs ", "ㅎㅎ는 "),
+        ("ofhgs ", "차는 "),
+        ("tohgs ", "to는 "),
+    ];
+    for lexicon in &lexicons {
+        for layout in [KeyboardLayout::Sebeol390, KeyboardLayout::SebeolFinal] {
+            for (keys, expected) in joined {
+                let (document, mode_after) = type_on(lexicon, layout, Language::Korean, keys);
+                assert_eq!(document, expected, "{layout:?} {keys}");
+                assert_eq!(mode_after, Language::Korean, "{layout:?} {keys}");
+            }
+            for (keys, expected) in unchanged {
+                let (document, _) = type_on(lexicon, layout, Language::Korean, keys);
+                assert_eq!(document, expected, "{layout:?} {keys}");
+            }
+            // English mode already prefers the letter y, so the same keys
+            // are ys는 and the mode stays English.
+            let (english, mode_after) = type_on(lexicon, layout, Language::English, "yshgs ");
+            assert_eq!(english, "ys는 ", "{layout:?}");
+            assert_eq!(mode_after, Language::English, "{layout:?}");
+        }
+    }
 }
 
 fn step_documents(lexicon: &Arc<Lexicon>, layout: KeyboardLayout, keys: &str) -> Vec<String> {
