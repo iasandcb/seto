@@ -86,11 +86,19 @@ pub mod korean_verb_endings {
 
     /// True when `word` is stem + ending and the stem is a known word, is seen
     /// with another verb ending, ends in the past marker ㅆ (왔, 먹었), or is a
-    /// regular conjugation of a known verb/adjective stem.
+    /// regular conjugation of a known verb/adjective stem. ㄹ-drop (만든) is
+    /// [`is_rieul_drop`]: its citation has to be a headword, not merely a
+    /// string in the validity list.
     pub fn is_inflected(word: &str, is_known: impl Fn(&str) -> bool) -> bool {
         if is_regular_conjugation(word, &is_known) {
             return true;
         }
+        attested_ending(word, is_known)
+    }
+
+    /// Stem plus an ending from [`LONGEST_FIRST`], including a stem attested
+    /// only by another ending in that list.
+    fn attested_ending(word: &str, is_known: impl Fn(&str) -> bool) -> bool {
         let count = word.chars().count();
         let mut joined = String::new();
         for ending in LONGEST_FIRST {
@@ -137,9 +145,10 @@ pub mod korean_verb_endings {
         if chars.len() < 2 || chars.len() > 8 || !chars.iter().copied().all(is_syllable_char) {
             return false;
         }
-        // Contractions and ㄴ-allomorphs also match ordinary dictionary nouns
-        // (절화 as 절호+아, 한글언 as 한글어+ㄴ), so only a separate ending
-        // syllable is treated as conjugation here.
+        // Contractions and a bare ㄴ peeled off a noun also match ordinary
+        // dictionary words (절화 as 절호+아, 한글언 as 한글어+ㄴ), so only a
+        // separate ending syllable is treated as conjugation here. ㄹ-drop
+        // (만든) puts ㄹ back on a known stem and is [`is_rieul_drop`].
         prefix_conjugation(&chars, &is_known)
     }
 
@@ -204,9 +213,16 @@ pub mod korean_verb_endings {
     }
 
     const RIEUL: u32 = 8;
+    /// Jongseong ㄴ and ㅂ, the consonants that replace a dropped stem-final ㄹ.
+    const JONG_NIEUN: u32 = 4;
+    const JONG_PIEUP: u32 = 17;
+    /// Choseong ㄴ and ㅅ, which start the endings that delete a stem-final ㄹ.
+    const CHO_NIEUN: u32 = 2;
+    const CHO_SIOT: u32 = 9;
 
     #[derive(Clone, Copy)]
     struct Syllable {
+        cho: u32,
         jung: u32,
         jong: u32,
     }
@@ -221,12 +237,126 @@ pub mod korean_verb_endings {
             return None;
         }
         let index = value - 0xAC00;
-        Some(Syllable { jung: (index % 588) / 28, jong: index % 28 })
+        Some(Syllable { cho: index / 588, jung: (index % 588) / 28, jong: index % 28 })
+    }
+
+    fn with_jong(syllable: Syllable, jong: u32) -> char {
+        char::from_u32(0xAC00 + (syllable.cho * 21 + syllable.jung) * 28 + jong).expect("modern hangul syllable")
     }
 
     /// ㅏ/ㅑ/ㅗ/ㅘ/ㅛ take -아. ㅐ and 하다 are not in this set.
     fn is_yang(jung: u32) -> bool {
         matches!(jung, 0 | 2 | 8 | 9 | 12)
+    }
+
+    /// ㄹ-drop conjugations of a stem that ends in ㄹ. Before an ending that
+    /// starts with ㄴ, ㅂ, or ㅅ the stem-final ㄹ is deleted: 만들+ㄴ = 만든,
+    /// 만들+는 = 만드는, 만들+ㅂ니다 = 만듭니다, 만들+세요 = 만드세요. The same
+    /// rule gives 산/사는 from 살 and 안/아는 from 알.
+    ///
+    /// The lexicon stores the stem (만들, 살, 알) or the citation form
+    /// (만들다), not these surfaces. Peeling one syllable therefore leaves
+    /// 만드 or 든, which are not words. On 390 and 최종, choseong ㄷ is `u`
+    /// and ㅇ is `j`; on 두벌식, ㄷ is `e` and ㅇ is `d`. Those keys share an
+    /// edge, and 만은 is the frequent word 만 plus the particle 은, so the
+    /// word boundary rewrote 만든.
+    ///
+    /// The batchim ㄴ or ㅂ is restored as ㄹ. `is_known` has to accept the
+    /// citation form (만들다, 살다, 알다). A bare word that merely ends in ㄹ
+    /// is usually a noun (개발, 모델, 꼴); treating those as stems kept real
+    /// slips such as 개반→개발. The caller passes frequent headwords only,
+    /// because the validity list's ㄹ다 strings include names (엘다, 이멜다).
+    /// A particle stem (할, 을) does not count. ㄹ left in place (살는) is
+    /// not this form, and peeling ㄴ off a noun (한글언) is not either.
+    pub fn is_rieul_drop(word: &str, is_known: impl Fn(&str) -> bool) -> bool {
+        let chars: Vec<char> = word.chars().collect();
+        if chars.is_empty() || chars.len() > 8 || !chars.iter().copied().all(is_syllable_char) {
+            return false;
+        }
+        separate_rieul(&chars, &is_known) || fused_rieul(&chars, &is_known)
+    }
+
+    /// Endings that stay their own syllables. The stem-final syllable is open
+    /// on the surface; ㄹ goes back on as its batchim. Longest first is not
+    /// required: each ending is checked against the stem it leaves.
+    const RIEUL_SEPARATE: [&str; 12] =
+        ["십시오", "는데", "니까", "세요", "시오", "시면", "시고", "시다", "는", "니", "네", "시"];
+
+    /// Syllables that follow a fused ㄴ. Empty is the bare adnominal (만든, 산).
+    /// 데 is not here: verbs take 는데 (사는데), and 산데/안데 are slips for 산에/안에.
+    const RIEUL_NIEUN_TAIL: [&str; 5] = ["다고", "다면", "다", "지", ""];
+    /// Syllables that follow a fused ㅂ (만듭니다, 삽시다).
+    const RIEUL_PIEUP_TAIL: [&str; 3] = ["니다", "니까", "시다"];
+
+    fn separate_rieul(chars: &[char], known: &impl Fn(&str) -> bool) -> bool {
+        for ending in RIEUL_SEPARATE {
+            let n = ending.chars().count();
+            if chars.len() <= n || chars.len() - n > 3 {
+                continue;
+            }
+            if !chars[chars.len() - n..].iter().copied().eq(ending.chars()) {
+                continue;
+            }
+            let Some(last) = parse_syl(chars[chars.len() - n - 1]) else { continue };
+            // ㄹ is gone, and the ending really does start with ㄴ or ㅅ.
+            if last.jong != 0 || !drop_trigger(chars[chars.len() - n]) {
+                continue;
+            }
+            let mut stem = chars[..chars.len() - n].to_vec();
+            let index = stem.len() - 1;
+            stem[index] = with_jong(last, RIEUL);
+            if rieul_stem_known(&stem, known) {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn fused_rieul(chars: &[char], known: &impl Fn(&str) -> bool) -> bool {
+        let limit = chars.len().min(3);
+        for index in 0..limit {
+            let Some(last) = parse_syl(chars[index]) else { continue };
+            let tails: &[&str] = match last.jong {
+                JONG_NIEUN => &RIEUL_NIEUN_TAIL,
+                JONG_PIEUP => &RIEUL_PIEUP_TAIL,
+                _ => continue,
+            };
+            let tail = &chars[index + 1..];
+            if !tails.iter().any(|text| same_syllables(tail, text)) {
+                continue;
+            }
+            let mut stem = chars[..=index].to_vec();
+            stem[index] = with_jong(last, RIEUL);
+            if rieul_stem_known(&stem, known) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Citation form only. `stem_known` also accepts a bare stem, which is right
+    /// for 찾/먹 but not here: 개발 and 꼴 end in ㄹ and are not verbs.
+    fn rieul_stem_known(chars: &[char], known: &impl Fn(&str) -> bool) -> bool {
+        if chars.is_empty() || chars.len() > 3 {
+            return false;
+        }
+        let mut citation = String::new();
+        for syllable in chars {
+            citation.push(*syllable);
+        }
+        if super::korean_endings::contains(&citation) {
+            return false;
+        }
+        citation.push('다');
+        known(&citation)
+    }
+
+    fn drop_trigger(syllable: char) -> bool {
+        parse_syl(syllable).is_some_and(|parsed| matches!(parsed.cho, CHO_NIEUN | CHO_SIOT))
+    }
+
+    fn same_syllables(chars: &[char], text: &str) -> bool {
+        chars.len() == text.chars().count() && chars.iter().copied().eq(text.chars())
     }
 }
 
@@ -419,6 +549,13 @@ fn is_already_korean(word: &str, lexicon: &Lexicon) -> bool {
     // 두벌식 ㄹ/ㄴ (`f`/`s`) do not touch, and the Android touch map uses that
     // layout; the hardware default is 390, which does.
     if quotative_stem_is_known(&word, &known) {
+        return true;
+    }
+    // Citation forms live in the frequent list (만들다, 살다, 알다). The
+    // validity list's ㄹ다 entries also include names (엘다, 이멜다, 하늘날다),
+    // and those fake stems block real slips (엡니다→입니다, 하늘난→하늘는).
+    let headword = |text: &str| lexicon.is_korean_word(text);
+    if korean_verb_endings::is_rieul_drop(&word, headword) {
         return true;
     }
     korean_verb_endings::is_inflected(&word, known)
@@ -878,6 +1015,40 @@ mod tests {
         assert!(!korean_verb_endings::is_regular_conjugation("한아도", |word| word == "한" || word == "한다"));
         assert!(!korean_verb_endings::is_regular_conjugation("가라", |word| word == "가르" || word == "가"));
         assert!(!korean_verb_endings::is_regular_conjugation("한굴", |word| word == "한구" || word == "한글"));
+        // The citation form is what marks the verb. A bare ㄹ-final word does not.
+        let rieul = |word: &str| matches!(word, "만들다" | "살다" | "알다" | "놀다" | "길다" | "풀다");
+        for word in [
+            "만든",
+            "만드는",
+            "만듭니다",
+            "만드세요",
+            "만드십시오",
+            "만든다",
+            "산",
+            "사는",
+            "삽니다",
+            "안",
+            "아는",
+            "논",
+            "노는",
+            "긴",
+            "깁니다",
+            "푼",
+            "푸는",
+            "풉니다",
+        ] {
+            assert!(korean_verb_endings::is_rieul_drop(word, rieul), "{word}");
+        }
+        // ㄹ kept in place, a noun ending in ㄹ, or a stem with no citation form.
+        assert!(!korean_verb_endings::is_rieul_drop("만든", |word| word == "만들" || word == "만"));
+        assert!(!korean_verb_endings::is_rieul_drop("개반", |word| word == "개발"));
+        assert!(!korean_verb_endings::is_rieul_drop("꼰", |word| word == "꼴"));
+        assert!(!korean_verb_endings::is_rieul_drop("살는", rieul));
+        assert!(!korean_verb_endings::is_rieul_drop("만들는", rieul));
+        assert!(!korean_verb_endings::is_rieul_drop("먹는다", rieul));
+        assert!(!korean_verb_endings::is_rieul_drop("한굴", rieul));
+        assert!(!korean_verb_endings::is_rieul_drop("가라", rieul));
+        assert!(!korean_verb_endings::is_rieul_drop("한글언", rieul));
         let lengths: Vec<usize> =
             korean_verb_endings::LONGEST_FIRST.iter().map(|ending| ending.chars().count()).collect();
         assert!(lengths.windows(2).all(|pair| pair[0] >= pair[1]));

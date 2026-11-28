@@ -419,3 +419,90 @@ fn verb_stem_plus_ado_is_not_rewritten() {
     assert!(!korean_verb_endings::is_regular_conjugation("가으면", known));
     assert!(!korean_verb_endings::is_regular_conjugation("한아도", known));
 }
+
+/// `만든` is 만들+ㄴ, the past adnominal of 만들다. ㄹ drops before ㄴ, so the
+/// surface is not the dictionary stem 만들 and it does not end with a syllable
+/// the older suffix list can peel. On every layout, choseong ㄷ and ㅇ share
+/// an edge (390·최종 `u`/`j`, 두벌식 `e`/`d`), and 만은 is 만 plus the particle
+/// 은, so the word boundary rewrote 만든.
+///
+/// The same ㄹ-drop covers 만드는, 만듭니다, 만드세요 and the one-syllable
+/// stems 산/사는, 안/아는. ㄹ left on the stem (살는) is not that form. When
+/// the lexicon has no ㄹ stem, 만든 is still a slip for 만은.
+#[test]
+fn rieul_drop_conjugation_is_not_rewritten() {
+    let known_lexicon = |lexicon: &Lexicon, word: &str| lexicon.is_korean_word(word) || lexicon.is_valid_korean(word);
+    for lexicon in [lexicon(), keyboard_lexicon()] {
+        let known = |word: &str| known_lexicon(&lexicon, word);
+        let headword = |word: &str| lexicon.is_korean_word(word);
+        assert!(headword("만들다") && headword("살다") && headword("알다"));
+        assert!(known("만들") && known("살") && known("알"));
+        assert!(!known("만든") && !lexicon.is_korean_word("만드는"));
+        for word in ["만든", "만드는", "만듭니다", "만드세요", "산", "사는", "안", "아는"] {
+            assert!(korean_verb_endings::is_rieul_drop(word, headword), "{word}");
+        }
+        assert!(!korean_verb_endings::is_rieul_drop("살는", headword));
+        assert!(!korean_verb_endings::is_rieul_drop("만들는", headword));
+        for layout in [KeyboardLayout::Sebeol390, KeyboardLayout::SebeolFinal, KeyboardLayout::Dubeol] {
+            for word in ["만든", "만드는", "만듭니다", "만드세요", "사는", "삽니다", "압니다", "산", "안", "아는"]
+            {
+                let keys = TypoCorrector::keystrokes(word, layout).unwrap_or_else(|| panic!("keys for {word}"));
+                let atoms: Vec<_> = keys.chars().map(|key| layout.atom(key)).collect();
+                assert_eq!(
+                    TypoCorrector::correction(word, &atoms, Language::Korean, &lexicon, None),
+                    None,
+                    "{layout:?}: {word} keys {keys}"
+                );
+                let open = type_with(lexicon.clone(), layout, &keys);
+                assert_eq!(open, word, "{layout:?}: open {word}");
+                for boundary in [" ", ".", "\n"] {
+                    let typed = type_with(lexicon.clone(), layout, &format!("{keys}{boundary}"));
+                    assert_eq!(typed, format!("{word}{boundary}"), "{layout:?}: {word} {boundary:?}");
+                }
+            }
+        }
+    }
+
+    // No ㄹ stem in this lexicon: 만든 is one adjacent key from 만+은.
+    let bare = Lexicon::new(&[], &["만"]);
+    for layout in [KeyboardLayout::Sebeol390, KeyboardLayout::SebeolFinal, KeyboardLayout::Dubeol] {
+        let keys = TypoCorrector::keystrokes("만든", layout).unwrap();
+        let atoms: Vec<_> = keys.chars().map(|key| layout.atom(key)).collect();
+        assert_eq!(
+            TypoCorrector::correction("만든", &atoms, Language::Korean, &bare, None).as_deref(),
+            Some("만은"),
+            "{layout:?} {keys}"
+        );
+        assert_eq!(type_with(Arc::new(Lexicon::new(&[], &["만"])), layout, &format!("{keys} ")), "만은 ");
+    }
+
+    // A noun that merely ends in ㄹ is not a verb, and a name in the validity
+    // list (엘다, 하늘날다) is not a headword. Those slips still correct.
+    let lexicon = lexicon();
+    let headword = |word: &str| lexicon.is_korean_word(word);
+    assert!(!korean_verb_endings::is_rieul_drop("개반", headword));
+    assert!(!korean_verb_endings::is_rieul_drop("엡니다", headword));
+    assert!(!korean_verb_endings::is_rieul_drop("산데", headword));
+    for layout in [KeyboardLayout::Sebeol390, KeyboardLayout::SebeolFinal] {
+        for (typed, corrected) in [("개반", "개발"), ("모덴", "모델"), ("엡니다", "입니다"), ("하늘난", "하늘는")]
+        {
+            let keys = TypoCorrector::keystrokes(typed, layout).unwrap_or_else(|| panic!("keys for {typed}"));
+            let atoms: Vec<_> = keys.chars().map(|key| layout.atom(key)).collect();
+            assert_eq!(
+                TypoCorrector::correction(typed, &atoms, Language::Korean, &lexicon, None).as_deref(),
+                Some(corrected),
+                "{layout:?}: {typed} keys {keys}"
+            );
+        }
+    }
+    // 데 is not a ㄹ-drop tail. Verbs take 는데, so 산데/안데 stay slips for 산에/안에.
+    for (typed, corrected) in [("산데", "산에"), ("안데", "안에")] {
+        let keys = TypoCorrector::keystrokes(typed, KeyboardLayout::Dubeol).unwrap();
+        let atoms: Vec<_> = keys.chars().map(|key| KeyboardLayout::Dubeol.atom(key)).collect();
+        assert_eq!(
+            TypoCorrector::correction(typed, &atoms, Language::Korean, &lexicon, None).as_deref(),
+            Some(corrected),
+            "dubeol {typed} {keys}"
+        );
+    }
+}
